@@ -13,6 +13,10 @@
   'main' : {
     'patterns' : [
       {
+        'match' : '(#.*$)'
+        'name' : 'comment.NLex'
+      }
+      {
         'match' : '(option)(\\s+)(\\w+)(\\s+)(on|off)$'
         'captures' : {
           '1' : {

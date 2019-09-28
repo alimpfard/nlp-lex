@@ -1,17 +1,15 @@
-toplevel syntax
-  constant  :- symbol :- string-literal
-  rule      :- symbol :: defn
-  normalise :- char <= char-list (comma separated? ask for ideas)
-  stopwords :- stopword quoted-string-literal (commas optional)
-  option    :- option _name_ _value_
-  -"string" subst with file content
-
-split with a default delimiter?
-NFA output + decompile back
-
-
-
---
+# toplevel syntax
+#   constant  :- symbol :- string-literal
+#   rule      :- symbol :: defn
+#   normalise :- char <= char-list (comma separated? ask for ideas)
+#   stopwords :- stopword quoted-string-literal (commas optional)
+#   option    :- option _name_ _value_
+#   -"string" subst with file content
+#
+# split with a default delimiter?
+# NFA output + decompile back
+#
+# --
 
 option lemmatise on
 
