@@ -1,0 +1,278 @@
+'fileTypes' : [
+  'nlex'
+]
+'name' : 'NLex'
+'patterns' : [
+  {
+    'include' : '#main'
+  }
+]
+'scopeName' : 'source.NLex'
+'uuid' : ''
+'repository' : {
+  'main' : {
+    'patterns' : [
+      {
+        'match' : '(option)(\\s+)(\\w+)(\\s+)(on|off)$'
+        'captures' : {
+          '1' : {
+            'name' : 'keyword.NLex'
+          }
+          '2' : {
+            'name' : 'punctuation.NLex'
+          }
+          '3' : {
+            'name' : 'entity.name.type.class.NLex'
+          }
+          '4' : {
+            'name' : 'punctuation.NLex'
+          }
+          '5' : {
+            'name' : 'keyword.other.special-method.NLex'
+          }
+        }
+      }
+      {
+        'begin' : '(\\w+)(\\s*)(::)'
+        'beginCaptures' : {
+          '1' : {
+            'name' : 'entity.name.type.class.NLex'
+          }
+          '2' : {
+            'name' : 'punctuation.NLex'
+          }
+          '3' : {
+            'name' : 'keyword punctuation.NLex'
+          }
+        }
+        'patterns' : [
+          {
+            'include' : '#main__1'
+          }
+        ]
+        'end' : '(^(?=.{0,1})(?:|))'
+        'endCaptures' : {
+          '1' : {
+            'name' : 'punctuation.NLex'
+          }
+        }
+      }
+      {
+        'begin' : '(\\w+)(\\s*)(:-)(\\s*)("[^\\x{0022}]*")'
+        'beginCaptures' : {
+          '1' : {
+            'name' : 'entity.name.type.class.NLex'
+          }
+          '2' : {
+            'name' : 'punctuation.NLex'
+          }
+          '3' : {
+            'name' : 'keyword punctuation.NLex'
+          }
+          '4' : {
+            'name' : 'punctuation.NLex'
+          }
+          '5' : {
+            'name' : 'punctuation.NLex'
+          }
+        }
+        'contentName' : 'entity.name.type.class.NLex'
+        'end' : '(^(?=.{0,1})(?:|))'
+        'endCaptures' : {
+          '1' : {
+            'name' : 'punctuation.NLex'
+          }
+        }
+      }
+      {
+        'begin' : '(.)(\\s*)(<=)(\\s*)'
+        'beginCaptures' : {
+          '1' : {
+            'name' : 'constant.character.NLex'
+          }
+          '2' : {
+            'name' : 'punctuation.NLex'
+          }
+          '3' : {
+            'name' : 'keyword punctuation.NLex'
+          }
+          '4' : {
+            'name' : 'punctuation.NLex'
+          }
+        }
+        'patterns' : [
+          {
+            'include' : '#normaliser'
+          }
+        ]
+        'end' : '(^)'
+        'endCaptures' : {
+          '1' : {
+            'name' : 'constant.character.escape.NLex'
+          }
+        }
+      }
+      {
+        'begin' : '(stopword)(\\s*)'
+        'beginCaptures' : {
+          '1' : {
+            'name' : 'keyword.NLex'
+          }
+          '2' : {
+            'name' : 'punctuation.NLex'
+          }
+        }
+        'patterns' : [
+          {
+            'include' : '#stopwords'
+          }
+        ]
+        'end' : '(^)'
+        'endCaptures' : {
+          '1' : {
+            'name' : 'punctuation.NLex'
+          }
+        }
+      }
+    ]
+  }
+  'main__1' : {
+    'patterns' : [
+      {
+        'begin' : '(\\s*)'
+        'beginCaptures' : {
+          '1' : {
+            'name' : 'punctuation.NLex'
+          }
+        }
+        'patterns' : [
+          {
+            'include' : '#regularExpression'
+          }
+        ]
+        'end' : '(^|\\)|\\])'
+        'endCaptures' : {
+          '1' : {
+            'name' : 'string.regexp.NLex'
+          }
+        }
+      }
+    ]
+  }
+  'main__2' : {
+    'patterns' : [
+    ]
+  }
+  'normaliser' : {
+    'patterns' : [
+      {
+        'match' : '(\\s)'
+        'name' : 'message.error.NLex'
+      }
+      {
+        'match' : '(.)'
+        'name' : 'string.other.link.NLex'
+      }
+    ]
+  }
+  'regularExpression' : {
+    'patterns' : [
+      {
+        'begin' : '(\\()'
+        'beginCaptures' : {
+          '1' : {
+            'name' : 'string.regexp.NLex'
+          }
+        }
+        'patterns' : [
+          {
+            'include' : '#regularExpression'
+          }
+        ]
+        'end' : '(^|\\)|\\])'
+        'endCaptures' : {
+          '1' : {
+            'name' : 'string.regexp.NLex'
+          }
+        }
+      }
+      {
+        'begin' : '(\\||\\\\.)'
+        'beginCaptures' : {
+          '1' : {
+            'name' : 'string.other.link.NLex'
+          }
+        }
+        'patterns' : [
+          {
+            'include' : '#regularExpression'
+          }
+        ]
+        'end' : '(^|\\)|\\])'
+        'endCaptures' : {
+          '1' : {
+            'name' : 'string.regexp.NLex'
+          }
+        }
+      }
+      {
+        'match' : '(\\{\\{)(\\w+)(\\}\\})'
+        'captures' : {
+          '1' : {
+            'name' : 'constant.character.escape.NLex'
+          }
+          '2' : {
+            'name' : 'entity.name.type.class.NLex'
+          }
+          '3' : {
+            'name' : 'constant.character.escape.NLex'
+          }
+        }
+      }
+      {
+        'begin' : '(\\[)'
+        'beginCaptures' : {
+          '1' : {
+            'name' : 'string.regexp.NLex'
+          }
+        }
+        'patterns' : [
+          {
+            'include' : '#regularExpression'
+          }
+        ]
+        'end' : '(^|\\)|\\])'
+        'endCaptures' : {
+          '1' : {
+            'name' : 'string.regexp.NLex'
+          }
+        }
+      }
+      {
+        'match' : '(\\+|\\*)'
+        'name' : 'string.regexp.NLex'
+      }
+    ]
+  }
+  'stopwords' : {
+    'patterns' : [
+      {
+        'match' : '(-?)(")([^\\x{0022}]*)(")'
+        'captures' : {
+          '1' : {
+            'name' : 'keyword punctuation.NLex'
+          }
+          '2' : {
+            'name' : 'constant.character.escape.NLex'
+          }
+          '3' : {
+            'name' : 'punctuation.NLex'
+          }
+          '4' : {
+            'name' : 'constant.character.escape.NLex'
+          }
+        }
+      }
+    ]
+  }
+}
