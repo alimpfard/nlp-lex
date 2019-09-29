@@ -1,0 +1,215 @@
+Created by PLY version 3.11 (http://www.dabeaz.com/ply)
+
+Grammar
+
+Rule 0     S' -> statement
+Rule 1     statement -> <empty>
+Rule 2     statement -> NAME OPCONST string
+Rule 3     statement -> NAME OPDEFINE
+Rule 4     statement -> OPTION NAME BOOL
+Rule 5     statement -> STOPWORD strlist
+Rule 6     strlist -> string , strlist
+Rule 7     strlist -> string strlist
+Rule 8     strlist -> <empty>
+Rule 9     statement -> OPNORM
+Rule 10    string -> LITSTRING
+Rule 11    string -> FILESTRING
+
+Terminals, with rules where they appear
+
+,                    : 6
+BOOL                 : 4
+FILESTRING           : 11
+LITSTRING            : 10
+NAME                 : 2 3 4
+OPCONST              : 2
+OPDEFINE             : 3
+OPNORM               : 9
+OPTION               : 4
+STOPWORD             : 5
+error                : 
+
+Nonterminals, with rules where they appear
+
+statement            : 0
+string               : 2 6 7
+strlist              : 5 6 7
+
+Parsing method: LALR
+
+state 0
+
+    (0) S' -> . statement
+    (1) statement -> .
+    (2) statement -> . NAME OPCONST string
+    (3) statement -> . NAME OPDEFINE
+    (4) statement -> . OPTION NAME BOOL
+    (5) statement -> . STOPWORD strlist
+    (9) statement -> . OPNORM
+
+    $end            reduce using rule 1 (statement -> .)
+    NAME            shift and go to state 2
+    OPTION          shift and go to state 3
+    STOPWORD        shift and go to state 4
+    OPNORM          shift and go to state 5
+
+    statement                      shift and go to state 1
+
+state 1
+
+    (0) S' -> statement .
+
+
+
+state 2
+
+    (2) statement -> NAME . OPCONST string
+    (3) statement -> NAME . OPDEFINE
+
+    OPCONST         shift and go to state 6
+    OPDEFINE        shift and go to state 7
+
+
+state 3
+
+    (4) statement -> OPTION . NAME BOOL
+
+    NAME            shift and go to state 8
+
+
+state 4
+
+    (5) statement -> STOPWORD . strlist
+    (6) strlist -> . string , strlist
+    (7) strlist -> . string strlist
+    (8) strlist -> .
+    (10) string -> . LITSTRING
+    (11) string -> . FILESTRING
+
+    $end            reduce using rule 8 (strlist -> .)
+    LITSTRING       shift and go to state 11
+    FILESTRING      shift and go to state 12
+
+    strlist                        shift and go to state 9
+    string                         shift and go to state 10
+
+state 5
+
+    (9) statement -> OPNORM .
+
+    $end            reduce using rule 9 (statement -> OPNORM .)
+
+
+state 6
+
+    (2) statement -> NAME OPCONST . string
+    (10) string -> . LITSTRING
+    (11) string -> . FILESTRING
+
+    LITSTRING       shift and go to state 11
+    FILESTRING      shift and go to state 12
+
+    string                         shift and go to state 13
+
+state 7
+
+    (3) statement -> NAME OPDEFINE .
+
+    $end            reduce using rule 3 (statement -> NAME OPDEFINE .)
+
+
+state 8
+
+    (4) statement -> OPTION NAME . BOOL
+
+    BOOL            shift and go to state 14
+
+
+state 9
+
+    (5) statement -> STOPWORD strlist .
+
+    $end            reduce using rule 5 (statement -> STOPWORD strlist .)
+
+
+state 10
+
+    (6) strlist -> string . , strlist
+    (7) strlist -> string . strlist
+    (6) strlist -> . string , strlist
+    (7) strlist -> . string strlist
+    (8) strlist -> .
+    (10) string -> . LITSTRING
+    (11) string -> . FILESTRING
+
+    ,               shift and go to state 15
+    $end            reduce using rule 8 (strlist -> .)
+    LITSTRING       shift and go to state 11
+    FILESTRING      shift and go to state 12
+
+    string                         shift and go to state 10
+    strlist                        shift and go to state 16
+
+state 11
+
+    (10) string -> LITSTRING .
+
+    ,               reduce using rule 10 (string -> LITSTRING .)
+    LITSTRING       reduce using rule 10 (string -> LITSTRING .)
+    FILESTRING      reduce using rule 10 (string -> LITSTRING .)
+    $end            reduce using rule 10 (string -> LITSTRING .)
+
+
+state 12
+
+    (11) string -> FILESTRING .
+
+    ,               reduce using rule 11 (string -> FILESTRING .)
+    LITSTRING       reduce using rule 11 (string -> FILESTRING .)
+    FILESTRING      reduce using rule 11 (string -> FILESTRING .)
+    $end            reduce using rule 11 (string -> FILESTRING .)
+
+
+state 13
+
+    (2) statement -> NAME OPCONST string .
+
+    $end            reduce using rule 2 (statement -> NAME OPCONST string .)
+
+
+state 14
+
+    (4) statement -> OPTION NAME BOOL .
+
+    $end            reduce using rule 4 (statement -> OPTION NAME BOOL .)
+
+
+state 15
+
+    (6) strlist -> string , . strlist
+    (6) strlist -> . string , strlist
+    (7) strlist -> . string strlist
+    (8) strlist -> .
+    (10) string -> . LITSTRING
+    (11) string -> . FILESTRING
+
+    $end            reduce using rule 8 (strlist -> .)
+    LITSTRING       shift and go to state 11
+    FILESTRING      shift and go to state 12
+
+    string                         shift and go to state 10
+    strlist                        shift and go to state 17
+
+state 16
+
+    (7) strlist -> string strlist .
+
+    $end            reduce using rule 7 (strlist -> string strlist .)
+
+
+state 17
+
+    (6) strlist -> string , strlist .
+
+    $end            reduce using rule 6 (strlist -> string , strlist .)
+

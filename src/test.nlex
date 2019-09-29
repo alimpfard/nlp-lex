@@ -1,0 +1,20 @@
+option lemmatise on
+
+# define a constant expression, it will not be used as a rule
+u0ffe  :- "\u0ffe"
+
+# define a rule (leaf node)
+number :: \d+
+
+# define a rule containing another rule
+float  :: {{number}}\.{{number}}
+
+# define a rule containing a constant expression
+word   :: [\w{{u0ffe}}]+
+
+# define a Normalisation (c,d,f will be normalised to 't')
+t      <= cdf
+x      <= xyz
+
+# define 3 literal stopwords and pull the rest from the file "stopwords.list"
+stopword "test" "shit" "blah" -"stopwords.list"
