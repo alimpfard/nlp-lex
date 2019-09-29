@@ -206,12 +206,12 @@ Token NLexer::_next() {
         isspace(*(source_p + 2))) {
       advance(2);
       length = 3;
-      truth = true;
+      truth = false;
     } else if (c == 'o' && strncmp("n", source_p, 1) == 0 &&
                (!*(source_p + 1) || isspace(*(source_p + 1)))) {
       advance(1);
       length = 2;
-      truth = false;
+      truth = true;
     } else {
       const Token &mtoken = {TOK_ERROR, lineno, offset, 0, empty_string};
       lexer_error(*this, Errors::Unexpected, mtoken, ErrorPosition::On,
@@ -263,6 +263,21 @@ Token NLexer::_next() {
     std::string str = vstr.value();
     return Token{isfile ? TOK_FILESTRING : TOK_LITSTRING, lineno,
                  offset - str.size(), str.size(), str};
+  }
+  case LexerState::Normal: {
+    length = 0;
+    buffer[length++] = c;
+    while (1) {
+      c = *source_p;
+      if (c == '\0' || c == '\n')
+        break;
+      buffer[length++] = c;
+      advance(1);
+    }
+    buffer[length] = 0;
+    state = LexerState::Toplevel;
+    return Token{TOK_LITSTRING, lineno, offset - length, length,
+                 std::string{buffer, length}};
   }
   default:
     /* code */
@@ -321,9 +336,11 @@ std::optional<std::string> NLexer::string() {
 #ifdef TEST
 int main() {
   NLexer lexer{R"(
+  option lemmatise on
   stopword "test" "fest" -"123"
   boo     :- "123"
   test    :- "43"
+  t       <= test
   )"};
   do {
     Token tok = lexer.next();

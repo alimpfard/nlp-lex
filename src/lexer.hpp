@@ -76,10 +76,10 @@ enum LexerState {
                    * newline -> Toplevel
                    */
     String,       // -> String
-    Const,
+    Const,        // String -> Toplevel
+    Normal,       // -> Toplevel
     // TODO vvv
     Define,       // -> Toplevel (parses a regex)
-    Normal,
 };
 
 enum ErrorPosition {
