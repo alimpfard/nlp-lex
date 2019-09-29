@@ -22,6 +22,7 @@ void lexer_error(const NLexer &lexer, int errn, const Token &tok,
 char const *NLexer::errors[Errors::LAST] = {
     [Errors::Unexpected] = "Unexpected Token",
     [Errors::ExpectedValue] = "Expected a value",
+    [Errors::InvalidRegexp] = "Invalid Regexp",
 };
 
 void Token::print() {
@@ -85,28 +86,33 @@ const Token NLexer::next() {
   return tok;
 }
 
-Token NLexer::_next() {
+inline Token NLexer::_next() {
   char c;
   int length = -1;
+  int commentl = false;
   if (!*source_p)
     return Token{TOK_EOF, lineno, offset, 0};
   do {
     c = *(source_p++);
     offset++;
+    if (c == '#') {
+        commentl = true;
+        continue;
+    }
     if (c == '\n') {
       lineno++;
       offset = 0;
+      commentl = false;
       continue;
     }
-    if (isspace(c))
+
+    if (isspace(c) || commentl)
       continue;
     break;
   } while (1);
 
   switch (state) {
   case LexerState::Toplevel: {
-    comment(c);
-
     if (c == 'o' && strncmp("ption", source_p, strlen("ption")) == 0 &&
         isspace(*(source_p + strlen("ption")))) {
       state = LexerState::Option;
@@ -279,10 +285,26 @@ Token NLexer::_next() {
     return Token{TOK_LITSTRING, lineno, offset - length, length,
                  std::string{buffer, length}};
   }
+  case LexerState::Define: {
+    // parse a regexp
+    auto opt = regexp();
+    if (!opt.has_value()) {
+        const Token &mtoken = {TOK_ERROR, lineno, offset, 0, empty_string};
+        lexer_error(*this, Errors::InvalidRegexp, mtoken, ErrorPosition::On, "Expected a valid regex (see above for possible diagnosis)");
+        return mtoken;
+    }
+    Regexp regex = opt.value();
+    return Token{TOK_REGEX, lineno, offset-regex.str.size(), regex.str.size(), regex};
+  }
   default:
     /* code */
     break;
   }
+}
+
+std::optional<Regexp> NLexer::regexp() {
+    // TODO
+    return {};
 }
 
 std::optional<std::string> NLexer::string() {
@@ -337,10 +359,11 @@ std::optional<std::string> NLexer::string() {
 int main() {
   NLexer lexer{R"(
   option lemmatise on
-  stopword "test" "fest" -"123"
-  boo     :- "123"
+  stopword "test" "fest" -"stopwords.list"
+  boo     :- "testt"
   test    :- "43"
   t       <= test
+  boop    :: {{boo}}{{test}}
   )"};
   do {
     Token tok = lexer.next();

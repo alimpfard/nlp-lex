@@ -6,6 +6,8 @@
 #include <variant>
 #include <optional>
 
+#include "regexp.hpp"
+
 enum TokenType {
     TOK_OPTION,
     TOK_STOPWORD,
@@ -41,7 +43,7 @@ struct Token {
     int lineno;
     int offset;
     int length;
-    std::variant<std::string, bool> value;
+    std::variant<std::string, bool, Regexp> value;
 
 public:
     void print();
@@ -93,6 +95,7 @@ static const std::string empty_string = "";
 enum Errors {
     Unexpected,
     ExpectedValue,
+    InvalidRegexp,
     LAST
 };
 
@@ -127,6 +130,7 @@ public:
 
     const Token next();
     std::optional<std::string> string();
+    std::optional<Regexp> regexp();
 
     void revert();
     void inject(Token);
