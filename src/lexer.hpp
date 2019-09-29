@@ -21,12 +21,30 @@ enum TokenType {
     TOK_ERROR
 };
 
+char *reverse_token_type[TOK_ERROR+1] = {
+    [TOK_OPTION] = "Option",
+    [TOK_STOPWORD] = "Stopword",
+    [TOK_OPCONST] = "Const",
+    [TOK_OPDEFINE] = "Define",
+    [TOK_OPNORMAL] = "Normalise",
+    [TOK_LITSTRING] = "LiteralString",
+    [TOK_FILESTRING] = "FileString",
+    [TOK_BOOL] = "Boolean",
+    [TOK_NAME] = "Name",
+    [TOK_REGEX] = "Regexp",
+    [TOK_EOF] = "EOF",
+    [TOK_ERROR] = "Error"
+};
+
 struct Token {
     TokenType type;
     int lineno;
     int offset;
     int length;
     std::variant<std::string, bool> value;
+
+public:
+    void print();
 };
 
 static Token EOFToken = {
@@ -58,9 +76,9 @@ enum LexerState {
                    * newline -> Toplevel
                    */
     String,       // -> String
+    Const,
     // TODO vvv
     Define,       // -> Toplevel (parses a regex)
-    Const,
     Normal,
 };
 
@@ -74,6 +92,7 @@ static const std::string empty_string = "";
 
 enum Errors {
     Unexpected,
+    ExpectedValue,
     LAST
 };
 

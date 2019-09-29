@@ -21,7 +21,19 @@ void lexer_error(const NLexer &lexer, int errn, const Token &tok,
 
 char const *NLexer::errors[Errors::LAST] = {
     [Errors::Unexpected] = "Unexpected Token",
+    [Errors::ExpectedValue] = "Expected a value",
 };
+
+void Token::print() {
+  if (type == TokenType::TOK_BOOL)
+    std::printf("Token { %s, line %d, offset %d, length %d, value = <%s> }\n",
+                reverse_token_type[type], lineno, offset, length,
+                std::get<bool>(value) ? "true" : "false");
+  else
+    std::printf("Token { %s, line %d, offset %d, length %d, value = <%s> }\n",
+                reverse_token_type[type], lineno, offset, length,
+                std::get<std::string>(value).c_str());
+}
 
 char escapes[256] = {
     '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0',
@@ -68,9 +80,9 @@ inline void NLexer::comment(char c) {
 }
 
 const Token NLexer::next() {
-    const Token tok = _next();
-    prev_token = tok;
-    return tok;
+  const Token tok = _next();
+  prev_token = tok;
+  return tok;
 }
 
 Token NLexer::_next() {
@@ -110,15 +122,25 @@ Token NLexer::_next() {
       return Token{TOK_STOPWORD, lineno, offset - strlen("stopword"),
                    strlen("stopword"), empty_string};
     }
-
-    buffer[++length] = c;
+    length = 0;
+    buffer[length++] = c;
     do {
       c = *(source_p++);
-      buffer[++length] = c;
+      if (!c)
+        break;
+      buffer[length++] = c;
       offset++;
     } while (!isspace(c));
-    buffer[length] = 0;
+    buffer[length--] = 0;
     offset--;
+    if (length == 0) {
+      if (!*source_p)
+        return Token{TOK_EOF, lineno, offset, 0};
+      const Token &mtoken = {TOK_ERROR, lineno, offset, 0, empty_string};
+      lexer_error(*this, Errors::ExpectedValue, mtoken, ErrorPosition::After,
+                  "Expected an identifier");
+      return mtoken;
+    }
 
     state = LexerState::Name;
 
@@ -204,6 +226,8 @@ Token NLexer::_next() {
   }
   case LexerState::Stopword: {
     if (c != '-' && c != '"') {
+      source_p--;
+      offset--;
       state = LexerState::Toplevel;
       return next();
     }
@@ -221,9 +245,25 @@ Token NLexer::_next() {
     return Token{isfile ? TOK_FILESTRING : TOK_LITSTRING, lineno,
                  offset - str.size(), str.size(), str};
   }
-case LexerState::Define: {
-    
-}
+  case LexerState::Const: {
+    bool isfile = false;
+    if (c == '-')
+      isfile = true;
+    else if (c == '"')
+      source_p--;
+    std::optional<std::string> vstr = string();
+    state = LexerState::Toplevel;
+    if (!vstr.has_value()) {
+      state = LexerState::Toplevel;
+      const Token &mtoken = {TOK_ERROR, lineno, offset, 0, empty_string};
+      lexer_error(*this, Errors::ExpectedValue, mtoken, ErrorPosition::After,
+                  "Expected a string");
+      return {TOK_ERROR, lineno, offset, 0, empty_string};
+    }
+    std::string str = vstr.value();
+    return Token{isfile ? TOK_FILESTRING : TOK_LITSTRING, lineno,
+                 offset - str.size(), str.size(), str};
+  }
   default:
     /* code */
     break;
@@ -282,14 +322,14 @@ std::optional<std::string> NLexer::string() {
 int main() {
   NLexer lexer{R"(
   stopword "test" "fest" -"123"
-  boo <= 123
+  boo     :- "123"
+  test    :- "43"
   )"};
   do {
     Token tok = lexer.next();
     if (tok.type == TOK_EOF)
       break;
-    /* std::printf("%d %d %d %d %s\n", tok.type, tok.lineno, tok.offset,
-     * tok.length, std::get<std::string>(tok.value).c_str()); */
+    tok.print();
   } while (1);
 }
 #endif
