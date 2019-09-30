@@ -315,9 +315,10 @@ inline Token NLexer::_next() {
     }
     Regexp regex = opt.value();
     if (!regex.sanity_check(*this)) {
-        errtok.length = regex.str.size();
-        lexer_error(*this, Errors::InvalidRegexp, errtok, ErrorPosition::After, "Malformed Regular expression");
-        return errtok;
+      errtok.length = regex.str.size();
+      lexer_error(*this, Errors::InvalidRegexp, errtok, ErrorPosition::After,
+                  "Malformed Regular expression");
+      return errtok;
     }
     state = LexerState::Toplevel;
     return Token{TOK_REGEX, lineno, offset - regex.str.size(), regex.str.size(),
@@ -717,16 +718,88 @@ std::optional<std::string> NLexer::string() {
 }
 
 bool Regexp::sanity_check(const NLexer &lexer) {
-    // simple sanity check
-    if (star && plus) {
-        // *+ not allowed
-        std::printf("[I] Note: %s\n", "Two active quantifiers (star and plus) is not sane");
-        return false;
-    }
-    return true;
+  // simple sanity check
+  if (star && plus) {
+    // *+ not allowed
+    std::printf("[I] Note: %s\n",
+                "Two active quantifiers (star and plus) is not sane");
+    return false;
+  }
+  return true;
 }
 
-#define TEST
+bool Regexp::operator==(const Regexp &other) const {
+  if (type != other.type)
+    return false;
+  if (lazy ^ other.lazy || plus ^ other.plus || star ^ other.star)
+    return false;
+  // TODO: check RepeatQuantifier
+
+  switch (type) {
+  case CharacterClass:
+    /* fallthrough */
+  case Symbol:
+    return std::get<std::string>(inner) == std::get<std::string>(other.inner);
+  case Alternative: {
+    if (children.size() != other.children.size())
+      return false;
+    for (int i = 0; i < children.size(); i++)
+      if (*children[i] == *other.children[i])
+        ;
+      else
+        return false;
+    return true;
+  }
+  case Concat: {
+    if (children.size() != other.children.size())
+      return false;
+    for (int i = 0; i < children.size(); i++)
+      if (*children[i] == *other.children[i])
+        ;
+      else
+        return false;
+    return true;
+  }
+  case Nested:
+    return *std::get<Regexp *>(inner) == *std::get<Regexp *>(other.inner);
+  case Literal:
+    /* fallthrough */
+  case Escape:
+    return std::get<char>(inner) == std::get<char>(other.inner);
+  }
+}
+
+void Regexp::resolve(
+    const std::map<std::string,
+                   std::pair<SymbolType, std::variant<std::string, Regexp *>>>
+        values) {
+
+  switch (type) {
+  case RegexpType::Literal:
+  case RegexpType::Escape:
+  case RegexpType::CharacterClass:
+    return;
+  case RegexpType::Nested:
+    return std::get<Regexp *>(inner)->resolve(values);
+  case RegexpType::Alternative:
+  case RegexpType::Concat:
+    for (auto ch : children)
+      ch->resolve(values);
+    return;
+  case RegexpType::Symbol: {
+    const auto &val = values.at(std::get<std::string>(inner));
+    if (val.first != SymbolType::Define)
+      return;
+    *this = *std::get<Regexp *>(val.second);
+    return;
+  }
+  default:
+    /* code */
+    break;
+  }
+}
+
+// #define TEST
 #ifdef TEST
 int main() {
   NLexer lexer{R"(

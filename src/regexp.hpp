@@ -4,7 +4,12 @@
 #include <variant>
 
 class NLexer;
-class NFA;
+class NFANode;
+struct Regexp;
+
+enum class SymbolType;
+
+#include "parser.hpp"
 
 enum RegexpType {
   Symbol,
@@ -33,8 +38,14 @@ public:
   bool plus, star, lazy;
   std::optional<RepeatQuantifier> repeat;
 
+  bool operator==(const Regexp &other) const;
+
   Regexp concat(const Regexp &other);
   bool sanity_check(const NLexer &lexer);
+  void resolve(
+      const std::map<std::string,
+                     std::pair<SymbolType, std::variant<std::string, Regexp *>>>
+          values);
 
   Regexp(std::string str, RegexpType type, std::vector<Regexp *> children)
       : type(type), inner({}), children(children), plus(), star(), lazy(),
@@ -57,5 +68,5 @@ public:
 
   std::string to_str() const;
 
-  NFA compile() const;
+  NFANode compile() const;
 };

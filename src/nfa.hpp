@@ -1,5 +1,3 @@
 #pragma once
 
-class NFA {
-    
-};
+class NFANode {};

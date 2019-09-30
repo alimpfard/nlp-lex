@@ -23,18 +23,19 @@ enum TokenType {
   TOK_ERROR
 };
 
-char *reverse_token_type[TOK_ERROR + 1] = {[TOK_OPTION] = "Option",
-                                           [TOK_STOPWORD] = "Stopword",
-                                           [TOK_OPCONST] = "Const",
-                                           [TOK_OPDEFINE] = "Define",
-                                           [TOK_OPNORMAL] = "Normalise",
-                                           [TOK_LITSTRING] = "LiteralString",
-                                           [TOK_FILESTRING] = "FileString",
-                                           [TOK_BOOL] = "Boolean",
-                                           [TOK_NAME] = "Name",
-                                           [TOK_REGEX] = "Regexp",
-                                           [TOK_EOF] = "EOF",
-                                           [TOK_ERROR] = "Error"};
+static char *reverse_token_type[TOK_ERROR + 1] = {
+    [TOK_OPTION] = "Option",
+    [TOK_STOPWORD] = "Stopword",
+    [TOK_OPCONST] = "Const",
+    [TOK_OPDEFINE] = "Define",
+    [TOK_OPNORMAL] = "Normalise",
+    [TOK_LITSTRING] = "LiteralString",
+    [TOK_FILESTRING] = "FileString",
+    [TOK_BOOL] = "Boolean",
+    [TOK_NAME] = "Name",
+    [TOK_REGEX] = "Regexp",
+    [TOK_EOF] = "EOF",
+    [TOK_ERROR] = "Error"};
 
 struct Token {
   TokenType type;
