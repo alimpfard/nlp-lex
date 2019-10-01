@@ -1,12 +1,14 @@
+#define TEST
+
 #include "parser.hpp"
 #include "lexer.hpp"
 
-NFANode NParser::compile(std::string code) {
+NFANode<std::string> NParser::compile(std::string code) {
   lexer = std::make_unique<NLexer>(code);
   return compile();
 }
 
-NFANode NParser::compile() {
+NFANode<std::string> NParser::compile() {
   statestack = {};
   statestack.push(ParserState::Toplevel);
   bool failing = false;
@@ -102,38 +104,117 @@ NFANode NParser::compile() {
       }
       if (values.count(name) != 0) {
         failing = true;
-        std::printf("symbol '%s' is being redefined\n", name.c_str());
+        auto entry = std::get<1>(values[name]);
+        std::printf(
+            "symbol '%s' has been previously defined at line %d, offset %d\n",
+            name.c_str(), entry.lineno, entry.offset);
         break;
       }
       Regexp reg = std::get<Regexp>(token.value);
       reg.resolve(values);
-      values[name] = std::make_pair(SymbolType::Define, new Regexp{reg});
+      values[name] = std::make_tuple<SymbolType, SymbolDebugInformation,
+                                     std::variant<std::string, Regexp *>>(
+          SymbolType::Define,
+          {SymbolType::Define, token.lineno, token.offset, token.length, name,
+           reg.str},
+          new Regexp{reg});
       statestack.pop(); // define
       statestack.pop(); // name
       break;
     }
-    case ParserState::Const:
-      printf("Not impl'd yet\n");
+    case ParserState::Const: {
+      if (token.type != TOK_LITSTRING && token.type != TOK_FILESTRING) {
+        failing = true;
+        std::printf("expected a string, invalid token %s - %s\n",
+                    reverse_token_type[token.type],
+                    std::get<std::string>(token.value).c_str());
+        break;
+      }
+      std::string name = std::get<std::string>(persist);
+      if (name.size() == 0) {
+        printf("huh?\n");
+      }
+      if (values.count(name) != 0) {
+        failing = true;
+        auto entry = std::get<1>(values[name]);
+        std::printf(
+            "symbol '%s' has been previously defined at line %d, offset %d\n",
+            name.c_str(), entry.lineno, entry.offset);
+        break;
+      }
+      std::string s = std::get<std::string>(token.value);
+      values[name] = std::make_tuple<SymbolType, SymbolDebugInformation,
+                                     std::variant<std::string, Regexp *>>(
+          SymbolType::Const,
+          {SymbolType::Const, token.lineno, token.offset, token.length, name,
+           s},
+          s);
+      statestack.pop(); // const
+      statestack.pop(); // name
       break;
+    }
     case ParserState::Normal:
       printf("Not impl'd yet\n");
       break;
     }
   } while (!failing);
+#ifdef TEST
+  std::printf("== all defined rules ==\n");
+  for (auto &it : values) {
+    if (std::get<0>(it.second) == SymbolType::Define) {
+      auto rule = std::get<Regexp *>(std::get<2>(it.second));
+      std::printf("rule \"%s\" - <%s>\n", it.first.c_str(),
+                  rule->to_str().c_str());
+    }
+  }
+#endif
+  NFANode<std::string> root_node{"root"};
+  std::map<std::string, NFANode<std::string> *> node_cache;
+
+  for (auto &it : find_leaf_rules()) {
+    auto rule = std::get<Regexp *>(std::get<2>(values[it]));
+    node_cache[it] = rule->compile(node_cache, &root_node);
+  }
+  return root_node;
 }
 
-#define TEST
+std::set<std::string> NParser::find_leaf_rules() const {
+  std::set<std::string> leafs;
+  for (auto &it : values) {
+    if (std::get<0>(it.second) == SymbolType::Define) {
+      auto rule = std::get<Regexp *>(std::get<2>(it.second));
+      if (rule->is_leaf)
+        leafs.insert(it.first);
+    }
+  }
+  return leafs;
+}
+
+template <typename T> void NFANode<T>::print() {
+  printf("(\"%s\" ", state_info->c_str());
+  for (auto t : outgoing_transitions)
+    std::printf("-%s-> ",
+                std::holds_alternative<EpsilonTransitionT>(t.input)
+                    ? "<e>"
+                    : std::holds_alternative<AnythingTransitionT>(t.input)
+                          ? "<.>"
+                          : std::string{std::get<char>(t.input)}.c_str()),
+        t.target->print();
+  std::printf(")");
+}
+
 #ifdef TEST
 int main() {
   NParser parser;
-  parser.compile(R"(
+  auto root = parser.compile(R"(
   option lemmatise on
   stopword "test" "fest" "stopwords.list"
-  # boo     :- "testt"
+  boo     :- "testt"
   # test    :- "43"
   # t       <= test
-  boop    :: \d+
-  POOP    :: {{boop}}-
+  boop    :: {{boo}}.
+  poop    :: {{boo}}x
   )");
+  root.print();
 }
 #endif

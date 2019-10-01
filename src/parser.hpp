@@ -27,18 +27,29 @@ enum class ParserState {
   Normal,
 };
 
+struct SymbolDebugInformation {
+  SymbolType type;
+  int lineno;
+  int offset;
+  int length;
+  std::string name;
+  std::string definition_string;
+};
+
 class NParser {
   std::unique_ptr<NLexer> lexer;
-  std::map<std::string,
-           std::pair<SymbolType, std::variant<std::string, Regexp *>>>
+  std::map<std::string, std::tuple<SymbolType, SymbolDebugInformation,
+                                   std::variant<std::string, Regexp *>>>
       values;
-  NFANode compile();
+  NFANode<std::string> compile();
   std::stack<ParserState> statestack;
+
+  std::set<std::string> find_leaf_rules() const;
 
   std::map<std::string, bool> gen_lexer_options;
   std::set<std::string> gen_lexer_stopwords;
   std::map<char, char> gen_lexer_normalisations;
 
 public:
-  NFANode compile(std::string code);
+  NFANode<std::string> compile(std::string code);
 };

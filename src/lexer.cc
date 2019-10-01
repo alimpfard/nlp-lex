@@ -1,4 +1,5 @@
 #include "lexer.hpp"
+#include <cassert>
 #include <cctype>
 #include <cstdarg>
 #include <cstdio>
@@ -442,7 +443,7 @@ std::optional<Regexp> NLexer::regexp_tl() {
                   ErrorPosition::After, "Expected `}}' to follow a symbol");
       return {};
     }
-    advance(3);
+    advance(2);
     return Regexp{std::string{source_p - length - 5, length + 4},
                   RegexpType::Symbol, std::string{buffer, length}};
   }
@@ -468,9 +469,14 @@ std::optional<Regexp> NLexer::regexp_expression() {
   if (c == '\0')
     return {};
   // character literal
-  if (strchr("?+*{}()[]\\|", c) == NULL) {
+  if (strchr("?+*{}()[]\\|.", c) == NULL) {
     advance(1);
     return Regexp{std::string{source_p - 1, 1}, RegexpType::Literal, c};
+  }
+  if (c == '.') {
+    // match anything
+    advance(1);
+    return Regexp{std::string{source_p - 1, 1}, RegexpType::Dot, c};
   }
   // escaped character
   if (c == '\\') {
@@ -770,12 +776,13 @@ bool Regexp::operator==(const Regexp &other) const {
 }
 
 void Regexp::resolve(
-    const std::map<std::string,
-                   std::pair<SymbolType, std::variant<std::string, Regexp *>>>
+    const std::map<std::string, std::tuple<SymbolType, SymbolDebugInformation,
+                                           std::variant<std::string, Regexp *>>>
         values) {
 
   switch (type) {
   case RegexpType::Literal:
+  case RegexpType::Dot:
   case RegexpType::Escape:
   case RegexpType::CharacterClass:
     return;
@@ -787,16 +794,132 @@ void Regexp::resolve(
       ch->resolve(values);
     return;
   case RegexpType::Symbol: {
-    const auto &val = values.at(std::get<std::string>(inner));
-    if (val.first != SymbolType::Define)
-      return;
-    *this = *std::get<Regexp *>(val.second);
+    const auto name = std::get<std::string>(inner);
+    const auto &val = values.at(name);
+    if (std::get<0>(val) == SymbolType::Define) {
+      auto *reg = std::get<Regexp *>(std::get<2>(val));
+
+      type = reg->type;
+      children = reg->children;
+      str = reg->str;
+      inner = reg->inner;
+
+      plus = plus || reg->plus;
+      star = star || reg->star;
+      lazy = lazy || reg->lazy;
+      reg->is_leaf = false;
+    } else /* Const */ {
+      // construct a literal regexp
+      std::string s = std::get<std::string>(std::get<2>(val));
+      for (char c : s)
+        children.push_back(new Regexp{std::string{c}, RegexpType::Literal, c});
+      str = s;
+      type = RegexpType::Concat;
+    }
+    was_reference = true;
+    referenced_symbol = name;
     return;
   }
   default:
     /* code */
     break;
   }
+}
+std::string Regexp::mangle() const {
+  auto s = str;
+  return "/" + s + "/" + (star ? "*" : "") + (plus ? "+" : "") +
+         (lazy ? "?" : "");
+}
+
+NFANode<std::string> *
+Regexp::compile(std::map<std::string, NFANode<std::string> *> &cache,
+                NFANode<std::string> *parent) const {
+  assert(type != RegexpType::Symbol &&
+         "Regexp must be completely resolved before compilation");
+  switch (type) {
+  case RegexpType::Literal: {
+    char t = std::get<char>(inner);
+    NFANode<std::string> *tl =
+        transform_by_quantifiers(new NFANode<std::string>{mangle()});
+    parent->transition_to(tl, t);
+    return tl;
+  }
+  case RegexpType::Dot: {
+    NFANode<std::string> *tl =
+        transform_by_quantifiers(new NFANode<std::string>{mangle()});
+    parent->anything_transition_to(tl);
+    return tl;
+  }
+  case RegexpType::Escape:
+  case RegexpType::CharacterClass:
+    printf("Fuck no for now\n");
+    return nullptr;
+  case RegexpType::Nested: {
+    NFANode<std::string> *tl =
+        transform_by_quantifiers(new NFANode<std::string>{mangle()});
+    parent->epsilon_transition_to(tl);
+    return std::get<Regexp *>(inner)->compile(cache, tl);
+  }
+  case RegexpType::Alternative: {
+    // generate all nodes and connect them all to a root node
+    NFANode<std::string> *tl = new NFANode<std::string>{mangle()};
+    for (auto *alt : children) {
+      auto p = alt->compile(cache, tl);
+      // cache[alt->mangle()] = p;
+    }
+    tl = transform_by_quantifiers(tl);
+    parent->epsilon_transition_to(tl);
+    return tl;
+  }
+  case RegexpType::Concat: {
+    NFANode<std::string> *root = new NFANode<std::string>{mangle()};
+    // generate all nodes and add transitions between them
+    auto p = children[0]->compile(cache, root);
+    // cache[children[0]->mangle()] = p;
+    NFANode<std::string> *tl = p, *prev_s = p;
+    bool b = true;
+    for (auto c : children)
+      if (b) {
+        b = false;
+        continue;
+      } else {
+        prev_s = c->compile(cache, prev_s);
+        // cache[c->mangle()] = p;
+      }
+    root = transform_by_quantifiers(
+        new PseudoNFANode<std::string>{"S" + mangle(), root, prev_s});
+    parent->epsilon_transition_to(root);
+    return root;
+  }
+  }
+}
+
+NFANode<std::string> *
+Regexp::transform_by_quantifiers(NFANode<std::string> *node) const {
+  // TODO
+  return node;
+}
+
+template <typename T> void NFANode<T>::transition_to(NFANode<T> *node, char c) {
+  get_output_end()->outgoing_transitions.push_back(
+      Transition<NFANode<T>,
+                 std::variant<char, EpsilonTransitionT, AnythingTransitionT>>(
+          node->get_input_end(), c));
+}
+
+template <typename T> void NFANode<T>::epsilon_transition_to(NFANode<T> *node) {
+  get_output_end()->outgoing_transitions.push_back(
+      Transition<NFANode<T>,
+                 std::variant<char, EpsilonTransitionT, AnythingTransitionT>>(
+          node->get_input_end(), EpsilonTransition));
+}
+
+template <typename T>
+void NFANode<T>::anything_transition_to(NFANode<T> *node) {
+  get_output_end()->outgoing_transitions.push_back(
+      Transition<NFANode<T>,
+                 std::variant<char, EpsilonTransitionT, AnythingTransitionT>>(
+          node->get_input_end(), AnythingTransition));
 }
 
 // #define TEST
