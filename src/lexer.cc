@@ -833,21 +833,30 @@ std::string Regexp::mangle() const {
 
 NFANode<std::string> *
 Regexp::compile(std::map<std::string, NFANode<std::string> *> &cache,
-                NFANode<std::string> *parent) const {
+                NFANode<std::string> *parent, std::string path,
+                bool nopath) const {
   assert(type != RegexpType::Symbol &&
          "Regexp must be completely resolved before compilation");
+  std::string cpath = nopath ? path : path + "{::}" + mangle();
+  // std::printf("cache lookup for '%s'\n", cpath.c_str());
+  if (cache.count(cpath) > 0) {
+    // std::printf("cache hit for '%s'\n", cpath.c_str());
+    return cache[cpath];
+  }
   switch (type) {
   case RegexpType::Literal: {
     char t = std::get<char>(inner);
     NFANode<std::string> *tl =
         transform_by_quantifiers(new NFANode<std::string>{mangle()});
     parent->transition_to(tl, t);
+    cache[cpath] = tl;
     return tl;
   }
   case RegexpType::Dot: {
     NFANode<std::string> *tl =
         transform_by_quantifiers(new NFANode<std::string>{mangle()});
     parent->anything_transition_to(tl);
+    cache[cpath] = tl;
     return tl;
   }
   case RegexpType::Escape:
@@ -858,37 +867,43 @@ Regexp::compile(std::map<std::string, NFANode<std::string> *> &cache,
     NFANode<std::string> *tl =
         transform_by_quantifiers(new NFANode<std::string>{mangle()});
     parent->epsilon_transition_to(tl);
-    return std::get<Regexp *>(inner)->compile(cache, tl);
+    auto *exp = std::get<Regexp *>(inner)->compile(cache, tl, cpath);
+    cache[cpath] = exp;
+    return exp;
   }
   case RegexpType::Alternative: {
     // generate all nodes and connect them all to a root node
     NFANode<std::string> *tl = new NFANode<std::string>{mangle()};
     for (auto *alt : children) {
-      auto p = alt->compile(cache, tl);
+      auto p = alt->compile(cache, tl, cpath, true);
       // cache[alt->mangle()] = p;
     }
     tl = transform_by_quantifiers(tl);
     parent->epsilon_transition_to(tl);
+    cache[cpath] = tl;
     return tl;
   }
   case RegexpType::Concat: {
     NFANode<std::string> *root = new NFANode<std::string>{mangle()};
     // generate all nodes and add transitions between them
-    auto p = children[0]->compile(cache, root);
+    auto p = children[0]->compile(cache, root, cpath);
     // cache[children[0]->mangle()] = p;
     NFANode<std::string> *tl = p, *prev_s = p;
     bool b = true;
-    for (auto c : children)
+    for (auto c : children) {
+      cpath = cpath + "{::}" + c->mangle();
       if (b) {
         b = false;
         continue;
       } else {
-        prev_s = c->compile(cache, prev_s);
+        prev_s = c->compile(cache, prev_s, cpath);
         // cache[c->mangle()] = p;
       }
+    }
     root = transform_by_quantifiers(
         new PseudoNFANode<std::string>{"S" + mangle(), root, prev_s});
     parent->epsilon_transition_to(root);
+    cache[cpath] = root;
     return root;
   }
   }

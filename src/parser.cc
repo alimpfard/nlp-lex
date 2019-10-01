@@ -3,6 +3,8 @@
 #include "parser.hpp"
 #include "lexer.hpp"
 
+#include <sstream>
+
 NFANode<std::string> NParser::compile(std::string code) {
   lexer = std::make_unique<NLexer>(code);
   return compile();
@@ -169,11 +171,14 @@ NFANode<std::string> NParser::compile() {
   }
 #endif
   NFANode<std::string> root_node{"root"};
+  root_node.start = true;
   std::map<std::string, NFANode<std::string> *> node_cache;
 
   for (auto &it : find_leaf_rules()) {
     auto rule = std::get<Regexp *>(std::get<2>(values[it]));
-    node_cache[it] = rule->compile(node_cache, &root_node);
+    auto node = rule->compile(node_cache, &root_node, "");
+    node->final = true;
+    node_cache[it] = node;
   }
   return root_node;
 }
@@ -193,7 +198,7 @@ std::set<std::string> NParser::find_leaf_rules() const {
 template <typename T> void NFANode<T>::print() {
   printf("(\"%s\" ", state_info->c_str());
   for (auto t : outgoing_transitions)
-    std::printf("-%s-> ",
+    std::printf("\"-%s->\" ",
                 std::holds_alternative<EpsilonTransitionT>(t.input)
                     ? "<e>"
                     : std::holds_alternative<AnythingTransitionT>(t.input)
@@ -203,6 +208,65 @@ template <typename T> void NFANode<T>::print() {
   std::printf(")");
 }
 
+template <typename T> void NFANode<T>::print_dot() {
+  std::set<NFANode<T> *> nodes;
+  std::unordered_set<CanonicalTransition<
+      NFANode<T>, std::variant<char, EpsilonTransitionT, AnythingTransitionT>>>
+      transitions;
+  aggregate_dot(nodes, transitions);
+  std::printf("%s\n", gen_dot(nodes, transitions).c_str());
+}
+
+template <typename T>
+std::string NFANode<T>::gen_dot(
+    std::set<NFANode<T> *> nodes,
+    std::unordered_set<
+        CanonicalTransition<NFANode<T>, std::variant<char, EpsilonTransitionT,
+                                                     AnythingTransitionT>>>
+        transitions) {
+  std::ostringstream oss;
+  constexpr auto ss_end = "\n\t";
+  oss << "digraph finie_state_machine {" << ss_end;
+  oss << "rankdir=LR;" << ss_end;
+  oss << "size=\"8,5\";" << ss_end;
+  int node_id = 0;
+  std::map<NFANode<T> *, int> nodeids;
+  for (auto node : nodes) {
+    nodeids[node] = node_id++;
+    oss << "node [shape = "
+        << (node->start || node->final ? "doublecircle" : "circle") << "] LR_"
+        << nodeids[node] << ";" << ss_end;
+  }
+  for (auto tr : transitions) {
+    oss << "LR_" << nodeids[tr.source] << " -> LR_" << nodeids[tr.target]
+        << " [ label = \""
+        << (std::holds_alternative<EpsilonTransitionT>(tr.input)
+                ? "<Epsilon>"
+                : std::holds_alternative<AnythingTransitionT>(tr.input)
+                      ? "<Any>"
+                      : std::string{std::get<char>(tr.input)}.c_str())
+        << "\" ];" << ss_end;
+  }
+  oss << "}";
+  return oss.str();
+}
+
+template <typename T>
+void NFANode<T>::aggregate_dot(
+    std::set<NFANode<T> *> &nodes,
+    std::unordered_set<
+        CanonicalTransition<NFANode<T>, std::variant<char, EpsilonTransitionT,
+                                                     AnythingTransitionT>>>
+        &transitions) {
+  if (nodes.find(this) == nodes.end()) {
+    // not yet explored
+    nodes.insert(this);
+    for (auto transition : outgoing_transitions) {
+      transitions.insert({this, transition.target, transition.input});
+      transition.target->aggregate_dot(nodes, transitions);
+    }
+  }
+}
 #ifdef TEST
 int main() {
   NParser parser;
@@ -210,11 +274,13 @@ int main() {
   option lemmatise on
   stopword "test" "fest" "stopwords.list"
   boo     :- "testt"
-  # test    :- "43"
+  test    :- "43"
   # t       <= test
-  boop    :: {{boo}}.
-  poop    :: {{boo}}x
+  a :: {{test}}{{test}}|fuck this univers
+  b :: {{a}}ity|-1 is the answer to everything in life
+  c :: {{b}}!
+  d :: {{b}}!!!
   )");
-  root.print();
+  root.print_dot();
 }
 #endif

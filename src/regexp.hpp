@@ -85,5 +85,6 @@ public:
 
   NFANode<std::string> *
   compile(std::map<std::string, NFANode<std::string> *> &cache,
-          NFANode<std::string> *parent) const;
+          NFANode<std::string> *parent, std::string path,
+          bool nopath = false) const;
 };

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <optional>
+#include <set>
 #include <variant>
 #include <vector>
 
@@ -14,8 +15,21 @@ template <typename StateInfoT> class NFANode {
   std::vector<Transition<
       NFANode, std::variant<char, EpsilonTransitionT, AnythingTransitionT>>>
       outgoing_transitions;
+  std::string
+  gen_dot(std::set<NFANode<StateInfoT> *> nodes,
+          std::unordered_set<CanonicalTransition<
+              NFANode<StateInfoT>,
+              std::variant<char, EpsilonTransitionT, AnythingTransitionT>>>
+              transitions);
+  void aggregate_dot(
+      std::set<NFANode<StateInfoT> *> &nodes,
+      std::unordered_set<CanonicalTransition<
+          NFANode<StateInfoT>,
+          std::variant<char, EpsilonTransitionT, AnythingTransitionT>>>
+          &transitions);
 
 public:
+  bool final, start;
   NFANode(StateInfoT s) : state_info(s) {}
   virtual NFANode<StateInfoT> *get_input_end() { return this; }
   virtual NFANode<StateInfoT> *get_output_end() { return this; }
@@ -29,6 +43,7 @@ public:
                  std::variant<char, EpsilonTransitionT, AnythingTransitionT>>
           transition);
   void print();
+  void print_dot();
 };
 
 template <typename StateInfoT>
