@@ -38,7 +38,7 @@ struct Regexp {
 
   bool is_leaf;
   bool was_reference;
-  std::optional<std::string> referenced_symbol;
+  std::optional<std::string> referenced_symbol, named_rule;
 
 public:
   std::string str;
@@ -57,23 +57,23 @@ public:
 
   Regexp(std::string str, RegexpType type, std::vector<Regexp *> children)
       : type(type), inner({}), children(children), plus(), star(), lazy(),
-        str(str), repeat(), is_leaf(true) {}
+        str(str), repeat(), is_leaf(true), was_reference(false) {}
 
   Regexp(std::string str, RegexpType type, std::string inner)
       : type(type), inner(inner), plus(), star(), lazy(), str(str), repeat(),
-        is_leaf(true) {
+        is_leaf(true), was_reference(false) {
     children = {};
   }
 
   Regexp(std::string str, RegexpType type, char inner)
       : type(type), inner(inner), plus(), star(), lazy(), str(str), repeat(),
-        is_leaf(true) {
+        is_leaf(true), was_reference(false) {
     children = {};
   }
 
   Regexp(std::string str, RegexpType type, Regexp *inner)
       : type(type), inner(inner), plus(), star(), lazy(), str(str), repeat(),
-        is_leaf(true) {
+        is_leaf(true), was_reference(false) {
     children = {};
   }
 
@@ -85,6 +85,6 @@ public:
 
   NFANode<std::string> *
   compile(std::map<std::string, NFANode<std::string> *> &cache,
-          NFANode<std::string> *parent, std::string path,
+          NFANode<std::string> *parent, std::string path, bool &leading,
           bool nopath = false) const;
 };

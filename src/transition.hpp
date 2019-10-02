@@ -1,6 +1,13 @@
 #pragma once
-using EpsilonTransitionT = struct {};
-using AnythingTransitionT = struct {};
+
+#include <functional>
+
+struct EpsilonTransitionT {
+  bool operator==(const EpsilonTransitionT &other) const { return true; }
+};
+struct AnythingTransitionT {
+  bool operator==(const AnythingTransitionT &other) const { return true; }
+};
 
 template <typename TargetT, typename TransitionInputT> class Transition {
 public:

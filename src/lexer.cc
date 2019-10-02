@@ -4,6 +4,7 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
+#include <type_traits>
 
 inline static void lexer_error_impl(char const *fmt, va_list arg) {
   std::vprintf(fmt, arg);
@@ -444,7 +445,7 @@ std::optional<Regexp> NLexer::regexp_tl() {
       return {};
     }
     advance(2);
-    return Regexp{std::string{source_p - length - 5, length + 4},
+    return Regexp{std::string{source_p - length - 4, length + 4},
                   RegexpType::Symbol, std::string{buffer, length}};
   }
   if (c == '|') {
@@ -576,6 +577,8 @@ std::optional<Regexp> NLexer::regexp_quantifier(Regexp &reg) {
     advance(1);
     break;
   case '{': {
+    if (*(source_p + 1) == '{')
+      return reg; // {{...}}
     // read numbers
     char numbuf[64];
     int length = 0;
@@ -803,6 +806,7 @@ void Regexp::resolve(
       children = reg->children;
       str = reg->str;
       inner = reg->inner;
+      named_rule = reg->named_rule;
 
       plus = plus || reg->plus;
       star = star || reg->star;
@@ -833,30 +837,57 @@ std::string Regexp::mangle() const {
 
 NFANode<std::string> *
 Regexp::compile(std::map<std::string, NFANode<std::string> *> &cache,
-                NFANode<std::string> *parent, std::string path,
+                NFANode<std::string> *parent, std::string path, bool &leading,
                 bool nopath) const {
   assert(type != RegexpType::Symbol &&
          "Regexp must be completely resolved before compilation");
-  std::string cpath = nopath ? path : path + "{::}" + mangle();
-  // std::printf("cache lookup for '%s'\n", cpath.c_str());
+  if (was_reference)
+    path = referenced_symbol.value();
+  std::string namef = named_rule.has_value() ? named_rule.value() : path;
+  std::string cpath =
+      nopath ? (named_rule.has_value() ? named_rule.value() : path)
+             : (named_rule.has_value() ? named_rule.value() : path) + "{::}" +
+                   mangle();
+  std::printf("cache lookup for '%s'\n", cpath.c_str());
   if (cache.count(cpath) > 0) {
-    // std::printf("cache hit for '%s'\n", cpath.c_str());
-    return cache[cpath];
+    std::printf("cache hit for '%s'\n", cpath.c_str());
+    auto p = cache[cpath]->deep_copy(); // ??
+    parent->print();
+    parent->epsilon_transition_to(p);
+    parent->print();
+    return p;
   }
+
   switch (type) {
   case RegexpType::Literal: {
     char t = std::get<char>(inner);
-    NFANode<std::string> *tl =
-        transform_by_quantifiers(new NFANode<std::string>{mangle()});
-    parent->transition_to(tl, t);
-    cache[cpath] = tl;
+    NFANode<std::string> *tl = new NFANode<std::string>{"B" + mangle()};
+    NFANode<std::string> *tl2 = new NFANode<std::string>{"E" + mangle()};
+    tl->transition_to(tl2, t);
+    tl = transform_by_quantifiers(
+        new PseudoNFANode<std::string>{"S" + mangle(), tl, tl2});
+    parent->epsilon_transition_to(tl);
+    // std::printf("yay %s = ", mangle().c_str());
+    // tl->print();
+    // std::printf("\n");
+    cache[cpath] = tl->deep_copy();
+    tl->named_rule = namef;
+    tl2->named_rule = namef;
+    if (was_reference)
+      cache[referenced_symbol.value()] = tl->deep_copy();
     return tl;
   }
   case RegexpType::Dot: {
     NFANode<std::string> *tl =
         transform_by_quantifiers(new NFANode<std::string>{mangle()});
     parent->anything_transition_to(tl);
-    cache[cpath] = tl;
+    // std::printf("yay %s = ", mangle().c_str());
+    // tl->print();
+    // std::printf("\n");
+    cache[cpath] = tl->deep_copy();
+    tl->named_rule = namef;
+    if (was_reference)
+      cache[referenced_symbol.value()] = tl->deep_copy();
     return tl;
   }
   case RegexpType::Escape:
@@ -864,29 +895,49 @@ Regexp::compile(std::map<std::string, NFANode<std::string> *> &cache,
     printf("Fuck no for now\n");
     return nullptr;
   case RegexpType::Nested: {
-    NFANode<std::string> *tl =
-        transform_by_quantifiers(new NFANode<std::string>{mangle()});
-    parent->epsilon_transition_to(tl);
-    auto *exp = std::get<Regexp *>(inner)->compile(cache, tl, cpath);
-    cache[cpath] = exp;
+    auto *exp = transform_by_quantifiers(
+        std::get<Regexp *>(inner)->compile(cache, parent, path, leading, true));
+    // std::printf("yay %s = ", mangle().c_str());
+    // exp->print();
+    // std::printf("\n");
+    cache[cpath] = exp->deep_copy();
+    exp->named_rule = namef;
+    if (was_reference)
+      cache[referenced_symbol.value()] = exp->deep_copy();
     return exp;
   }
   case RegexpType::Alternative: {
     // generate all nodes and connect them all to a root node
-    NFANode<std::string> *tl = new NFANode<std::string>{mangle()};
+    NFANode<std::string> *tl = new NFANode<std::string>{"B" + mangle()};
+    NFANode<std::string> *te = new NFANode<std::string>{"E" + mangle()};
     for (auto *alt : children) {
-      auto p = alt->compile(cache, tl, cpath, true);
+      bool leading_ = true;
+      auto p = alt->compile(cache, tl, cpath, leading_);
+      // std::printf("yay %s = ", alt->mangle().c_str());
+      // p->print();
+      // std::printf("\n");
+      p->epsilon_transition_to(te);
       // cache[alt->mangle()] = p;
     }
+    tl = new PseudoNFANode<std::string>{"S" + mangle(), tl, te};
     tl = transform_by_quantifiers(tl);
     parent->epsilon_transition_to(tl);
-    cache[cpath] = tl;
+    // std::printf("yay %s = ", mangle().c_str());
+    // tl->print();
+    // std::printf("\n");
+    cache[cpath] = tl->deep_copy();
+    tl->named_rule = namef;
+    if (was_reference)
+      cache[referenced_symbol.value()] = tl->deep_copy();
     return tl;
   }
   case RegexpType::Concat: {
-    NFANode<std::string> *root = new NFANode<std::string>{mangle()};
+    NFANode<std::string> *root = new NFANode<std::string>{"B" + mangle()};
+    root->named_rule = namef;
     // generate all nodes and add transitions between them
-    auto p = children[0]->compile(cache, root, cpath);
+    bool leading_ = leading;
+    auto p = children[0]->compile(
+        cache, root, cpath + "{::}" + children[0]->mangle(), leading_);
     // cache[children[0]->mangle()] = p;
     NFANode<std::string> *tl = p, *prev_s = p;
     bool b = true;
@@ -896,14 +947,23 @@ Regexp::compile(std::map<std::string, NFANode<std::string> *> &cache,
         b = false;
         continue;
       } else {
-        prev_s = c->compile(cache, prev_s, cpath);
+        prev_s = c->compile(cache, prev_s, cpath, leading_);
+        // std::printf("yay %s = ", c->mangle().c_str());
+        // prev_s->print();
+        // std::printf("\n");
         // cache[c->mangle()] = p;
       }
     }
+    auto ends = prev_s->get_output_end();
+    assert(ends.size() == 1 &&
+           "[ICE] Compilation step created too many output ends");
     root = transform_by_quantifiers(
-        new PseudoNFANode<std::string>{"S" + mangle(), root, prev_s});
+        new PseudoNFANode<std::string>{"S" + mangle(), root, ends[0]});
     parent->epsilon_transition_to(root);
-    cache[cpath] = root;
+    cache[cpath] = root->deep_copy();
+    root->named_rule = namef;
+    if (was_reference)
+      cache[referenced_symbol.value()] = root->deep_copy();
     return root;
   }
   }
@@ -916,26 +976,101 @@ Regexp::transform_by_quantifiers(NFANode<std::string> *node) const {
 }
 
 template <typename T> void NFANode<T>::transition_to(NFANode<T> *node, char c) {
-  get_output_end()->outgoing_transitions.push_back(
-      Transition<NFANode<T>,
-                 std::variant<char, EpsilonTransitionT, AnythingTransitionT>>(
-          node->get_input_end(), c));
+  for (auto p : get_output_end())
+    for (auto q : node->get_input_end()) {
+      auto t =
+          new Transition<NFANode<T>, std::variant<char, EpsilonTransitionT,
+                                                  AnythingTransitionT>>(q, c);
+      p->outgoing_transitions.push_back(t);
+    }
 }
 
 template <typename T> void NFANode<T>::epsilon_transition_to(NFANode<T> *node) {
-  get_output_end()->outgoing_transitions.push_back(
-      Transition<NFANode<T>,
-                 std::variant<char, EpsilonTransitionT, AnythingTransitionT>>(
-          node->get_input_end(), EpsilonTransition));
+  for (auto p : get_output_end())
+    for (auto q : node->get_input_end()) {
+      auto t = new Transition<NFANode<T>, std::variant<char, EpsilonTransitionT,
+                                                       AnythingTransitionT>>(
+          q, EpsilonTransition);
+      p->outgoing_transitions.push_back(t);
+    }
 }
 
 template <typename T>
 void NFANode<T>::anything_transition_to(NFANode<T> *node) {
-  get_output_end()->outgoing_transitions.push_back(
-      Transition<NFANode<T>,
-                 std::variant<char, EpsilonTransitionT, AnythingTransitionT>>(
-          node->get_input_end(), AnythingTransition));
+  for (auto p : get_output_end())
+    for (auto q : node->get_input_end()) {
+      auto t = new Transition<NFANode<T>, std::variant<char, EpsilonTransitionT,
+                                                       AnythingTransitionT>>(
+          q, AnythingTransition);
+      p->outgoing_transitions.push_back(t);
+    }
 }
+template <typename StateInfoT>
+NFANode<StateInfoT> *NFANode<StateInfoT>::copy_if(bool pred) {
+  if (!pred) {
+    return this;
+  }
+  auto *p = dynamic_cast<PseudoNFANode<StateInfoT> *>(this);
+  if (p == nullptr)
+    return new NFANode<StateInfoT>{*this};
+  else
+    return new PseudoNFANode<StateInfoT>{*p};
+}
+
+template <typename StateInfoT>
+NFANode<StateInfoT> *NFANode<StateInfoT>::deep_copy() {
+  auto *node = new NFANode<StateInfoT>();
+  node->state_info = state_info;
+  node->outgoing_transitions = outgoing_transitions;
+  node->start = start;
+  node->final = final;
+  for (auto &o : node->outgoing_transitions)
+    o = new typename std::remove_pointer<
+        typename std::remove_reference<decltype(o)>::type>::type{
+        o->target->deep_copy(), o->input};
+  return node;
+}
+template <typename StateInfoT>
+NFANode<StateInfoT> *PseudoNFANode<StateInfoT>::deep_copy() {
+  auto *node = new PseudoNFANode<StateInfoT>();
+  node->state_info = this->state_info;
+  node->outgoing_transitions = this->outgoing_transitions;
+  node->start = this->start;
+  node->final = this->final;
+  node->input_end = this->input_end->deep_copy();
+  node->output_end = this->output_end->deep_copy();
+  for (auto &o : node->outgoing_transitions)
+    o = new typename std::remove_pointer<
+        typename std::remove_reference<decltype(o)>::type>::type{
+        o->target->deep_copy(), o->input};
+  return node;
+}
+template <typename StateInfoT>
+std::vector<
+    Transition<NFANode<StateInfoT>,
+               std::variant<char, EpsilonTransitionT, AnythingTransitionT>> *>
+NFANode<StateInfoT>::get_outgoing_transitions(bool inner) {
+  return outgoing_transitions;
+}
+
+template <typename StateInfoT>
+std::vector<
+    Transition<NFANode<StateInfoT>,
+               std::variant<char, EpsilonTransitionT, AnythingTransitionT>> *>
+PseudoNFANode<StateInfoT>::get_outgoing_transitions(bool inner) {
+  std::vector<
+      Transition<NFANode<StateInfoT>,
+                 std::variant<char, EpsilonTransitionT, AnythingTransitionT>> *>
+      vec;
+  for (auto out : inner ? get_input_end() : get_output_end())
+    for (auto t : out->get_outgoing_transitions(inner))
+      vec.push_back(t);
+  return vec;
+}
+
+template <typename T> void NFANode<T>::optimise() {}
+
+template <typename T> void PseudoNFANode<T>::optimise() {}
 
 // #define TEST
 #ifdef TEST

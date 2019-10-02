@@ -3,6 +3,7 @@
 #include "parser.hpp"
 #include "lexer.hpp"
 
+#include <iostream>
 #include <sstream>
 
 NFANode<std::string> NParser::compile(std::string code) {
@@ -10,7 +11,14 @@ NFANode<std::string> NParser::compile(std::string code) {
   return compile();
 }
 
-NFANode<std::string> NParser::compile() {
+void NParser::repl_feed(std::string code) {
+  lexer->source = code;
+  lexer->source_p = strdup(code.c_str());
+  lexer->lineno++;
+  lexer->offset = 0;
+}
+
+void NParser::parse() {
   statestack = {};
   statestack.push(ParserState::Toplevel);
   bool failing = false;
@@ -114,6 +122,7 @@ NFANode<std::string> NParser::compile() {
       }
       Regexp reg = std::get<Regexp>(token.value);
       reg.resolve(values);
+      reg.named_rule = name;
       values[name] = std::make_tuple<SymbolType, SymbolDebugInformation,
                                      std::variant<std::string, Regexp *>>(
           SymbolType::Define,
@@ -160,6 +169,10 @@ NFANode<std::string> NParser::compile() {
       break;
     }
   } while (!failing);
+}
+
+NFANode<std::string> NParser::compile() {
+  parse();
 #ifdef TEST
   std::printf("== all defined rules ==\n");
   for (auto &it : values) {
@@ -176,10 +189,17 @@ NFANode<std::string> NParser::compile() {
 
   for (auto &it : find_leaf_rules()) {
     auto rule = std::get<Regexp *>(std::get<2>(values[it]));
-    auto node = rule->compile(node_cache, &root_node, "");
-    node->final = true;
+    bool leading = true;
+    auto node = rule->compile(node_cache, &root_node, "", leading);
     node_cache[it] = node;
   }
+
+  for (auto &it : values) {
+    if (std::get<0>(it.second) == SymbolType::Define) {
+      node_cache[it.first]->final = true;
+    }
+  }
+  root_node.optimise();
   return root_node;
 }
 
@@ -196,20 +216,21 @@ std::set<std::string> NParser::find_leaf_rules() const {
 }
 
 template <typename T> void NFANode<T>::print() {
-  printf("(\"%s\" ", state_info->c_str());
-  for (auto t : outgoing_transitions)
+  printf("(%s\"%s\" ", named_rule.has_value() ? "final " : "",
+         state_info->c_str());
+  for (auto t : get_outgoing_transitions(/* inner = */ true))
     std::printf("\"-%s->\" ",
-                std::holds_alternative<EpsilonTransitionT>(t.input)
+                std::holds_alternative<EpsilonTransitionT>(t->input)
                     ? "<e>"
-                    : std::holds_alternative<AnythingTransitionT>(t.input)
+                    : std::holds_alternative<AnythingTransitionT>(t->input)
                           ? "<.>"
-                          : std::string{std::get<char>(t.input)}.c_str()),
-        t.target->print();
+                          : std::string{std::get<char>(t->input)}.c_str()),
+        t->target->print();
   std::printf(")");
 }
 
 template <typename T> void NFANode<T>::print_dot() {
-  std::set<NFANode<T> *> nodes;
+  std::set<NFANode<T> *, NFANodePointerComparer<T>> nodes;
   std::unordered_set<CanonicalTransition<
       NFANode<T>, std::variant<char, EpsilonTransitionT, AnythingTransitionT>>>
       transitions;
@@ -219,7 +240,7 @@ template <typename T> void NFANode<T>::print_dot() {
 
 template <typename T>
 std::string NFANode<T>::gen_dot(
-    std::set<NFANode<T> *> nodes,
+    std::set<NFANode<T> *, NFANodePointerComparer<T>> nodes,
     std::unordered_set<
         CanonicalTransition<NFANode<T>, std::variant<char, EpsilonTransitionT,
                                                      AnythingTransitionT>>>
@@ -234,8 +255,10 @@ std::string NFANode<T>::gen_dot(
   for (auto node : nodes) {
     nodeids[node] = node_id++;
     oss << "node [shape = "
-        << (node->start || node->final ? "doublecircle" : "circle") << "] LR_"
-        << nodeids[node] << ";" << ss_end;
+        << (node->final ? "doublecircle" : node->start ? "square" : "circle")
+        << (", label = \"" +
+            node->named_rule.value_or(node->state_info.value_or("???")) + "\"")
+        << "] LR_" << nodeids[node] << ";" << ss_end;
   }
   for (auto tr : transitions) {
     oss << "LR_" << nodeids[tr.source] << " -> LR_" << nodeids[tr.target]
@@ -245,6 +268,9 @@ std::string NFANode<T>::gen_dot(
                 : std::holds_alternative<AnythingTransitionT>(tr.input)
                       ? "<Any>"
                       : std::string{std::get<char>(tr.input)}.c_str())
+        << " -> "
+        << (tr.target->state_info.value_or(
+               tr.target->named_rule.value_or("???")))
         << "\" ];" << ss_end;
   }
   oss << "}";
@@ -253,7 +279,7 @@ std::string NFANode<T>::gen_dot(
 
 template <typename T>
 void NFANode<T>::aggregate_dot(
-    std::set<NFANode<T> *> &nodes,
+    std::set<NFANode<T> *, NFANodePointerComparer<T>> &nodes,
     std::unordered_set<
         CanonicalTransition<NFANode<T>, std::variant<char, EpsilonTransitionT,
                                                      AnythingTransitionT>>>
@@ -261,26 +287,37 @@ void NFANode<T>::aggregate_dot(
   if (nodes.find(this) == nodes.end()) {
     // not yet explored
     nodes.insert(this);
-    for (auto transition : outgoing_transitions) {
-      transitions.insert({this, transition.target, transition.input});
-      transition.target->aggregate_dot(nodes, transitions);
+    for (auto transition : get_outgoing_transitions(/* inner = */ true)) {
+      transitions.insert({this, transition->target, transition->input});
+      transition->target->aggregate_dot(nodes, transitions);
     }
   }
 }
+
 #ifdef TEST
 int main() {
   NParser parser;
-  auto root = parser.compile(R"(
-  option lemmatise on
-  stopword "test" "fest" "stopwords.list"
-  boo     :- "testt"
-  test    :- "43"
-  # t       <= test
-  a :: {{test}}{{test}}|fuck this univers
-  b :: {{a}}ity|-1 is the answer to everything in life
-  c :: {{b}}!
-  d :: {{b}}!!!
-  )");
-  root.print_dot();
+  parser.lexer = std::make_unique<NLexer>("");
+  std::optional<NFANode<std::string>> root;
+  while (1) {
+    std::string line;
+    std::cout << "> ";
+    std::getline(std::cin, line);
+    if (line == ".tree") {
+      root = parser.compile();
+      root->print();
+      continue;
+    } else if (line == ".dot") {
+      root = parser.compile();
+      root->print_dot();
+      continue;
+    } else if (line == ".end") {
+      root = parser.compile();
+      root->print();
+      break;
+    }
+    parser.repl_feed(line);
+    parser.parse();
+  }
 }
 #endif
