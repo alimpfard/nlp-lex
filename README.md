@@ -6,7 +6,7 @@ Hopefully a lexer-generator that doesn't suck
 ## Syntax
 
 token rules can be defined as such
-    
+
 ```
     rule_name :: regular_expression
 ```
@@ -17,7 +17,7 @@ non-captured (inlined) matches can be defined as such:
     constant_name :- "literal string to match"
 
 #   === or ===
-    
+
     constant_name :- -"file/to/read/string/from.txt"
 ```
 
@@ -29,8 +29,8 @@ the regex engine is currently very limited in what it supports, however here is 
 - [X] semi-optimised alternative matching
 - [ ] optimised alternative matching
 - [ ] alternatives with priorities
-- [ ] simple quantifiers (\+, \*, {x,y})
-- [ ] less-simple quantifiers (?, ??)
-- [ ] backreferences 
+- [X] simple quantifiers (\+, \*)
+- [ ] medium-simple quantifiers ({x,y})
+- [ ] not-simple quantifiers (?, ??)
+- [ ] backreferences
 - [ ] recursive matching
-
