@@ -51,8 +51,8 @@ class NParser {
 
 public:
   std::unique_ptr<NLexer> lexer;
-  NFANode<std::string> compile(std::string code);
-  NFANode<std::string> compile();
+  NFANode<std::string> *compile(std::string code);
+  NFANode<std::string> *compile();
   void repl_feed(std::string code);
   void parse();
 };

@@ -117,6 +117,19 @@ public:
   virtual void optimise();
 };
 
+template <typename T, typename C>
+bool veqv(const std::set<T, C> &a, const std::set<T, C> &b) {
+  if (a.size() != b.size())
+    return false;
+  for (auto &x : a) {
+    // x->print();
+    if (b.count(x) == 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
 template <typename K> struct NFANodePointerComparer {
   bool eq(const NFANode<K> *a, const NFANode<K> *b) const {
     if (a == b)
@@ -124,29 +137,23 @@ template <typename K> struct NFANodePointerComparer {
     if (dynamic_cast<const PseudoNFANode<K> *>(a) !=
         dynamic_cast<const PseudoNFANode<K> *>(b))
       return false;
-    if (a->start == b->start && a->final == b->final &&
-        a->state_info == b->state_info && a->named_rule == b->named_rule) {
-      if (a->outgoing_transitions.size() != b->outgoing_transitions.size())
-        return false;
-      for (int i = 0; i < a->outgoing_transitions.size(); i++)
-        if (!(eq(a->outgoing_transitions[i]->target,
-                 b->outgoing_transitions[i]->target) &&
-              a->outgoing_transitions[i]->input ==
-                  b->outgoing_transitions[i]->input))
-          return false;
-      return true;
+    if (/*a->start == b->start && a->final == b->final &&
+        a->state_info == b->state_info && a->named_rule == b->named_rule*/
+        1) {
+      return veqv(a->outgoing_transitions, b->outgoing_transitions);
     }
     return false;
   }
   bool operator()(const NFANode<K> *a, const NFANode<K> *b) const {
-    // if (eq(a, b)) {
-    //   std::printf("state %p = %p (%s = %s) (%s = %s)?\n", a, b,
-    //               a->named_rule.value_or("?").c_str(),
-    //               b->named_rule.value_or("?").c_str(),
-    //               a->state_info.value_or("?").c_str(),
-    //               b->state_info.value_or("?").c_str());
-    //   return false;
-    // }
+
+    std::printf("state %p =? %p (%s =? %s) (%s =? %s)\n", a, b,
+                a->named_rule.value_or("?").c_str(),
+                b->named_rule.value_or("?").c_str(),
+                a->state_info.value_or("?").c_str(),
+                b->state_info.value_or("?").c_str());
+    if (eq(a, b)) {
+      return false;
+    }
     return a < b;
   }
 };
@@ -160,7 +167,8 @@ template <typename K> struct TransitionPointerComparer {
       return true;
     if (a == nullptr || b == nullptr)
       return false;
-    if (a->target == b->target && a->input == b->input)
+    if (NFANodePointerComparer<K>().eq(a->target, b->target) &&
+        a->input == b->input)
       return true;
     return false;
   }

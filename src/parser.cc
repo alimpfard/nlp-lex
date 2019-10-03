@@ -30,7 +30,7 @@ std::string string_format(const std::string fmt_str, ...) {
   return std::string(formatted.get());
 }
 
-NFANode<std::string> NParser::compile(std::string code) {
+NFANode<std::string> *NParser::compile(std::string code) {
   lexer = std::make_unique<NLexer>(code);
   return compile();
 }
@@ -195,7 +195,7 @@ void NParser::parse() {
   } while (!failing);
 }
 
-NFANode<std::string> NParser::compile() {
+NFANode<std::string> *NParser::compile() {
   parse();
 #ifdef TEST
   std::printf("== all defined rules ==\n");
@@ -207,14 +207,14 @@ NFANode<std::string> NParser::compile() {
     }
   }
 #endif
-  NFANode<std::string> root_node{"root"};
-  root_node.start = true;
+  NFANode<std::string> *root_node = new NFANode<std::string>{"root"};
+  root_node->start = true;
   std::map<std::string, NFANode<std::string> *> node_cache;
 
   for (auto &it : find_leaf_rules()) {
     auto rule = std::get<Regexp *>(std::get<2>(values[it]));
     bool leading = true;
-    auto node = rule->compile(node_cache, &root_node, "", leading);
+    auto node = rule->compile(node_cache, root_node, "", leading);
     node_cache[it] = node;
   }
 
@@ -223,7 +223,7 @@ NFANode<std::string> NParser::compile() {
       node_cache[it.first]->final = true;
     }
   }
-  root_node.optimise();
+  root_node->optimise();
   return root_node;
 }
 
@@ -286,8 +286,18 @@ std::string NFANode<T>::gen_dot(
         << "] LR_" << nodeids[node] << ";" << ss_end;
   }
   for (auto tr : transitions) {
-    oss << "LR_" << nodeids[tr.source] << " -> LR_" << nodeids[tr.target]
-        << " [ label = \""
+    int fid, tid;
+    if (nodeids.count(tr.source) < 1) {
+      printf("Cannot find any node corresponding to %p\n", tr.source);
+    } else
+      fid = nodeids[tr.source];
+
+    if (nodeids.count(tr.target) < 1) {
+      printf("Cannot find any node corresponding to %p\n", tr.target);
+    } else
+      tid = nodeids[tr.target];
+
+    oss << "LR_" << fid << " -> LR_" << tid << " [ label = \""
         << (std::holds_alternative<EpsilonTransitionT>(tr.input)
                 ? "<Epsilon>"
                 : std::holds_alternative<AnythingTransitionT>(tr.input)
@@ -309,13 +319,17 @@ void NFANode<T>::aggregate_dot(
         CanonicalTransition<NFANode<T>, std::variant<char, EpsilonTransitionT,
                                                      AnythingTransitionT>>>
         &transitions) {
-  if (nodes.find(this) == nodes.end()) {
+  auto pos = nodes.find(this);
+  if (pos == nodes.end() /*|| *pos != this */) {
     // not yet explored
     nodes.insert(this);
     for (auto transition : get_outgoing_transitions(/* inner = */ true)) {
       transitions.insert({this, transition->target, transition->input});
       transition->target->aggregate_dot(nodes, transitions);
     }
+    // for (auto transition : incoming_transitions) {
+    //   transitions.insert({this, transition->target, '<'});
+    // }
   }
 }
 
@@ -323,7 +337,7 @@ void NFANode<T>::aggregate_dot(
 int main() {
   NParser parser;
   parser.lexer = std::make_unique<NLexer>("");
-  std::optional<NFANode<std::string>> root;
+  NFANode<std::string> *root;
   while (1) {
     std::string line;
     std::cout << "> ";
