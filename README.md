@@ -23,14 +23,14 @@ non-captured (inlined) matches can be defined as such:
 
 the regex engine is currently very limited in what it supports, however here is a road map:
 
-[X] normal literal character matching
-[X] sequence matching (/ab/ -> match a, match b)
-[X] rule substitution (`a :: {{b}}x` -> a = match b, then match 'x')
-[X] semi-optimised alternative matching
-[ ] optimised alternative matching
-[ ] alternatives with priorities
-[ ] simple quantifiers (\+, \*, {x,y})
-[ ] less-simple quantifiers (?, ??)
-[ ] backreferences 
-[ ] recursive matching
+- [X] normal literal character matching
+- [X] sequence matching (/ab/ -> match a, match b)
+- [X] rule substitution (`a :: {{b}}x` -> a = match b, then match 'x')
+- [X] semi-optimised alternative matching
+- [ ] optimised alternative matching
+- [ ] alternatives with priorities
+- [ ] simple quantifiers (\+, \*, {x,y})
+- [ ] less-simple quantifiers (?, ??)
+- [ ] backreferences 
+- [ ] recursive matching
 
