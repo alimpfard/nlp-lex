@@ -218,12 +218,11 @@ NFANode<std::string> *NParser::compile() {
     node_cache[it] = node;
   }
 
-  for (auto &it : values) {
-    if (std::get<0>(it.second) == SymbolType::Define) {
-      node_cache[it.first]->final = true;
-    }
-  }
-  root_node->optimise();
+  // for (auto p : node_cache) {
+  //   std::printf("rule %s = %p - ", p.first.c_str(), p.second);
+  //   p.second->print_dot();
+  // }
+  root_node->optimise({});
   return root_node;
 }
 
@@ -255,26 +254,27 @@ template <typename T> void NFANode<T>::print() {
 
 template <typename T> void NFANode<T>::print_dot() {
   std::set<NFANode<T> *, NFANodePointerComparer<T>> nodes;
+  std::set<NFANode<T> *> anodes;
   std::unordered_set<CanonicalTransition<
       NFANode<T>, std::variant<char, EpsilonTransitionT, AnythingTransitionT>>>
       transitions;
-  aggregate_dot(nodes, transitions);
-  std::printf("%s\n", gen_dot(nodes, transitions).c_str());
+  aggregate_dot(nodes, anodes, transitions);
+  std::printf("%s\n", gen_dot(anodes, transitions).c_str());
 }
 
 template <typename T>
 std::string NFANode<T>::gen_dot(
-    std::set<NFANode<T> *, NFANodePointerComparer<T>> nodes,
+    std::set<NFANode<T> *> nodes,
     std::unordered_set<
         CanonicalTransition<NFANode<T>, std::variant<char, EpsilonTransitionT,
                                                      AnythingTransitionT>>>
         transitions) {
   std::ostringstream oss;
   constexpr auto ss_end = "\n\t";
-  oss << "digraph finie_state_machine {" << ss_end;
+  oss << "digraph finite_state_machine {" << ss_end;
   oss << "rankdir=LR;" << ss_end;
   oss << "size=\"8,5\";" << ss_end;
-  int node_id = 0;
+  int node_id = 0, error = 1000000;
   std::map<NFANode<T> *, int> nodeids;
   for (auto node : nodes) {
     nodeids[node] = node_id++;
@@ -289,11 +289,13 @@ std::string NFANode<T>::gen_dot(
     int fid, tid;
     if (nodeids.count(tr.source) < 1) {
       printf("Cannot find any node corresponding to %p\n", tr.source);
+      fid = error++;
     } else
       fid = nodeids[tr.source];
 
     if (nodeids.count(tr.target) < 1) {
       printf("Cannot find any node corresponding to %p\n", tr.target);
+      tid = error++;
     } else
       tid = nodeids[tr.target];
 
@@ -315,17 +317,21 @@ std::string NFANode<T>::gen_dot(
 template <typename T>
 void NFANode<T>::aggregate_dot(
     std::set<NFANode<T> *, NFANodePointerComparer<T>> &nodes,
+    std::set<NFANode<T> *> &anodes,
     std::unordered_set<
         CanonicalTransition<NFANode<T>, std::variant<char, EpsilonTransitionT,
                                                      AnythingTransitionT>>>
         &transitions) {
+  if (anodes.count(this))
+    return;
   auto pos = nodes.find(this);
-  if (pos == nodes.end() /*|| *pos != this */) {
+  if (pos == nodes.end() || *pos != this) {
     // not yet explored
     nodes.insert(this);
+    anodes.insert(this);
     for (auto transition : get_outgoing_transitions(/* inner = */ true)) {
       transitions.insert({this, transition->target, transition->input});
-      transition->target->aggregate_dot(nodes, transitions);
+      transition->target->aggregate_dot(nodes, anodes, transitions);
     }
     // for (auto transition : incoming_transitions) {
     //   transitions.insert({this, transition->target, '<'});

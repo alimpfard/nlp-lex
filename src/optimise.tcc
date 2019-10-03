@@ -10,7 +10,13 @@ bool eqv(const std::set<T, C> &a, const std::set<T, C> &b) {
   std::printf("}\n");
   for (auto &x : a) {
     x->print();
-    if (b.count(x) == 0) {
+    auto bb = false;
+    for (auto y : b)
+      if (x->target == y->target && x->input == y->input) {
+        bb = true;
+        break;
+      }
+    if (!bb) {
       std::printf("Nope\n");
       return false;
     }
@@ -19,10 +25,14 @@ bool eqv(const std::set<T, C> &a, const std::set<T, C> &b) {
 }
 
 template <typename T>
-void reconstruct_forwards(NFANode<T> *p, bool clear = false) {
+void reconstruct_forwards(NFANode<T> *p, std::set<NFANode<T> *> pn,
+                          bool clear = false) {
+  if (pn.count(p))
+    return;
+  pn.insert(p);
   if (p->start || clear) {
     for (auto x : p->get_outgoing_transitions(true))
-      reconstruct_forwards(x->target, clear || p->start);
+      reconstruct_forwards(x->target, pn, clear || p->start);
     p->incoming_transitions.clear();
   }
   for (auto q : p->get_input_end())
@@ -40,14 +50,44 @@ void reconstruct_forwards(NFANode<T> *p, bool clear = false) {
               q, x->input});
     }
 }
-
-template <typename T> void NFANode<T>::optimise() {
-  constexpr auto is_self_referencial = [](NFANode<T> *node) {
-    for (auto tr : node->get_outgoing_transitions())
-      if (tr->target == node)
-        return true;
+template <typename T>
+constexpr bool references(NFANode<T> *node, NFANode<T> *other,
+                          std::set<NFANode<T> *> visited = {}) {
+  if (visited.count(node))
     return false;
-  };
+  visited.insert(node);
+  for (auto tr : node->get_outgoing_transitions()) {
+    if (tr->target == other)
+      return true;
+    if (std::holds_alternative<EpsilonTransitionT>(tr->input)) {
+      return references(tr->target, other, visited);
+    }
+  }
+  return false;
+};
+template <typename T> constexpr bool is_self_referencial(NFANode<T> *node) {
+  for (auto tr : node->get_outgoing_transitions()) {
+    if (std::holds_alternative<EpsilonTransitionT>(tr->input)) {
+      return references(tr->target, node);
+    } else if (tr->target == node)
+      return true;
+  }
+  return false;
+};
+
+template <typename T>
+void NFANode<T>::optimise(std::set<NFANode<T> *> visited) {
+  for (int i = 0; i < max_opt_steps; ++i) {
+    this->optimise(visited, i);
+  }
+}
+template <typename T>
+void NFANode<T>::optimise(std::set<NFANode<T> *> visited, int step) {
+  if (visited.count(this)) {
+    if (!dirty || !step)
+      return;
+  }
+  dirty = false;
   constexpr auto has_nonepsilon_inc_transition = [](NFANode<T> *node) {
     for (auto inpend : node->get_input_end())
       for (auto tr : inpend->incoming_transitions)
@@ -56,19 +96,41 @@ template <typename T> void NFANode<T>::optimise() {
     return false;
   };
   if (start)
-    reconstruct_forwards(this);
+    reconstruct_forwards(this, {});
 
   std::vector<std::pair<typename decltype(outgoing_transitions)::value_type,
                         NFANode<T> *>>
       outgoing_transitions_additions;
   std::set<typename decltype(outgoing_transitions)::value_type>
       outgoing_transitions_deletions;
-  // short meaningless epsilon-transitions
+  std::printf("visited %p\n", this);
+  visited.insert(this);
   // /*
+  std::printf("remove empty transitions to self {\n");
   for (auto it = outgoing_transitions.begin();
        it != outgoing_transitions.end();) {
     bool deld = false;
-    (*it)->target->optimise();
+    (*it)->target->optimise(visited, step);
+    if (std::holds_alternative<EpsilonTransitionT>((*it)->input) &&
+        (*it)->target == this) {
+      it = erase_transition_it(it);
+      deld = true;
+      dirty = true;
+    }
+    if (!deld)
+      ++it;
+  }
+  if (start)
+    reconstruct_forwards(this, {});
+  std::printf("remove empty transitions to self }\n");
+  // */
+  // short meaningless epsilon-transitions
+  // /*
+  std::printf("short unnessary epsilon transitions {\n");
+  for (auto it = outgoing_transitions.begin();
+       it != outgoing_transitions.end();) {
+    bool deld = false;
+    (*it)->target->optimise(visited, step);
     if (std::holds_alternative<EpsilonTransitionT>((*it)->input)) {
       auto node = (*it)->target;
       if (is_self_referencial(node) || has_nonepsilon_inc_transition(node))
@@ -105,10 +167,13 @@ template <typename T> void NFANode<T>::optimise() {
   for (auto &[o, node] : outgoing_transitions_additions) {
     // add the wayward transitions
     add_transition(o);
+    node->dirty = true;
+    dirty = true;
   }
   outgoing_transitions_additions.clear();
+  std::printf("short unnessary epsilon transitions }\n");
   if (start)
-    reconstruct_forwards(this);
+    reconstruct_forwards(this, {});
   // */
   // unify equivalent states
   // /*
@@ -149,7 +214,7 @@ template <typename T> void NFANode<T>::optimise() {
   //           // add forward <e> to <*it->target> (A)
   //         }
   //       }
-  //       // reconstruct_forwards((*it)->target, true);
+  //       // reconstruct_forwards((*it)->target, {}, true);
   //       std::printf("wiped %p from existence through %p, going into %p\n",
   //                   (*it2)->target, (*it)->target, *iss);
   //       delds.insert((*it2)->target);
@@ -164,12 +229,21 @@ template <typename T> void NFANode<T>::optimise() {
   //   outgoing_transitions_additions.clear();
   //   delds.clear();
   // }
+  // /*
+  std::printf("merge leading transitions %p {\n", this);
   if (start)
-    reconstruct_forwards(this);
+    reconstruct_forwards(this, {});
   decltype(get_outgoing_transitions()) rtr;
   for (auto b_candidate_tr : get_outgoing_transitions()) {
-    if (delds.count(b_candidate_tr->target) > 0)
+    std::printf("\tconsidering outgoing transition (to %p) {\n",
+                b_candidate_tr->target);
+    if (delds.count(b_candidate_tr->target) > 0) {
+      std::printf("was already deleted ");
+      b_candidate_tr->print();
+      for (auto c : b_candidate_tr->target->get_outgoing_transitions())
+        c->target->optimise(visited, step);
       continue;
+    }
     for (auto c_candidate_tr : get_outgoing_transitions()) {
       if (b_candidate_tr == c_candidate_tr)
         continue;
@@ -179,16 +253,22 @@ template <typename T> void NFANode<T>::optimise() {
       auto b_candidate = b_candidate_tr->target;
       auto c_candidate = c_candidate_tr->target;
       for (auto ctr : c_candidate->get_outgoing_transitions())
-        for (auto x : b_candidate->get_output_end())
+        for (auto x : b_candidate->get_output_end()) {
           x->add_transition(ctr);
+          x->dirty = true;
+        }
       rtr.insert(c_candidate_tr);
       delds.insert(c_candidate);
     }
+    std::printf("\tconsidering outgoing transition %p }\n", b_candidate_tr);
   }
-  for (auto tr : rtr)
+  for (auto tr : rtr) {
     outgoing_transitions.erase(tr);
+    dirty = true;
+  }
+  std::printf("merge leading transitions }\n");
   if (start)
-    reconstruct_forwards(this);
+    reconstruct_forwards(this, {});
   // */
   /*
   for (auto it = outgoing_transitions.begin();
@@ -247,8 +327,10 @@ template <typename T> void NFANode<T>::optimise() {
   // TODO: more optimisations
 }
 
-template <typename T> void PseudoNFANode<T>::optimise() {
-  input_end->optimise();
+template <typename T>
+void PseudoNFANode<T>::optimise(std::set<NFANode<T> *> visited, int step) {
+  visited.insert(this);
+  input_end->optimise(visited, step);
 }
 
 template <typename T>
@@ -287,5 +369,5 @@ void NFANode<T>::add_transition(
              std::variant<char, EpsilonTransitionT, AnythingTransitionT>>
       tbr{this, tr->input};
   tr->target->incoming_transitions.insert(new decltype(tbr){tbr});
-  outgoing_transitions.insert(tr);
+  deep_output_end(this)->outgoing_transitions.insert(tr);
 }

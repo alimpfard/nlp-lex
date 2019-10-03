@@ -14,7 +14,8 @@ public:
   TargetT *target;
   TransitionInputT input;
 
-  Transition(TargetT *a, TransitionInputT b) : target(a), input(b) {}
+  Transition(TargetT *a, TransitionInputT b)
+      : target(deep_input_end(a)), input(b) {}
   void print() {
     std::printf(
         "(-%s-> %s(%p))\n",
