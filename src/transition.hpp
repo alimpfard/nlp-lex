@@ -15,6 +15,17 @@ public:
   TransitionInputT input;
 
   Transition(TargetT *a, TransitionInputT b) : target(a), input(b) {}
+  void print() {
+    std::printf(
+        "(-%s-> %s(%p))\n",
+        std::holds_alternative<EpsilonTransitionT>(input)
+            ? "<e>"
+            : std::holds_alternative<AnythingTransitionT>(input)
+                  ? "<.>"
+                  : std::string{std::get<char>(input)}.c_str(),
+        target->named_rule.value_or(target->state_info.value_or("???")).c_str(),
+        target);
+  }
 };
 
 template <typename NodeT, typename TransitionInputT> class CanonicalTransition {

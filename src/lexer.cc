@@ -1,4 +1,5 @@
 #include "lexer.hpp"
+#include "optimise.tcc"
 #include <cassert>
 #include <cctype>
 #include <cstdarg>
@@ -948,10 +949,6 @@ Regexp::compile(std::map<std::string, NFANode<std::string> *> &cache,
         continue;
       } else {
         prev_s = c->compile(cache, prev_s, cpath, leading_);
-        // std::printf("yay %s = ", c->mangle().c_str());
-        // prev_s->print();
-        // std::printf("\n");
-        // cache[c->mangle()] = p;
       }
     }
     auto ends = prev_s->get_output_end();
@@ -981,7 +978,7 @@ template <typename T> void NFANode<T>::transition_to(NFANode<T> *node, char c) {
       auto t =
           new Transition<NFANode<T>, std::variant<char, EpsilonTransitionT,
                                                   AnythingTransitionT>>(q, c);
-      p->outgoing_transitions.push_back(t);
+      p->add_transition(t);
     }
 }
 
@@ -991,7 +988,7 @@ template <typename T> void NFANode<T>::epsilon_transition_to(NFANode<T> *node) {
       auto t = new Transition<NFANode<T>, std::variant<char, EpsilonTransitionT,
                                                        AnythingTransitionT>>(
           q, EpsilonTransition);
-      p->outgoing_transitions.push_back(t);
+      p->add_transition(t);
     }
 }
 
@@ -1002,7 +999,7 @@ void NFANode<T>::anything_transition_to(NFANode<T> *node) {
       auto t = new Transition<NFANode<T>, std::variant<char, EpsilonTransitionT,
                                                        AnythingTransitionT>>(
           q, AnythingTransition);
-      p->outgoing_transitions.push_back(t);
+      p->add_transition(t);
     }
 }
 template <typename StateInfoT>
@@ -1024,10 +1021,23 @@ NFANode<StateInfoT> *NFANode<StateInfoT>::deep_copy() {
   node->outgoing_transitions = outgoing_transitions;
   node->start = start;
   node->final = final;
-  for (auto &o : node->outgoing_transitions)
-    o = new typename std::remove_pointer<
-        typename std::remove_reference<decltype(o)>::type>::type{
-        o->target->deep_copy(), o->input};
+  auto ps0 = decltype(node->outgoing_transitions){},
+       ps1 = decltype(node->outgoing_transitions){};
+  for (auto o = node->outgoing_transitions.begin();
+       o != node->outgoing_transitions.end(); ++o) {
+    auto x = new typename std::remove_pointer<
+        typename std::remove_reference<decltype(*o)>::type>::type{
+        (*o)->target->deep_copy(), (*o)->input};
+    ps0.insert(*o);
+    ps1.insert(x);
+  }
+  for (auto a : ps0)
+
+    node->outgoing_transitions.erase(a);
+
+  for (auto a : ps1)
+
+    node->outgoing_transitions.insert(a);
   return node;
 }
 template <typename StateInfoT>
@@ -1039,38 +1049,47 @@ NFANode<StateInfoT> *PseudoNFANode<StateInfoT>::deep_copy() {
   node->final = this->final;
   node->input_end = this->input_end->deep_copy();
   node->output_end = this->output_end->deep_copy();
-  for (auto &o : node->outgoing_transitions)
-    o = new typename std::remove_pointer<
-        typename std::remove_reference<decltype(o)>::type>::type{
-        o->target->deep_copy(), o->input};
+  auto ps0 = decltype(node->outgoing_transitions){},
+       ps1 = decltype(node->outgoing_transitions){};
+  for (auto o = node->outgoing_transitions.begin();
+       o != node->outgoing_transitions.end(); ++o) {
+    auto x = new typename std::remove_pointer<
+        typename std::remove_reference<decltype(*o)>::type>::type{
+        (*o)->target->deep_copy(), (*o)->input};
+    ps0.insert(*o);
+    ps1.insert(x);
+  }
+  for (auto a : ps0)
+    node->outgoing_transitions.erase(a);
+
+  for (auto a : ps1)
+    node->outgoing_transitions.insert(a);
+
   return node;
 }
 template <typename StateInfoT>
-std::vector<
-    Transition<NFANode<StateInfoT>,
-               std::variant<char, EpsilonTransitionT, AnythingTransitionT>> *>
+std::set<Transition<NFANode<StateInfoT>, std::variant<char, EpsilonTransitionT,
+                                                      AnythingTransitionT>> *,
+         TransitionPointerComparer<StateInfoT>>
 NFANode<StateInfoT>::get_outgoing_transitions(bool inner) {
   return outgoing_transitions;
 }
 
 template <typename StateInfoT>
-std::vector<
-    Transition<NFANode<StateInfoT>,
-               std::variant<char, EpsilonTransitionT, AnythingTransitionT>> *>
+std::set<Transition<NFANode<StateInfoT>, std::variant<char, EpsilonTransitionT,
+                                                      AnythingTransitionT>> *,
+         TransitionPointerComparer<StateInfoT>>
 PseudoNFANode<StateInfoT>::get_outgoing_transitions(bool inner) {
-  std::vector<
+  std::set<
       Transition<NFANode<StateInfoT>,
-                 std::variant<char, EpsilonTransitionT, AnythingTransitionT>> *>
+                 std::variant<char, EpsilonTransitionT, AnythingTransitionT>> *,
+      TransitionPointerComparer<StateInfoT>>
       vec;
   for (auto out : inner ? get_input_end() : get_output_end())
     for (auto t : out->get_outgoing_transitions(inner))
-      vec.push_back(t);
+      vec.insert(t);
   return vec;
 }
-
-template <typename T> void NFANode<T>::optimise() {}
-
-template <typename T> void PseudoNFANode<T>::optimise() {}
 
 // #define TEST
 #ifdef TEST

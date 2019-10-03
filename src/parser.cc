@@ -2,9 +2,33 @@
 
 #include "parser.hpp"
 #include "lexer.hpp"
+#include "optimise.tcc"
 
 #include <iostream>
+#include <memory>
 #include <sstream>
+#include <stdarg.h>
+
+std::string string_format(const std::string fmt_str, ...) {
+  int final_n,
+      n = ((int)fmt_str.size()) *
+          2; /* Reserve two times as much as the length of the fmt_str */
+  std::unique_ptr<char[]> formatted;
+  va_list ap;
+  while (1) {
+    formatted.reset(
+        new char[n]); /* Wrap the plain char array into the unique_ptr */
+    strcpy(&formatted[0], fmt_str.c_str());
+    va_start(ap, fmt_str);
+    final_n = vsnprintf(&formatted[0], n, fmt_str.c_str(), ap);
+    va_end(ap);
+    if (final_n < 0 || final_n >= n)
+      n += abs(final_n - n + 1);
+    else
+      break;
+  }
+  return std::string(formatted.get());
+}
 
 NFANode<std::string> NParser::compile(std::string code) {
   lexer = std::make_unique<NLexer>(code);
@@ -257,7 +281,8 @@ std::string NFANode<T>::gen_dot(
     oss << "node [shape = "
         << (node->final ? "doublecircle" : node->start ? "square" : "circle")
         << (", label = \"" +
-            node->named_rule.value_or(node->state_info.value_or("???")) + "\"")
+            node->named_rule.value_or(node->state_info.value_or("<unknown>")) +
+            "\\nat " + string_format("%p", node) + "\"")
         << "] LR_" << nodeids[node] << ";" << ss_end;
   }
   for (auto tr : transitions) {
@@ -270,8 +295,8 @@ std::string NFANode<T>::gen_dot(
                       : std::string{std::get<char>(tr.input)}.c_str())
         << " -> "
         << (tr.target->state_info.value_or(
-               tr.target->named_rule.value_or("???")))
-        << "\" ];" << ss_end;
+               tr.target->named_rule.value_or("<unknown>")))
+        << "\\n@" << string_format("%p", tr.target) << "\" ];" << ss_end;
   }
   oss << "}";
   return oss.str();

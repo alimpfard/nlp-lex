@@ -8,6 +8,7 @@
 #include "transition.hpp"
 
 template <typename K> struct NFANodePointerComparer;
+template <typename K> struct TransitionPointerComparer;
 
 template <typename StateInfoT> class NFANode {
   static constexpr EpsilonTransitionT EpsilonTransition{};
@@ -31,14 +32,19 @@ public:
           &transitions);
 
   bool final, start;
-  std::vector<Transition<
-      NFANode, std::variant<char, EpsilonTransitionT, AnythingTransitionT>> *>
+  std::set<Transition<NFANode, std::variant<char, EpsilonTransitionT,
+                                            AnythingTransitionT>> *,
+           TransitionPointerComparer<StateInfoT>>
       outgoing_transitions;
+  std::set<Transition<NFANode, std::variant<char, EpsilonTransitionT,
+                                            AnythingTransitionT>> *,
+           TransitionPointerComparer<StateInfoT>>
+      /* reconstructed before optimisation */ incoming_transitions;
   std::optional<std::string> named_rule;
   NFANode(StateInfoT s) : state_info(s) {}
   NFANode()
       : state_info(), final(false), start(false), outgoing_transitions(),
-        named_rule() {}
+        incoming_transitions(), named_rule() {}
   virtual std::vector<NFANode<StateInfoT> *> get_input_end() {
     std::vector<NFANode<StateInfoT> *> pv;
     pv.push_back(this);
@@ -53,9 +59,10 @@ public:
   virtual void transition_to(NFANode<StateInfoT> *node, char c);
   virtual void epsilon_transition_to(NFANode<StateInfoT> *node);
   virtual void anything_transition_to(NFANode<StateInfoT> *node);
-  virtual std::vector<
+  virtual std::set<
       Transition<NFANode<StateInfoT>,
-                 std::variant<char, EpsilonTransitionT, AnythingTransitionT>> *>
+                 std::variant<char, EpsilonTransitionT, AnythingTransitionT>> *,
+      TransitionPointerComparer<StateInfoT>>
   get_outgoing_transitions(bool inner = false);
   void print();
   void print_dot();
@@ -63,6 +70,15 @@ public:
   NFANode<StateInfoT> *copy_if(bool leading);
   virtual NFANode<StateInfoT> *deep_copy();
   virtual void optimise();
+  typename std::set<Transition<NFANode, std::variant<char, EpsilonTransitionT,
+                                                     AnythingTransitionT>> *,
+                    TransitionPointerComparer<StateInfoT>>::iterator
+  erase_transition_it(typename std::set<
+                      Transition<NFANode, std::variant<char, EpsilonTransitionT,
+                                                       AnythingTransitionT>> *,
+                      TransitionPointerComparer<StateInfoT>>::iterator);
+  void add_transition(Transition<NFANode, std::variant<char, EpsilonTransitionT,
+                                                       AnythingTransitionT>> *);
 };
 
 template <typename StateInfoT>
@@ -92,9 +108,10 @@ public:
     } else
       return p->get_output_end();
   }
-  virtual std::vector<
+  virtual std::set<
       Transition<NFANode<StateInfoT>,
-                 std::variant<char, EpsilonTransitionT, AnythingTransitionT>> *>
+                 std::variant<char, EpsilonTransitionT, AnythingTransitionT>> *,
+      TransitionPointerComparer<StateInfoT>>
   get_outgoing_transitions(bool inner = false);
   virtual NFANode<StateInfoT> *deep_copy();
   virtual void optimise();
@@ -130,6 +147,32 @@ template <typename K> struct NFANodePointerComparer {
     //               b->state_info.value_or("?").c_str());
     //   return false;
     // }
+    return a < b;
+  }
+};
+template <typename K> struct TransitionPointerComparer {
+  bool
+  eq(const Transition<NFANode<K>, std::variant<char, EpsilonTransitionT,
+                                               AnythingTransitionT>> *a,
+     const Transition<NFANode<K>, std::variant<char, EpsilonTransitionT,
+                                               AnythingTransitionT>> *b) const {
+    if (a == b)
+      return true;
+    if (a == nullptr || b == nullptr)
+      return false;
+    if (a->target == b->target && a->input == b->input)
+      return true;
+    return false;
+  }
+  bool
+  operator()(const Transition<NFANode<K>, std::variant<char, EpsilonTransitionT,
+                                                       AnythingTransitionT>> *a,
+             const Transition<NFANode<K>, std::variant<char, EpsilonTransitionT,
+                                                       AnythingTransitionT>> *b)
+      const {
+    if (eq(a, b))
+      return false;
+
     return a < b;
   }
 };
