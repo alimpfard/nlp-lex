@@ -992,8 +992,13 @@ Regexp::transform_by_quantifiers(NFANode<std::string> *node) const {
                 mangle().c_str());
   }
   if (lazy) {
-    std::printf("Lazy quantifiers not supported yet (in %s)\n",
-                mangle().c_str());
+    // t -e-> A -e-> e, t -e-> e
+    auto tl = new NFANode<std::string>{"B?" + mangle()};
+    auto tp = new NFANode<std::string>{"E?" + mangle()};
+    tl->epsilon_transition_to(node);
+    tl->epsilon_transition_to(tp);
+    node->epsilon_transition_to(tp);
+    node = new PseudoNFANode<std::string>{"S?" + mangle(), tl, tp};
   }
   return node;
 }

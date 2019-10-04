@@ -253,7 +253,7 @@
         }
       }
       {
-        'match' : '(\\+|\\*)'
+        'match' : '(\\+|\\*|\\?)'
         'name' : 'string.regexp.NLex'
       }
     ]
