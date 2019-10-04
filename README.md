@@ -27,10 +27,13 @@ the regex engine is currently very limited in what it supports, however here is 
 - [X] sequence matching (/ab/ -> match a, match b)
 - [X] rule substitution (`a :: {{b}}x` -> a = match b, then match 'x')
 - [X] semi-optimised alternative matching
+- [X] basic character classes
+- [ ] character classes with extensions
 - [ ] optimised alternative matching
 - [ ] alternatives with priorities
 - [X] simple quantifiers (\+, \*)
 - [ ] medium-simple quantifiers ({x,y})
-- [ ] not-simple quantifiers (?, ??)
+- [X] not-simple quantifiers (?)
+- [X] insane quantifiers (??)
 - [ ] backreferences
 - [ ] recursive matching
