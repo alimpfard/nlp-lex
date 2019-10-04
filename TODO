@@ -24,8 +24,3 @@ x      <= xyz
 stopword "test", "shit", "blah", -"stopwords.list"
 
 # TODO items
-
-# - rules ending with quantifiers do not set their final states correctly
-#     test case:
-      # fails to set a{::}/1/+{::}/1/ as final
-      a :: 1+

@@ -634,6 +634,7 @@ std::optional<Regexp> NLexer::regexp_quantifier(Regexp &reg) {
                   "Expected either ',' or '}' for a repeat quantifier");
       return {};
     }
+    advance(1);
     reg.repeat = RepeatQuantifier{has_second, bound0, bound1};
     break;
   }
@@ -747,6 +748,14 @@ bool Regexp::sanity_check(const NLexer &lexer) {
                 "Two active quantifiers (star and plus) is not sane");
     return false;
   }
+  if (repeat.has_value() && (star || plus || lazy)) {
+
+    // {...}*+? not allowed
+    std::printf("[I] Note: %s\n",
+                "use of RepeatQuantifier with other quantifiers (star, plus, "
+                "and lazy) is not sane");
+    return false;
+  }
   return true;
 }
 
@@ -755,7 +764,16 @@ bool Regexp::operator==(const Regexp &other) const {
     return false;
   if (lazy ^ other.lazy || plus ^ other.plus || star ^ other.star)
     return false;
-  // TODO: check RepeatQuantifier
+  if (repeat.has_value() ^ other.repeat.has_value())
+    return false;
+  {
+    auto rp0 = repeat.value();
+    auto rp1 = other.repeat.value();
+    if (rp0.has_highbound ^ rp1.has_highbound)
+      return false;
+    if (rp0.lowbound != rp1.lowbound || rp0.highbound != rp1.highbound)
+      return false;
+  }
 
   switch (type) {
   case CharacterClass:
@@ -980,7 +998,6 @@ Regexp::compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
 
 NFANode<std::string> *
 Regexp::transform_by_quantifiers(NFANode<std::string> *node) const {
-  // TODO
   if (star) {
     // A -e-> A
     auto tl = new NFANode<std::string>{"B*" + mangle()};
@@ -997,12 +1014,72 @@ Regexp::transform_by_quantifiers(NFANode<std::string> *node) const {
     tl->epsilon_transition_to(node);
     node->epsilon_transition_to(node);
     node = new PseudoNFANode<std::string>{"S+" + mangle(), tl, node};
+  } else if (repeat.has_value()) {
+    auto rp = repeat.value();
+    auto tl = new NFANode<std::string>{"Br" + mangle()};
+    auto tp = new NFANode<std::string>{"Er" + mangle()};
+    tl->epsilon_transition_to(node);
+    // repeat the compilation many times (sorry...)
+    // TODO: fix deep copy
+
+    // repeat lowbound times
+    auto rgc = const_cast<Regexp *>(this); // putting it back, probably ok...?
+    auto lz = rgc->lazy;
+    auto st = rgc->star;
+    rgc->repeat.reset(); // don't repeat the copy itself
+    rgc->lazy = false;
+    std::multimap<const Regexp *, NFANode<std::string> *> node_cache;
+    auto leading_ = false;
+    for (auto i = 0; i < rp.lowbound - 2; i++)
+      node = rgc->compile(
+          node_cache, node,
+          string_format("Rpt%d{::}%s", i, rgc->mangle().c_str()), leading_);
+
+    if (rp.has_highbound) {
+      if (rp.highbound == -1) {
+        auto tl0 = new NFANode<std::string>{"Br*" + mangle()};
+        auto tp0 = new NFANode<std::string>{"Er*" + mangle()};
+        auto tnode = rgc->compile(node_cache, tl0,
+                                  string_format("Rpt%d{::}%s", rp.lowbound - 2,
+                                                rgc->mangle().c_str()),
+                                  leading_);
+
+        tl0->epsilon_transition_to(tnode);
+        tnode->epsilon_transition_to(tp0);
+        tp0->epsilon_transition_to(tl0);
+        tl0->epsilon_transition_to(tp0);
+        node->epsilon_transition_to(tl0);
+        node = tp0;
+        rgc->lazy = lz;
+        rgc->repeat = rp;
+
+      } else {
+        node = rgc->compile(node_cache, node,
+                            string_format("Rpt%d{::}%s", rp.lowbound - 2,
+                                          rgc->mangle().c_str()),
+                            leading_);
+        rgc->lazy = true;
+        for (auto i = rp.lowbound; i < rp.highbound; i++)
+          node = rgc->compile(
+              node_cache, node,
+              string_format("Rpt%d{::}%s", i, rgc->mangle().c_str()), leading_);
+        rgc->lazy = lz;
+        rgc->repeat = rp;
+      }
+    } else {
+      node = rgc->compile(
+          node_cache, node,
+          string_format("Rpt%d{::}%s", rp.lowbound - 2, rgc->mangle().c_str()),
+          leading_);
+      rgc->lazy = lz;
+      rgc->repeat = rp;
+    }
+    node->epsilon_transition_to(tp);
+    node = new PseudoNFANode<std::string>{"Sr" + mangle(), tl, tp};
   }
-  if (repeat.has_value()) {
-    std::printf("Repeat quantifiers not supported yet (in %s)\n",
-                mangle().c_str());
-  }
+
   if (lazy) {
+  lazy_:;
     // t -e-> A -e-> e, t -e-> e
     auto tl = new NFANode<std::string>{"B?" + mangle()};
     auto tp = new NFANode<std::string>{"E?" + mangle()};

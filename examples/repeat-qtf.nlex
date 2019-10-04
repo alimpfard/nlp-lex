@@ -1,0 +1,3 @@
+fivetimes1then4 :: 1{5}4
+fourtimes1thenmorethanthrice2 :: 1{4}2{3,}
+between1and5times1 :: 1{1,5}
