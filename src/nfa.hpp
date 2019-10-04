@@ -13,9 +13,9 @@ template <typename K> struct TransitionPointerComparer;
 template <typename T> NFANode<T> *deep_input_end(NFANode<T> *node);
 template <typename T> NFANode<T> *deep_output_end(NFANode<T> *node);
 
+static const AnythingTransitionT AnythingTransition{true, "\r\n"};
 template <typename StateInfoT> class NFANode {
   static constexpr EpsilonTransitionT EpsilonTransition{};
-  static constexpr AnythingTransitionT AnythingTransition{};
 
 public:
   std::optional<StateInfoT> state_info;
@@ -63,6 +63,7 @@ public:
   }
 
   virtual void transition_to(NFANode<StateInfoT> *node, char c);
+  virtual void transition_to(NFANode<StateInfoT> *node, AnythingTransitionT c);
   virtual void epsilon_transition_to(NFANode<StateInfoT> *node);
   virtual void anything_transition_to(NFANode<StateInfoT> *node);
   virtual std::set<

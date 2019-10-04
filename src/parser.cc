@@ -222,9 +222,12 @@ std::vector<Regexp *> get_all_finals(Regexp *exp) {
     ends.push_back(exp);
     break;
 
+  case RegexpType::CharacterClass: {
+    ends.push_back(exp);
+    break;
+  }
   case RegexpType::Escape:
-  case RegexpType::CharacterClass:
-    std::printf("Escapes and CharacterClasses not yet implemented\n");
+    std::printf("Escapes not yet implemented\n");
     unreachable();
     break;
   }
@@ -378,7 +381,14 @@ std::string NFANode<T>::gen_dot(
         << (std::holds_alternative<EpsilonTransitionT>(tr.input)
                 ? "<Epsilon>"
                 : std::holds_alternative<AnythingTransitionT>(tr.input)
-                      ? "<Any>"
+                      ? (std::string{"<"} +
+                         (std::get<AnythingTransitionT>(tr.input).inverted
+                              ? "None"
+                              : "Any") +
+                         " of '" +
+                         (std::get<AnythingTransitionT>(tr.input).values) +
+                         "'>")
+                            .c_str()
                       : std::string{std::get<char>(tr.input)}.c_str())
         << " -> "
         << (tr.target->state_info.value_or(

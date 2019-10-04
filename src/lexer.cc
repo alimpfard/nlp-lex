@@ -498,19 +498,31 @@ std::optional<Regexp> NLexer::regexp_expression() {
   if (c == '[') {
     /*
       \[                               # character class = [[[
+        \^?
         .+                             # simplified character classes
       \]                               # ]]]
     */
     int length = 0;
+    bool inverted = false;
+    advance(1);
+    if (*source_p == '^')
+      inverted = true;
+    else
+      advance(-1);
+    if (inverted) {
+      buffer[length++] = ']'; // TODO: get a decent way of specifying inversion
+    }
     do {
       advance(1);
       c = *source_p;
-      if (c == ']')
+      if (c == ']') {
+        advance(1);
         break;
+      }
       buffer[length++] = c;
     } while (1);
-    return Regexp{std::string{source_p - length - 1, length + 1},
-                  RegexpType::CharacterClass, std::string{buffer, length - 1}};
+    return Regexp{std::string{source_p - length - 2, length + 2},
+                  RegexpType::CharacterClass, std::string{buffer, length}};
   }
   // parenthesised expression
   if (c == '(') {
@@ -873,9 +885,32 @@ Regexp::compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
     return tl;
   }
   case RegexpType::Escape:
-  case RegexpType::CharacterClass:
     printf("Fuck no for now\n");
     return nullptr;
+  case RegexpType::CharacterClass: {
+    auto s = std::get<std::string>(inner);
+    bool inv = false;
+    if (s.size() > 1 && s[0] == ']') {
+      s.erase(s.begin());
+      inv = true;
+    }
+    AnythingTransitionT t = {inv, s};
+    NFANode<std::string> *tl = new NFANode<std::string>{"B" + mangle()};
+    NFANode<std::string> *tl2 = new NFANode<std::string>{"E" + mangle()};
+    if (!inv) {
+      // we can transform this to many transitions instead
+      for (auto c : s)
+        tl->transition_to(tl2, c);
+    } else
+      tl->transition_to(tl2, t);
+    tl = transform_by_quantifiers(
+        new PseudoNFANode<std::string>{"S" + mangle(), tl, tl2});
+    parent->epsilon_transition_to(tl);
+    tl->named_rule = namef;
+    tl2->named_rule = namef;
+    result = tl;
+    break;
+  }
   case RegexpType::Nested: {
     auto *exp = transform_by_quantifiers(
         std::get<Regexp *>(inner)->compile(cache, parent, path, leading, true));
@@ -980,6 +1015,15 @@ Regexp::transform_by_quantifiers(NFANode<std::string> *node) const {
 }
 
 template <typename T> void NFANode<T>::transition_to(NFANode<T> *node, char c) {
+  node = deep_input_end(node);
+  auto p = deep_output_end(this);
+  auto t = new Transition<
+      NFANode<T>, std::variant<char, EpsilonTransitionT, AnythingTransitionT>>(
+      node, c);
+  p->add_transition(t);
+}
+template <typename T>
+void NFANode<T>::transition_to(NFANode<T> *node, AnythingTransitionT c) {
   node = deep_input_end(node);
   auto p = deep_output_end(this);
   auto t = new Transition<
