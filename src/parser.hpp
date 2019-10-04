@@ -44,6 +44,7 @@ class NParser {
   std::stack<ParserState> statestack;
 
   std::set<std::string> find_leaf_rules() const;
+  std::set<std::string> find_rules() const;
 
   std::map<std::string, bool> gen_lexer_options;
   std::set<std::string> gen_lexer_stopwords;
@@ -51,8 +52,11 @@ class NParser {
 
 public:
   std::unique_ptr<NLexer> lexer;
+  int max_opt_steps = 10;
   NFANode<std::string> *compile(std::string code);
   NFANode<std::string> *compile();
   void repl_feed(std::string code);
   void parse();
 };
+
+static void unreachable [[noreturn]] () { return; /* intentional */ }

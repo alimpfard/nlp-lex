@@ -35,7 +35,7 @@ public:
           std::variant<char, EpsilonTransitionT, AnythingTransitionT>>>
           &transitions);
 
-  bool final, start, dirty = false;
+  bool final, start, dirty = false, subexpr = false, reference_node = false;
   int max_opt_steps = 50;
   int opt_step = max_opt_steps;
   std::set<Transition<NFANode, std::variant<char, EpsilonTransitionT,
@@ -145,7 +145,7 @@ template <typename K> struct NFANodePointerComparer {
     if (dynamic_cast<const PseudoNFANode<K> *>(a) !=
         dynamic_cast<const PseudoNFANode<K> *>(b))
       return false;
-    if (/*a->start == b->start && a->final == b->final &&
+    if (a->start == b->start && a->final == b->final && /*
         a->state_info == b->state_info && a->named_rule == b->named_rule*/
         1) {
       return veqv(a->outgoing_transitions, b->outgoing_transitions);

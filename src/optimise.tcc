@@ -4,12 +4,12 @@ template <typename T, typename C>
 bool eqv(const std::set<T, C> &a, const std::set<T, C> &b) {
   if (a.size() != b.size())
     return false;
-  std::printf("set b: {\n");
-  for (auto var : b)
-    var->print();
-  std::printf("}\n");
+  // std::printf("set b: {\n");
+  // for (auto var : b)
+  // var->print();
+  // std::printf("}\n");
   for (auto &x : a) {
-    x->print();
+    // x->print();
     auto bb = false;
     for (auto y : b)
       if (x->target == y->target && x->input == y->input) {
@@ -17,7 +17,7 @@ bool eqv(const std::set<T, C> &a, const std::set<T, C> &b) {
         break;
       }
     if (!bb) {
-      std::printf("Nope\n");
+      // std::printf("Nope\n");
       return false;
     }
   }
@@ -38,11 +38,11 @@ void reconstruct_forwards(NFANode<T> *p, std::set<NFANode<T> *> pn,
   for (auto q : p->get_input_end())
     for (auto x : q->outgoing_transitions) {
       // reconstruct_forwards(x->target, false);
-      std::printf(
-          "%s(%p) ",
-          (q->state_info.value_or(q->named_rule.value_or("<unknown>"))).c_str(),
-          q);
-      x->print();
+      // std::printf(
+      //     "%s(%p) ",
+      //     (q->state_info.value_or(q->named_rule.value_or("<unknown>"))).c_str(),
+      //     q);
+      // x->print();
       x->target->incoming_transitions.insert(
           new typename std::remove_pointer<
               typename std::remove_reference<typename decltype(
@@ -103,10 +103,10 @@ void NFANode<T>::optimise(std::set<NFANode<T> *> visited, int step) {
       outgoing_transitions_additions;
   std::set<typename decltype(outgoing_transitions)::value_type>
       outgoing_transitions_deletions;
-  std::printf("visited %p\n", this);
+  // std::printf("visited %p\n", this);
   visited.insert(this);
   // /*
-  std::printf("remove empty transitions to self {\n");
+  // std::printf("remove empty transitions to self {\n");
   for (auto it = outgoing_transitions.begin();
        it != outgoing_transitions.end();) {
     bool deld = false;
@@ -122,11 +122,11 @@ void NFANode<T>::optimise(std::set<NFANode<T> *> visited, int step) {
   }
   if (start)
     reconstruct_forwards(this, {});
-  std::printf("remove empty transitions to self }\n");
+  // std::printf("remove empty transitions to self }\n");
   // */
   // short meaningless epsilon-transitions
   // /*
-  std::printf("short unnessary epsilon transitions {\n");
+  // std::printf("short unnessary epsilon transitions {\n");
   for (auto it = outgoing_transitions.begin();
        it != outgoing_transitions.end();) {
     bool deld = false;
@@ -141,22 +141,20 @@ void NFANode<T>::optimise(std::set<NFANode<T> *> visited, int step) {
             node, tr->input};
         auto ps = ss.find(vs);
         if (ps != ss.end()) {
-          std::printf("found such transition as ");
-          vs->print();
+          // std::printf("found such transition as ");
+          // vs->print();
           ss.erase(ps);
         } else {
           std::printf("failed to find such transition as ");
           vs->print();
-          // std::printf("in set: {\n");
-          // for (auto s : ss)
-          //   s->print();
-          // std::printf("}\n");
         }
         delete vs;
         outgoing_transitions_additions.push_back({tr, node});
       }
-      std::printf("wiped %p from existence\n", node);
+      // std::printf("wiped %p from existence\n", node);
       it = erase_transition_it(it);
+      if (node->final)
+        final = true;
       deld = true;
     dontdelete:;
     }
@@ -171,7 +169,7 @@ void NFANode<T>::optimise(std::set<NFANode<T> *> visited, int step) {
     dirty = true;
   }
   outgoing_transitions_additions.clear();
-  std::printf("short unnessary epsilon transitions }\n");
+  // std::printf("short unnessary epsilon transitions }\n");
   if (start)
     reconstruct_forwards(this, {});
   // */
@@ -230,22 +228,25 @@ void NFANode<T>::optimise(std::set<NFANode<T> *> visited, int step) {
   //   delds.clear();
   // }
   // /*
-  std::printf("merge leading transitions %p {\n", this);
+  // std::printf("merge leading transitions %p {\n", this);
   if (start)
     reconstruct_forwards(this, {});
   decltype(get_outgoing_transitions()) rtr;
   for (auto b_candidate_tr : get_outgoing_transitions()) {
-    std::printf("\tconsidering outgoing transition (to %p) {\n",
-                b_candidate_tr->target);
+    // std::printf("\tconsidering outgoing transition (to %p) {\n",
+    //             b_candidate_tr->target);
     if (delds.count(b_candidate_tr->target) > 0) {
-      std::printf("was already deleted ");
-      b_candidate_tr->print();
+      // std::printf("was already deleted ");
+      // b_candidate_tr->print();
       for (auto c : b_candidate_tr->target->get_outgoing_transitions())
         c->target->optimise(visited, step);
       continue;
     }
     for (auto c_candidate_tr : get_outgoing_transitions()) {
       if (b_candidate_tr == c_candidate_tr)
+        continue;
+      if (b_candidate_tr->target->start != c_candidate_tr->target->start ||
+          b_candidate_tr->target->final != c_candidate_tr->target->final)
         continue;
       if (!eqv(b_candidate_tr->target->incoming_transitions,
                c_candidate_tr->target->incoming_transitions))
@@ -260,13 +261,13 @@ void NFANode<T>::optimise(std::set<NFANode<T> *> visited, int step) {
       rtr.insert(c_candidate_tr);
       delds.insert(c_candidate);
     }
-    std::printf("\tconsidering outgoing transition %p }\n", b_candidate_tr);
+    // std::printf("\tconsidering outgoing transition %p }\n", b_candidate_tr);
   }
   for (auto tr : rtr) {
     outgoing_transitions.erase(tr);
     dirty = true;
   }
-  std::printf("merge leading transitions }\n");
+  // std::printf("merge leading transitions }\n");
   if (start)
     reconstruct_forwards(this, {});
   // */
@@ -351,10 +352,10 @@ NFANode<T>::erase_transition_it(
   if (pos == its.end()) {
     std::printf("couldn't find forward-pointing transition");
     tr.print();
-    std::printf("in set: {\n");
-    for (auto s : its)
-      s->print();
-    std::printf("}\n");
+    // std::printf("in set: {\n");
+    // for (auto s : its)
+    // s->print();
+    // std::printf("}\n");
   } else {
     its.erase(pos);
   }

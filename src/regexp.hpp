@@ -84,7 +84,7 @@ public:
   transform_by_quantifiers(NFANode<std::string> *node) const;
 
   NFANode<std::string> *
-  compile(std::map<std::string, NFANode<std::string> *> &cache,
+  compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
           NFANode<std::string> *parent, std::string path, bool &leading,
           bool nopath = false) const;
 };

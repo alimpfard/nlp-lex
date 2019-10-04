@@ -195,6 +195,42 @@ void NParser::parse() {
   } while (!failing);
 }
 
+std::vector<Regexp *> get_all_finals(Regexp *exp) {
+  std::vector<Regexp *> ends;
+  switch (exp->type) {
+  case RegexpType::Symbol:
+    std::printf("[ICE] unresolved symbol left in tree\n");
+    unreachable();
+    break;
+  case RegexpType::Alternative:
+    for (auto p : exp->children)
+      for (auto q : get_all_finals(p))
+        ends.push_back(q);
+    break;
+  case RegexpType::Concat:
+    for (auto q : get_all_finals(exp->children.back()))
+      ends.push_back(q);
+    break;
+  case RegexpType::Nested:
+    for (auto q : get_all_finals(std::get<Regexp *>(exp->inner)))
+      ends.push_back(q);
+    break;
+  case RegexpType::Dot:
+    ends.push_back(exp);
+    break;
+  case RegexpType::Literal:
+    ends.push_back(exp);
+    break;
+
+  case RegexpType::Escape:
+  case RegexpType::CharacterClass:
+    std::printf("Escapes and CharacterClasses not yet implemented\n");
+    unreachable();
+    break;
+  }
+  return ends;
+}
+
 NFANode<std::string> *NParser::compile() {
   parse();
 #ifdef TEST
@@ -209,19 +245,48 @@ NFANode<std::string> *NParser::compile() {
 #endif
   NFANode<std::string> *root_node = new NFANode<std::string>{"root"};
   root_node->start = true;
-  std::map<std::string, NFANode<std::string> *> node_cache;
+  std::multimap<const Regexp *, NFANode<std::string> *> node_cache;
+  std::set<NFANode<std::string> *> toplevels;
 
-  for (auto &it : find_leaf_rules()) {
+  for (auto &it : find_rules()) {
     auto rule = std::get<Regexp *>(std::get<2>(values[it]));
     bool leading = true;
     auto node = rule->compile(node_cache, root_node, "", leading);
-    node_cache[it] = node;
+    toplevels.insert(node); // nullptr marks toplevel rule
   }
 
-  // for (auto p : node_cache) {
-  //   std::printf("rule %s = %p - ", p.first.c_str(), p.second);
-  //   p.second->print_dot();
-  // }
+  reconstruct_forwards(root_node, {});
+
+  // mark final states and give them names
+  for (auto &it : values) {
+    if (std::get<0>(it.second) == SymbolType::Define) {
+      auto rule = std::get<Regexp *>(std::get<2>(it.second));
+      auto ends = get_all_finals(rule);
+      for (auto end : ends) {
+        if (node_cache.count(end)) {
+          for (auto iter = node_cache.find(end); iter != node_cache.end();
+               ++iter) {
+            auto node = deep_output_end(iter->second);
+            if (toplevels.count(iter->second))
+              goto yep;
+            continue; // no need for this to be final
+          yep:;
+            std::printf(
+                "Regexp %p (node %p) has been marked as final: [%s] [%s]\n",
+                end, node, end->mangle().c_str(),
+                node->named_rule
+                    .value_or(node->state_info.value_or("<unknown>"))
+                    .c_str());
+            node->final = true;
+            node->named_rule = it.first;
+          }
+        } else {
+          std::printf("Regexp %p has no corresponding node\n", end);
+        }
+      }
+    }
+  }
+  root_node->max_opt_steps = max_opt_steps;
   root_node->optimise({});
   return root_node;
 }
@@ -236,6 +301,16 @@ std::set<std::string> NParser::find_leaf_rules() const {
     }
   }
   return leafs;
+}
+
+std::set<std::string> NParser::find_rules() const {
+  std::set<std::string> nodes;
+  for (auto &it : values) {
+    if (std::get<0>(it.second) == SymbolType::Define) {
+      nodes.insert(it.first);
+    }
+  }
+  return nodes;
 }
 
 template <typename T> void NFANode<T>::print() {
@@ -279,7 +354,7 @@ std::string NFANode<T>::gen_dot(
   for (auto node : nodes) {
     nodeids[node] = node_id++;
     oss << "node [shape = "
-        << (node->final ? "doublecircle" : node->start ? "square" : "circle")
+        << (node->start ? "square" : node->final ? "doublecircle" : "circle")
         << (", label = \"" +
             node->named_rule.value_or(node->state_info.value_or("<unknown>")) +
             "\\nat " + string_format("%p", node) + "\"")
@@ -360,6 +435,10 @@ int main() {
       root = parser.compile();
       root->print();
       break;
+    } else if (line == ".opt=") {
+      std::cout << "opt=? ";
+      std::cin >> parser.max_opt_steps;
+      continue;
     }
     parser.repl_feed(line);
     parser.parse();

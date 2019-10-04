@@ -837,7 +837,7 @@ std::string Regexp::mangle() const {
 }
 
 NFANode<std::string> *
-Regexp::compile(std::map<std::string, NFANode<std::string> *> &cache,
+Regexp::compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
                 NFANode<std::string> *parent, std::string path, bool &leading,
                 bool nopath) const {
   assert(type != RegexpType::Symbol &&
@@ -849,16 +849,7 @@ Regexp::compile(std::map<std::string, NFANode<std::string> *> &cache,
       nopath ? (named_rule.has_value() ? named_rule.value() : path)
              : (named_rule.has_value() ? named_rule.value() : path) + "{::}" +
                    mangle();
-  // std::printf("cache lookup for '%s'\n", cpath.c_str());
-  // if (cache.count(cpath) > 0) {
-  //   std::printf("cache hit for '%s'\n", cpath.c_str());
-  //   auto p = cache[cpath]->deep_copy(); // ??
-  //   parent->print();
-  //   parent->epsilon_transition_to(p);
-  //   parent->print();
-  //   return p;
-  // }
-
+  NFANode<std::string> *result;
   switch (type) {
   case RegexpType::Literal: {
     char t = std::get<char>(inner);
@@ -868,27 +859,17 @@ Regexp::compile(std::map<std::string, NFANode<std::string> *> &cache,
     tl = transform_by_quantifiers(
         new PseudoNFANode<std::string>{"S" + mangle(), tl, tl2});
     parent->epsilon_transition_to(tl);
-    // std::printf("yay %s = ", mangle().c_str());
-    // tl->print();
-    // std::printf("\n");
-    // cache[cpath] = tl->deep_copy();
     tl->named_rule = namef;
     tl2->named_rule = namef;
-    // if (was_reference)
-    // cache[referenced_symbol.value()] = tl->deep_copy();
-    return tl;
+    result = tl;
+    break;
   }
   case RegexpType::Dot: {
     NFANode<std::string> *tl =
         transform_by_quantifiers(new NFANode<std::string>{mangle()});
     parent->anything_transition_to(tl);
-    // std::printf("yay %s = ", mangle().c_str());
-    // tl->print();
-    // std::printf("\n");
-    // cache[cpath] = tl->deep_copy();
     tl->named_rule = namef;
-    // if (was_reference)
-    // cache[referenced_symbol.value()] = tl->deep_copy();
+    cache.insert({this, tl});
     return tl;
   }
   case RegexpType::Escape:
@@ -898,19 +879,14 @@ Regexp::compile(std::map<std::string, NFANode<std::string> *> &cache,
   case RegexpType::Nested: {
     auto *exp = transform_by_quantifiers(
         std::get<Regexp *>(inner)->compile(cache, parent, path, leading, true));
-    // std::printf("yay %s = ", mangle().c_str());
-    // exp->print();
-    // std::printf("\n");
-    // cache[cpath] = exp->deep_copy();
     exp->named_rule = namef;
-    // if (was_reference)
-    // cache[referenced_symbol.value()] = exp->deep_copy();
-    return exp;
+    result = exp;
+    break;
   }
   case RegexpType::Alternative: {
     // generate all nodes and connect them all to a root node
-    NFANode<std::string> *tl = new NFANode<std::string>{"B" + mangle()};
-    NFANode<std::string> *te = new NFANode<std::string>{"E" + mangle()};
+    NFANode<std::string> *tl = new NFANode<std::string>{"Ba" + mangle()};
+    NFANode<std::string> *te = new NFANode<std::string>{"Ea" + mangle()};
     for (auto *alt : children) {
       bool leading_ = true;
       auto p = alt->compile(cache, tl, cpath, leading_);
@@ -930,7 +906,8 @@ Regexp::compile(std::map<std::string, NFANode<std::string> *> &cache,
     tl->named_rule = namef;
     // if (was_reference)
     // cache[referenced_symbol.value()] = tl->deep_copy();
-    return tl;
+    result = tl;
+    break;
   }
   case RegexpType::Concat: {
     NFANode<std::string> *root = new NFANode<std::string>{"B" + mangle()};
@@ -940,7 +917,6 @@ Regexp::compile(std::map<std::string, NFANode<std::string> *> &cache,
     bool leading_ = leading;
     auto p = children[0]->compile(
         cache, root, cpath + "{::}" + children[0]->mangle(), leading_);
-    // cache[children[0]->mangle()] = p;
     NFANode<std::string> *prev_s = p;
     bool b = true;
     for (auto c : children) {
@@ -956,13 +932,15 @@ Regexp::compile(std::map<std::string, NFANode<std::string> *> &cache,
     root = transform_by_quantifiers(
         new PseudoNFANode<std::string>{"S" + mangle(), root, endp});
     parent->epsilon_transition_to(root);
-    // cache[cpath] = root->deep_copy();
     root->named_rule = namef;
-    // if (was_reference)
-    // cache[referenced_symbol.value()] = root->deep_copy();
-    return root;
+    result = root;
+    break;
   }
   }
+  if (was_reference)
+    result->reference_node = true;
+  cache.insert({this, result});
+  return result;
 }
 
 NFANode<std::string> *
@@ -981,10 +959,8 @@ Regexp::transform_by_quantifiers(NFANode<std::string> *node) const {
   } else if (plus) {
     // -e-> A -e-> A
     auto tl = new NFANode<std::string>{"B+" + mangle()};
-    auto tp = new NFANode<std::string>{"E+" + mangle()};
     tl->epsilon_transition_to(node);
     node->epsilon_transition_to(node);
-    tp->epsilon_transition_to(tl);
     node = new PseudoNFANode<std::string>{"S+" + mangle(), tl, node};
   }
   if (repeat.has_value()) {
