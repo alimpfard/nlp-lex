@@ -201,6 +201,26 @@
         }
       }
       {
+        'match' : '(\\{)(\\d+)(,?)(\\d+)?(\\})'
+        'captures' : {
+          '1' : {
+            'name' : 'constant.character.escape.NLex'
+          }
+          '2' : {
+            'name' : 'string.other.link.NLex'
+          }
+          '3' : {
+            'name' : 'string.regexp.NLex'
+          }
+          '4' : {
+            'name' : 'string.other.link.NLex'
+          }
+          '5' : {
+            'name' : 'constant.character.escape.NLex'
+          }
+        }
+      }
+      {
         'begin' : '(\\||\\\\.)'
         'beginCaptures' : {
           '1' : {
