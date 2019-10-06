@@ -1,13 +1,17 @@
 #define TEST
 
 #include "parser.hpp"
+#include "codegen.hpp"
 #include "lexer.hpp"
 #include "optimise.tcc"
 
 #include <iostream>
 #include <memory>
+#include <queue>
 #include <sstream>
 #include <stdarg.h>
+
+constexpr EpsilonTransitionT EpsilonTransition{};
 
 NFANode<std::string> *NParser::compile(std::string code) {
   lexer = std::make_unique<NLexer>(code);
@@ -403,11 +407,317 @@ void NFANode<T>::aggregate_dot(
   }
 }
 
+template <typename T> void DFANode<T>::print_dot() {
+  std::set<DFANode<T> *, DFANodePointerComparer<T>> nodes;
+  std::set<DFANode<T> *> anodes;
+  std::unordered_set<CanonicalTransition<DFANode<T>, char>> transitions;
+  aggregate_dot(nodes, anodes, transitions);
+  std::printf("%s\n", gen_dot(anodes, transitions).c_str());
+}
+
+template <typename T>
+std::string DFANode<T>::gen_dot(
+    std::set<DFANode<T> *> nodes,
+    std::unordered_set<CanonicalTransition<DFANode<T>, char>> transitions) {
+  std::ostringstream oss;
+  constexpr auto ss_end = "\n\t";
+  oss << "digraph finite_state_machine {" << ss_end;
+  oss << "rankdir=LR;" << ss_end;
+  oss << "size=\"8,5\";" << ss_end;
+  int node_id = 0, error = 1000000;
+  std::map<DFANode<T> *, int> nodeids;
+  for (auto node : nodes) {
+    nodeids[node] = node_id++;
+    oss << "node [shape = "
+        << (node->start ? "square" : node->final ? "doublecircle" : "circle")
+        << (", label = \"" +
+            node->named_rule.value_or(node->state_info.value_or("<unknown>")) +
+            "\\nat " + string_format("%p", node) + "\"")
+        << "] LR_" << nodeids[node] << ";" << ss_end;
+  }
+  for (auto tr : transitions) {
+    int fid, tid;
+    if (nodeids.count(tr.source) < 1) {
+      printf("Cannot find any node corresponding to %p\n", tr.source);
+      fid = error++;
+    } else
+      fid = nodeids[tr.source];
+
+    if (nodeids.count(tr.target) < 1) {
+      printf("Cannot find any node corresponding to %p\n", tr.target);
+      tid = error++;
+    } else
+      tid = nodeids[tr.target];
+
+    oss << "LR_" << fid << " -> LR_" << tid << " [ label = \"" << tr.input
+        << " -> "
+        << (tr.target->state_info.value_or(
+               tr.target->named_rule.value_or("<unknown>")))
+        << "\\n@" << string_format("%p", tr.target) << "\" ];" << ss_end;
+  }
+  oss << "}";
+  return oss.str();
+}
+
+template <typename T>
+void DFANode<T>::aggregate_dot(
+    std::set<DFANode<T> *, DFANodePointerComparer<T>> &nodes,
+    std::set<DFANode<T> *> &anodes,
+    std::unordered_set<CanonicalTransition<DFANode<T>, char>> &transitions) {
+  if (anodes.count(this))
+    return;
+  auto pos = nodes.find(this);
+  if (pos == nodes.end() || *pos != this) {
+    // not yet explored
+    nodes.insert(this);
+    anodes.insert(this);
+    for (auto transition : outgoing_transitions) {
+      transitions.insert({this, transition->target, transition->input});
+      transition->target->aggregate_dot(nodes, anodes, transitions);
+    }
+    // for (auto transition : incoming_transitions) {
+    //   transitions.insert({this, transition->target, '<'});
+    // }
+  }
+}
+
+template <typename T>
+static std::set<NFANode<T> *>
+get_states(const NFANode<T> *state,
+           const std::variant<char, EpsilonTransitionT> trv) {
+  std::set<NFANode<T> *> states;
+  std::variant<char, EpsilonTransitionT, AnythingTransitionT> transition;
+  if (std::holds_alternative<char>(trv))
+    transition = std::get<char>(trv);
+  else
+    transition = EpsilonTransition;
+  for (auto tr : state->outgoing_transitions) {
+    if (tr->input == transition)
+      states.insert(tr->target);
+  }
+  return states;
+}
+
+template <typename T>
+static std::set<NFANode<T> *>
+get_states(const std::set<NFANode<T> *> &states,
+           const std::variant<char, EpsilonTransitionT> transition) {
+  std::set<NFANode<T> *> cstates;
+  for (auto state : states) {
+    auto ss = get_states(state, transition);
+    cstates.insert(ss.begin(), ss.end());
+  }
+  return cstates;
+}
+
+template <typename T>
+static std::set<NFANode<T> *>
+get_epsilon_closure(NFANode<T> *node,
+                    std::map<std::set<NFANode<T> *>, std::set<NFANode<T> *>>
+                        epsilon_closures = {}) {
+  std::set<NFANode<T> *> key;
+  key.insert(node);
+
+  if (epsilon_closures.count(key))
+    return epsilon_closures[key];
+
+  std::set<NFANode<T> *> eps_states;
+
+  std::queue<NFANode<T> *> remaining;
+  remaining.push(node);
+
+  while (!remaining.empty()) {
+    auto current = remaining.front();
+    eps_states.insert(current);
+    for (auto ep : get_states(current, EpsilonTransition)) {
+      if (!eps_states.count(ep))
+        remaining.push(ep);
+    }
+    remaining.pop();
+  }
+  epsilon_closures[key] = eps_states;
+  return eps_states;
+}
+
+template <typename T>
+static std::set<NFANode<T> *>
+get_epsilon_closure(const std::set<NFANode<T> *> nodes,
+                    std::map<std::set<NFANode<T> *>, std::set<NFANode<T> *>>
+                        epsilon_closures = {}) {
+  if (epsilon_closures.count(nodes))
+    return epsilon_closures[nodes];
+
+  std::set<NFANode<T> *> eps_states;
+
+  for (auto node : nodes) {
+    auto ss = get_epsilon_closure(node, epsilon_closures);
+    eps_states.insert(ss.begin(), ss.end());
+  }
+  epsilon_closures[nodes] = eps_states;
+  return eps_states;
+}
+
+template <typename T>
+std::string get_name(std::set<NFANode<T> *> nodes, bool simple = false) {
+  std::ostringstream oss;
+  oss << "{ ";
+  for (auto node : nodes) {
+    oss << node->named_rule.value_or(node->state_info.value_or("<unknown>"));
+    if (!simple)
+      oss << string_format("(%p)", node);
+    oss << " ";
+  }
+  oss << "}";
+  return oss.str();
+}
+
+template <typename T>
+std::string get_name(NFANode<T> *node, bool simple = false) {
+  std::ostringstream oss;
+  oss << "{ ";
+  oss << node->named_rule.value_or(node->state_info.value_or("<unknown>"));
+  if (!simple)
+    oss << string_format("(%p)", node);
+  oss << " }";
+  return oss.str();
+}
+
+template <typename T> std::set<char> all_alphabet(NFANode<T> *node) {
+  std::set<char> ss;
+  for (auto tr : node->outgoing_transitions) {
+    if (std::holds_alternative<EpsilonTransitionT>(tr->input))
+      continue;
+    if (std::holds_alternative<AnythingTransitionT>(tr->input))
+      std::printf("[ICE] All compound transitions haven't been resolved\n");
+    else
+      ss.insert(std::get<char>(tr->input));
+  }
+  return ss;
+}
+
+template <typename T>
+std::set<char> all_alphabet(std::set<NFANode<T> *> nodes) {
+  std::set<char> ss;
+  for (auto node : nodes) {
+    auto al = all_alphabet(node);
+    ss.insert(al.begin(), al.end());
+  }
+  return ss;
+}
+
+template <typename T>
+void DFANode<T>::add_transition(Transition<DFANode<T>, char> *tr) {
+  for (auto vtr : outgoing_transitions) {
+    if (vtr->input == tr->input) {
+      std::printf("transition to two states with one input requested\n");
+      return;
+    }
+  }
+  Transition<DFANode<T>, char> tbr{this, tr->input};
+  tr->target->incoming_transitions.insert(new decltype(tbr){tbr});
+  outgoing_transitions.insert(tr);
+}
+
+template <typename T> DFANode<T> *NFANode<T>::to_dfa() {
+  DFANode<T> *dfa_root = nullptr;
+  std::map<std::string, DFANode<T> *> dfa_map;
+
+  std::set<NFANode<T> *> init = get_epsilon_closure(this);
+
+  std::queue<std::set<NFANode<T> *>> remaining;
+  remaining.push(init);
+
+  std::set<std::set<NFANode<T> *>> visited;
+
+  while (!remaining.empty()) {
+    std::set<NFANode<T> *> current = remaining.front();
+    remaining.pop();
+
+    if (visited.count(current))
+      continue;
+
+    visited.insert(current);
+    DFANode<T> *dfanode;
+
+    auto currentname = get_name(current);
+
+    if (dfa_map.count(currentname))
+      dfanode = dfa_map[currentname];
+    else
+      dfanode = dfa_map[currentname] = new DFANode<T>{get_name(current, true)};
+    for (auto s : current) {
+      if (s->final) {
+        std::printf("state %s was final, so marking %s as such\n",
+                    get_name(s).c_str(), get_name(current).c_str());
+        dfanode->final = true;
+      }
+      if (s->start) {
+        std::printf("state %s was start, so marking %s as such\n",
+                    get_name(s).c_str(), get_name(current).c_str());
+        dfanode->start = true;
+      }
+    }
+
+    std::printf("current : %s\n", get_name(current).c_str());
+
+    if (dfa_root == nullptr)
+      dfa_root = dfanode;
+
+    for (auto qq : all_alphabet(current)) {
+
+      std::printf("processing output symbol '%c' for current : %s\n", qq,
+                  get_name(current).c_str());
+
+      std::set<NFANode<T> *> eps_state =
+          get_epsilon_closure(get_states(current, qq));
+      DFANode<T> *nextdfanode;
+
+      auto epsname = get_name(eps_state);
+
+      if (dfa_map.count(epsname))
+        nextdfanode = dfa_map[epsname];
+      else {
+        nextdfanode = dfa_map[epsname] =
+            new DFANode<T>{get_name(eps_state, true)};
+        std::printf("generated extra state: %s\n", epsname.c_str());
+      }
+
+      dfanode->add_transition(
+          new Transition<DFANode<T>, char>{nextdfanode, qq});
+
+      if (!visited.count(eps_state))
+        remaining.push(eps_state);
+    }
+  }
+
+  return dfa_root;
+}
+
+template <typename T> void DFACCodeGenerator<T>::generate(DFANode<T> *node) {
+  node->print_dot();
+}
+
+template <typename T> void CodeGenerator<T>::generate(DFANode<T> *node) {
+  __asm("int3");
+}
+
+template <typename T> void CodeGenerator<T>::run(NFANode<T> *node) {
+  if (properties.start_phase == CodegenStartPhase::RegexpPhase) {
+    std::printf("call the proper run function, noob\n");
+    return;
+  }
+  // if (properties.start_phase == CodegenStartPhase::NFAPhase)
+  // generate(node);
+  // else
+  generate(node->to_dfa());
+}
+
 #ifdef TEST
 int main() {
   NParser parser;
   parser.lexer = std::make_unique<NLexer>("");
   NFANode<std::string> *root;
+  DFACCodeGenerator<std::string> cg;
   while (1) {
     std::string line;
     std::cout << "> ";
@@ -422,11 +732,15 @@ int main() {
       continue;
     } else if (line == ".end") {
       root = parser.compile();
-      root->print();
+      // root->print();
       break;
     } else if (line == ".opt=") {
       std::cout << "opt=? ";
       std::cin >> parser.max_opt_steps;
+      continue;
+    } else if (line == ".cg") {
+      root = parser.compile();
+      cg.run(root);
       continue;
     }
     parser.repl_feed(line);

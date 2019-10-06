@@ -61,6 +61,20 @@ public:
   }
 };
 
+template <typename NodeT> class CanonicalTransition<NodeT, char> {
+public:
+  NodeT *source, *target;
+  char input;
+
+  CanonicalTransition(NodeT *src, NodeT *dst, char input)
+      : source(src), target(dst), input(input) {}
+
+  bool operator==(const CanonicalTransition<NodeT, char> &other) const {
+    return other.target == target && other.source == source &&
+           input == other.input;
+  }
+};
+
 namespace std {
 
 template <typename NodeT, typename TransitionInputT>

@@ -24,3 +24,12 @@ x      <= xyz
 stopword "test", "shit", "blah", -"stopwords.list"
 
 # TODO items
+# - optimise regexp itself
+#   - if all branches of an Alternative are literals, transform to character class { 1|2|3|4|5|6... -> [123456] }
+#
+# - subpatterns should be preserved and tagged (for later referencing)
+#   - consequently, allow `(?:)' expressions
+#
+# - Codegen
+#
+# - testing the lexer live?

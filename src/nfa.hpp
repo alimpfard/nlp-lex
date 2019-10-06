@@ -8,12 +8,60 @@
 #include "transition.hpp"
 
 template <typename StateInfoT> class NFANode;
+template <typename StateInfoT> class DFANode;
 template <typename K> struct NFANodePointerComparer;
+template <typename K> struct DFANodePointerComparer;
 template <typename K> struct TransitionPointerComparer;
 template <typename T> NFANode<T> *deep_input_end(NFANode<T> *node);
 template <typename T> NFANode<T> *deep_output_end(NFANode<T> *node);
 
 static const AnythingTransitionT AnythingTransition{true, "\r\n"};
+
+template <typename StateInfoT> class DFANode {
+public:
+  std::optional<StateInfoT> state_info;
+
+  std::string
+  gen_dot(std::set<DFANode<StateInfoT> *> nodes,
+          std::unordered_set<CanonicalTransition<DFANode<StateInfoT>, char>>
+              transitions);
+  void aggregate_dot(
+      std::set<DFANode<StateInfoT> *, DFANodePointerComparer<StateInfoT>>
+          &nodes,
+      std::set<DFANode<StateInfoT> *> &anodes,
+      std::unordered_set<CanonicalTransition<DFANode<StateInfoT>, char>>
+          &transitions);
+
+  bool final, start, dirty = false, subexpr = false, reference_node = false;
+  int max_opt_steps = 50;
+  int opt_step = max_opt_steps;
+
+  std::set<Transition<DFANode, char> *, TransitionPointerComparer<StateInfoT>>
+      outgoing_transitions;
+  std::set<Transition<DFANode, char> *, TransitionPointerComparer<StateInfoT>>
+      /* reconstructed before optimisation */ incoming_transitions;
+  std::optional<std::string> named_rule;
+  DFANode(StateInfoT s) : state_info(s) {}
+  DFANode()
+      : state_info(), final(false), start(false), outgoing_transitions(),
+        incoming_transitions(), named_rule() {}
+
+  // virtual std::set<Transition<DFANode<StateInfoT>, char> *,
+  //                  TransitionPointerComparer<StateInfoT>>
+  // get_outgoing_transitions(bool inner = false);
+  // void print();
+  void print_dot();
+
+  // virtual void optimise(std::set<DFANode<StateInfoT> *> visited, int step);
+  // void optimise(std::set<DFANode<StateInfoT> *> visited);
+  // typename std::set<Transition<DFANode, char> *,
+  //                   TransitionPointerComparer<StateInfoT>>::iterator
+  // erase_transition_it(
+  //     typename std::set<Transition<DFANode, char> *,
+  //                       TransitionPointerComparer<StateInfoT>>::iterator);
+  void add_transition(Transition<DFANode, char> *);
+};
+
 template <typename StateInfoT> class NFANode {
   static constexpr EpsilonTransitionT EpsilonTransition{};
 
@@ -87,6 +135,7 @@ public:
                       TransitionPointerComparer<StateInfoT>>::iterator);
   void add_transition(Transition<NFANode, std::variant<char, EpsilonTransitionT,
                                                        AnythingTransitionT>> *);
+  DFANode<StateInfoT> *to_dfa(); // call on root~
 };
 
 template <typename StateInfoT>
@@ -166,6 +215,32 @@ template <typename K> struct NFANodePointerComparer {
     return a < b;
   }
 };
+
+template <typename K> struct DFANodePointerComparer {
+  bool eq(const DFANode<K> *a, const DFANode<K> *b) const {
+    if (a == b)
+      return true;
+    if (a->start == b->start && a->final == b->final && /*
+        a->state_info == b->state_info && a->named_rule == b->named_rule*/
+        1) {
+      return veqv(a->outgoing_transitions, b->outgoing_transitions);
+    }
+    return false;
+  }
+  bool operator()(const DFANode<K> *a, const DFANode<K> *b) const {
+
+    // std::printf("state %p =? %p (%s =? %s) (%s =? %s)\n", a, b,
+    //             a->named_rule.value_or("?").c_str(),
+    //             b->named_rule.value_or("?").c_str(),
+    //             a->state_info.value_or("?").c_str(),
+    //             b->state_info.value_or("?").c_str());
+    if (eq(a, b)) {
+      return false;
+    }
+    return a < b;
+  }
+};
+
 template <typename K> struct TransitionPointerComparer {
   bool
   eq(const Transition<NFANode<K>, std::variant<char, EpsilonTransitionT,
@@ -192,6 +267,24 @@ template <typename K> struct TransitionPointerComparer {
 
     return a < b;
   }
+  bool eq(const Transition<DFANode<K>, char> *a,
+          const Transition<DFANode<K>, char> *b) const {
+    if (a == b)
+      return true;
+    if (a == nullptr || b == nullptr)
+      return false;
+    // if (NFANodePointerComparer<K>().eq(a->target, b->target) &&
+    //     a->input == b->input)
+    //   return true;
+    return false;
+  }
+  bool operator()(const Transition<DFANode<K>, char> *a,
+                  const Transition<DFANode<K>, char> *b) const {
+    if (eq(a, b))
+      return false;
+
+    return a < b;
+  }
 };
 
 template <typename T> NFANode<T> *deep_input_end(NFANode<T> *node) {
@@ -204,4 +297,12 @@ template <typename T> NFANode<T> *deep_output_end(NFANode<T> *node) {
   if (dynamic_cast<PseudoNFANode<T> *>(node) == nullptr)
     return node;
   return deep_output_end(dynamic_cast<PseudoNFANode<T> *>(node)->output_end);
+}
+
+template <typename T> DFANode<T> *deep_input_end(DFANode<T> *node) {
+  return node;
+}
+
+template <typename T> DFANode<T> *deep_output_end(DFANode<T> *node) {
+  return node;
 }
