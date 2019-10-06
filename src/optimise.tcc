@@ -158,8 +158,12 @@ void NFANode<T>::optimise(std::set<NFANode<T> *> visited, int step) {
         }
         // std::printf("wiped %p from existence\n", node);
         it = erase_transition_it(it);
-        if (node->final)
+        if (node->final) {
           final = true;
+          // if the node is final, we'd like to preserve its name as well
+          state_info = node->state_info;
+          named_rule = node->named_rule;
+        }
         deld = true;
       dontdelete:;
       }
@@ -214,8 +218,12 @@ void NFANode<T>::optimise(std::set<NFANode<T> *> visited, int step) {
           }
         rtr.insert(c_candidate_tr);
         delds.insert(c_candidate);
-        if (c_candidate->final)
+        if (c_candidate->final) {
           b_candidate->final = true;
+          b_candidate->state_info =
+              c_candidate->state_info; // XXX this might clash
+          b_candidate->named_rule = c_candidate->named_rule;
+        }
       }
       // std::printf("\tconsidering outgoing transition %p }\n",
       // b_candidate_tr);
