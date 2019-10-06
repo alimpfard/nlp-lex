@@ -135,7 +135,7 @@ public:
                       TransitionPointerComparer<StateInfoT>>::iterator);
   void add_transition(Transition<NFANode, std::variant<char, EpsilonTransitionT,
                                                        AnythingTransitionT>> *);
-  DFANode<StateInfoT> *to_dfa(); // call on root~
+  DFANode<std::set<NFANode<StateInfoT> *>> *to_dfa(); // call on root~
 };
 
 template <typename StateInfoT>

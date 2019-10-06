@@ -324,6 +324,46 @@ template <typename T> void NFANode<T>::print_dot() {
 }
 
 template <typename T>
+std::string get_name(std::set<NFANode<T> *> nodes, bool simple = false,
+                     bool ptr = false) {
+  std::ostringstream oss;
+  if (!ptr)
+    oss << "{ ";
+  for (auto node : nodes) {
+    if (!ptr)
+      oss << node->named_rule.value_or(node->state_info.value_or("<unknown>"));
+    if (!simple && !ptr)
+      oss << string_format("(%p)", node);
+    if (ptr)
+      oss << string_format("%p", node);
+
+    if (!ptr)
+      oss << " ";
+  }
+
+  if (!ptr)
+    oss << "}";
+  return oss.str();
+}
+
+template <typename T>
+std::string get_name(NFANode<T> *node, bool simple = false, bool ptr = false) {
+  std::ostringstream oss;
+  if (!ptr)
+    oss << "{ ";
+  if (!ptr)
+    oss << node->named_rule.value_or(node->state_info.value_or("<unknown>"));
+  if (!simple && !ptr)
+    oss << string_format("(%p)", node);
+  if (ptr)
+    oss << string_format("%p", node);
+
+  if (!ptr)
+    oss << " }";
+  return oss.str();
+}
+
+template <typename T>
 std::string NFANode<T>::gen_dot(
     std::set<NFANode<T> *> nodes,
     std::unordered_set<
@@ -341,9 +381,8 @@ std::string NFANode<T>::gen_dot(
     nodeids[node] = node_id++;
     oss << "node [shape = "
         << (node->start ? "square" : node->final ? "doublecircle" : "circle")
-        << (", label = \"" +
-            node->named_rule.value_or(node->state_info.value_or("<unknown>")) +
-            "\\nat " + string_format("%p", node) + "\"")
+        << (", label = \"" + get_name(node, true) + "\\nat " +
+            string_format("%p", node) + "\"")
         << "] LR_" << nodeids[node] << ";" << ss_end;
   }
   for (auto tr : transitions) {
@@ -373,10 +412,8 @@ std::string NFANode<T>::gen_dot(
                          "'>")
                             .c_str()
                       : std::string{std::get<char>(tr.input)}.c_str())
-        << " -> "
-        << (tr.target->state_info.value_or(
-               tr.target->named_rule.value_or("<unknown>")))
-        << "\\n@" << string_format("%p", tr.target) << "\" ];" << ss_end;
+        << " -> " << get_name(tr.target, true) << "\\n@"
+        << string_format("%p", tr.target) << "\" ];" << ss_end;
   }
   oss << "}";
   return oss.str();
@@ -430,8 +467,7 @@ std::string DFANode<T>::gen_dot(
     nodeids[node] = node_id++;
     oss << "node [shape = "
         << (node->start ? "square" : node->final ? "doublecircle" : "circle")
-        << (", label = \"" +
-            node->named_rule.value_or(node->state_info.value_or("<unknown>")) +
+        << (", label = \"" + get_name(node->state_info.value(), true) +
             "\\nat " + string_format("%p", node) + "\"")
         << "] LR_" << nodeids[node] << ";" << ss_end;
   }
@@ -450,10 +486,8 @@ std::string DFANode<T>::gen_dot(
       tid = nodeids[tr.target];
 
     oss << "LR_" << fid << " -> LR_" << tid << " [ label = \"" << tr.input
-        << " -> "
-        << (tr.target->state_info.value_or(
-               tr.target->named_rule.value_or("<unknown>")))
-        << "\\n@" << string_format("%p", tr.target) << "\" ];" << ss_end;
+        << " -> " << get_name(tr.target->state_info.value(), true) << "\\n@"
+        << string_format("%p", tr.target) << "\" ];" << ss_end;
   }
   oss << "}";
   return oss.str();
@@ -557,31 +591,6 @@ get_epsilon_closure(const std::set<NFANode<T> *> nodes,
   return eps_states;
 }
 
-template <typename T>
-std::string get_name(std::set<NFANode<T> *> nodes, bool simple = false) {
-  std::ostringstream oss;
-  oss << "{ ";
-  for (auto node : nodes) {
-    oss << node->named_rule.value_or(node->state_info.value_or("<unknown>"));
-    if (!simple)
-      oss << string_format("(%p)", node);
-    oss << " ";
-  }
-  oss << "}";
-  return oss.str();
-}
-
-template <typename T>
-std::string get_name(NFANode<T> *node, bool simple = false) {
-  std::ostringstream oss;
-  oss << "{ ";
-  oss << node->named_rule.value_or(node->state_info.value_or("<unknown>"));
-  if (!simple)
-    oss << string_format("(%p)", node);
-  oss << " }";
-  return oss.str();
-}
-
 template <typename T> std::set<char> all_alphabet(NFANode<T> *node) {
   std::set<char> ss;
   for (auto tr : node->outgoing_transitions) {
@@ -618,9 +627,9 @@ void DFANode<T>::add_transition(Transition<DFANode<T>, char> *tr) {
   outgoing_transitions.insert(tr);
 }
 
-template <typename T> DFANode<T> *NFANode<T>::to_dfa() {
-  DFANode<T> *dfa_root = nullptr;
-  std::map<std::string, DFANode<T> *> dfa_map;
+template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
+  DFANode<std::set<NFANode<T> *>> *dfa_root = nullptr;
+  std::map<std::string, DFANode<std::set<NFANode<T> *>> *> dfa_map;
 
   std::set<NFANode<T> *> init = get_epsilon_closure(this);
 
@@ -637,14 +646,15 @@ template <typename T> DFANode<T> *NFANode<T>::to_dfa() {
       continue;
 
     visited.insert(current);
-    DFANode<T> *dfanode;
+    DFANode<std::set<NFANode<T> *>> *dfanode;
 
     auto currentname = get_name(current);
 
     if (dfa_map.count(currentname))
       dfanode = dfa_map[currentname];
     else
-      dfanode = dfa_map[currentname] = new DFANode<T>{get_name(current, true)};
+      dfanode = dfa_map[currentname] =
+          new DFANode<std::set<NFANode<T> *>>{current};
     for (auto s : current) {
       if (s->final) {
         std::printf("state %s was final, so marking %s as such\n",
@@ -670,7 +680,7 @@ template <typename T> DFANode<T> *NFANode<T>::to_dfa() {
 
       std::set<NFANode<T> *> eps_state =
           get_epsilon_closure(get_states(current, qq));
-      DFANode<T> *nextdfanode;
+      DFANode<std::set<NFANode<T> *>> *nextdfanode;
 
       auto epsname = get_name(eps_state);
 
@@ -678,12 +688,13 @@ template <typename T> DFANode<T> *NFANode<T>::to_dfa() {
         nextdfanode = dfa_map[epsname];
       else {
         nextdfanode = dfa_map[epsname] =
-            new DFANode<T>{get_name(eps_state, true)};
+            new DFANode<std::set<NFANode<T> *>>{eps_state};
         std::printf("generated extra state: %s\n", epsname.c_str());
       }
 
       dfanode->add_transition(
-          new Transition<DFANode<T>, char>{nextdfanode, qq});
+          new Transition<DFANode<std::set<NFANode<T> *>>, char>{nextdfanode,
+                                                                qq});
 
       if (!visited.count(eps_state))
         remaining.push(eps_state);
@@ -693,11 +704,80 @@ template <typename T> DFANode<T> *NFANode<T>::to_dfa() {
   return dfa_root;
 }
 
-template <typename T> void DFACCodeGenerator<T>::generate(DFANode<T> *node) {
-  node->print_dot();
+template <typename T>
+void DFACCodeGenerator<T>::generate(
+    DFANode<std::set<NFANode<T> *>> *node,
+    std::set<DFANode<std::set<NFANode<T> *>> *> visited) {
+  if (visited.count(node))
+    return;
+  visited.insert(node);
+  if (node->start)
+    node->print_dot();
+
+  // generate any choice and add to output_cases
+  std::ostringstream output_case;
+  for (auto tr : node->outgoing_transitions) {
+    output_case << "case '" << tr->input << "':";
+    if (node->final) {
+      // emit tags
+      std::set<std::string> emitted;
+      for (auto state : node->state_info.value()) {
+        if (state->named_rule.has_value()) {
+          auto val = state->named_rule.value();
+          if (emitted.count(val))
+            continue;
+          emitted.insert(val);
+          output_case << string_format("__nlex_emit(\"%s\");", val.c_str());
+        }
+      }
+    }
+    output_case << string_format(
+        "__%s();",
+        get_name(tr->target->state_info.value(), false, true).c_str());
+    output_case << "break;";
+    generate(tr->target, visited);
+  }
+  output_cases.push_front(make_pair(
+      get_name(node->state_info.value(), false, true), output_case.str()));
+  if (node->start)
+    output_cases.push_front(
+        make_pair("root", get_name(node->state_info.value(), false, true)));
 }
 
-template <typename T> void CodeGenerator<T>::generate(DFANode<T> *node) {
+template <typename T> std::string DFACCodeGenerator<T>::output() {
+  std::ostringstream oss;
+  auto root = output_cases.front();
+  output_cases.pop_front();
+  std::set<std::string> visit;
+  for (auto _case : output_cases) {
+    visit.insert(_case.first);
+    oss << "inline static void " << string_format("__%s()", _case.first.c_str())
+        << ";";
+  }
+  // generate root function
+  oss << "void __nlex_root() {" << string_format("__%s();", root.second.c_str())
+      << "}";
+  for (auto _case : output_cases) {
+    if (!visit.count(_case.first))
+      continue;
+    oss << "inline static void " << string_format("__%s()", _case.first.c_str())
+        << "{";
+    oss << "__nlex_advance();";
+    if (_case.second.size() > 0) {
+      oss << "switch(__nlex_current()) {";
+      oss << _case.second;
+      oss << "}";
+    }
+    oss << "}";
+  }
+  return oss.str();
+}
+template <typename T> std::string CodeGenerator<T>::output() { __asm("int3"); }
+
+template <typename T>
+void CodeGenerator<T>::generate(
+    DFANode<std::set<NFANode<T> *>> *node,
+    std::set<DFANode<std::set<NFANode<T> *>> *> visited) {
   __asm("int3");
 }
 
@@ -741,6 +821,7 @@ int main() {
     } else if (line == ".cg") {
       root = parser.compile();
       cg.run(root);
+      std::cout << cg.output();
       continue;
     }
     parser.repl_feed(line);

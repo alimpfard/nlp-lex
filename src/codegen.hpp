@@ -1,4 +1,5 @@
 #include "parser.hpp"
+#include <list>
 
 enum class CodegenTarget {
   TargetC,
@@ -23,7 +24,10 @@ public:
   CodeGenerator(CodeGeneratorProperties p) : properties(p) {}
 
   // virtual void generate(NFANode<NFATypeT> *node);
-  virtual void generate(DFANode<NFATypeT> *node);
+  virtual void
+  generate(DFANode<std::set<NFANode<NFATypeT> *>> *node,
+           std::set<DFANode<std::set<NFANode<NFATypeT> *>> *> visited = {});
+  virtual std::string output();
   // virtual void generate(Regexp *exp);
 
   void run(NFANode<NFATypeT> *node);
@@ -40,9 +44,13 @@ public:
 
 template <typename T> struct DFACCodeGenerator : public CodeGenerator<T> {
 public:
+  std::list<std::pair<std::string, std::string>> output_cases;
   DFACCodeGenerator()
       : CodeGenerator<T>(
             {CodegenStartPhase::DFAPhase, CodegenTarget::TargetC}) {}
 
-  virtual void generate(DFANode<T> *node);
+  virtual void
+  generate(DFANode<std::set<NFANode<T> *>> *node,
+           std::set<DFANode<std::set<NFANode<T> *>> *> visited = {});
+  virtual std::string output();
 };
