@@ -363,6 +363,13 @@ std::string get_name(NFANode<T> *node, bool simple = false, bool ptr = false) {
   return oss.str();
 }
 
+std::string sanitised(char c) {
+  if (c < 10)
+    return "<" + std::to_string((int)c) + ">";
+  else
+    return std::string{c};
+}
+
 template <typename T>
 std::string NFANode<T>::gen_dot(
     std::set<NFANode<T> *> nodes,
@@ -411,7 +418,7 @@ std::string NFANode<T>::gen_dot(
                          (std::get<AnythingTransitionT>(tr.input).values) +
                          "'>")
                             .c_str()
-                      : std::string{std::get<char>(tr.input)}.c_str())
+                      : sanitised(std::get<char>(tr.input)).c_str())
         << " -> " << get_name(tr.target, true) << "\\n@"
         << string_format("%p", tr.target) << "\" ];" << ss_end;
   }
@@ -467,7 +474,7 @@ std::string DFANode<T>::gen_dot(
     nodeids[node] = node_id++;
     oss << "node [shape = "
         << (node->start ? "square" : node->final ? "doublecircle" : "circle")
-        << (", label = \"" + get_name(node->state_info.value(), true) +
+        << (", label = \"" + get_name(node->state_info.value(), false, true) +
             "\\nat " + string_format("%p", node) + "\"")
         << "] LR_" << nodeids[node] << ";" << ss_end;
   }
@@ -485,8 +492,9 @@ std::string DFANode<T>::gen_dot(
     } else
       tid = nodeids[tr.target];
 
-    oss << "LR_" << fid << " -> LR_" << tid << " [ label = \"" << tr.input
-        << " -> " << get_name(tr.target->state_info.value(), true) << "\\n@"
+    oss << "LR_" << fid << " -> LR_" << tid << " [ label = \""
+        << sanitised(tr.input) << " -> "
+        << get_name(tr.target->state_info.value(), false, true) << "\\n@"
         << string_format("%p", tr.target) << "\" ];" << ss_end;
   }
   oss << "}";
@@ -717,9 +725,11 @@ void DFACCodeGenerator<T>::generate(
   // generate any choice and add to output_cases
   std::ostringstream output_case;
   for (auto tr : node->outgoing_transitions) {
-    output_case << "case '" << tr->input << "':";
+    output_case << "case " << (int)tr->input << ":";
+    auto node = tr->target;
     if (node->final) {
       // emit tags
+      auto em = false;
       std::set<std::string> emitted;
       for (auto state : node->state_info.value()) {
         if (state->named_rule.has_value()) {
@@ -727,8 +737,14 @@ void DFACCodeGenerator<T>::generate(
           if (emitted.count(val))
             continue;
           emitted.insert(val);
+          em = true;
           output_case << string_format("__nlex_emit(\"%s\");", val.c_str());
         }
+      }
+
+      if (!em) {
+        output_case << string_format("__nlex_emit(\"%s\");",
+                                     "<Unknown final state>");
       }
     }
     output_case << string_format(
