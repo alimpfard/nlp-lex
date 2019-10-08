@@ -11,6 +11,8 @@
 #include <sstream>
 #include <stdarg.h>
 
+#include "vm.hpp"
+
 constexpr EpsilonTransitionT EpsilonTransition{};
 
 NFANode<std::string> *NParser::compile(std::string code) {
@@ -753,11 +755,11 @@ void DFACCodeGenerator<T>::generate(
     output_case << "break;";
     generate(tr->target, visited);
   }
-  output_cases.push_front(make_pair(
+  output_cases.push_front(std::make_pair(
       get_name(node->state_info.value(), false, true), output_case.str()));
   if (node->start)
-    output_cases.push_front(
-        make_pair("root", get_name(node->state_info.value(), false, true)));
+    output_cases.push_front(std::make_pair(
+        "root", get_name(node->state_info.value(), false, true)));
 }
 
 template <typename T> std::string DFACCodeGenerator<T>::output() {
@@ -788,6 +790,68 @@ template <typename T> std::string DFACCodeGenerator<T>::output() {
   }
   return oss.str();
 }
+
+template <typename T>
+void DFANLVMCodeGenerator<T>::generate(
+    DFANode<std::set<NFANode<T> *>> *node,
+    std::set<DFANode<std::set<NFANode<T> *>> *> visited) {
+  builder.begin();
+  std::map<DFANode<std::set<NFANode<T> *>> *, llvm::BasicBlock *> blk{};
+  generate(node, visited, blk);
+}
+
+using namespace llvm;
+template <typename T>
+void DFANLVMCodeGenerator<T>::generate(
+    DFANode<std::set<NFANode<T> *>> *node,
+    std::set<DFANode<std::set<NFANode<T> *>> *> visited,
+    std::map<DFANode<std::set<NFANode<T> *>> *, BasicBlock *> &blocks) {
+  if (visited.count(node))
+    return;
+  visited.insert(node);
+  if (node->start)
+    node->print_dot();
+  // generate any choice and add to output_cases
+  BasicBlock *BB = BasicBlock::Create(builder.module.TheContext,
+                                      get_name(node->state_info.value()),
+                                      builder.module.main());
+  BasicBlock *BBend = BasicBlock::Create(
+      builder.module.TheContext, get_name(node->state_info.value()) + "{::}E",
+      builder.module.main());
+  builder.module.Builder.SetInsertPoint(BB);
+  auto readv = builder.module.Builder.CreateCall(builder.module.nlex_current_f,
+                                                 {}, "readv");
+
+  blocks[node] = BB;
+  std::set<char> outgoings;
+  for (auto tr : node->outgoing_transitions) {
+    outgoings.insert(tr->input);
+  }
+  auto switchinst =
+      builder.module.Builder.CreateSwitch(readv, BBend, outgoings.size());
+  for (auto tr : node->outgoing_transitions) {
+    // todo: be less naive
+    if (!blocks.count(tr->target))
+      generate(tr->target, visited, blocks);
+
+    auto jdst = blocks[tr->target];
+    auto dst = BasicBlock::Create(builder.module.TheContext, "casejmp",
+                                  builder.module.main());
+    builder.module.Builder.SetInsertPoint(dst);
+    builder.module.Builder.CreateBr(jdst);
+    builder.module.Builder.SetInsertPoint(BB);
+    switchinst->addCase(
+        ConstantInt::get(IntegerType::get(builder.module.TheContext, 8),
+                         std::to_string((int)tr->input), 10),
+        dst);
+  }
+}
+
+template <typename T> std::string DFANLVMCodeGenerator<T>::output() {
+  builder.end();
+  return "";
+}
+
 template <typename T> std::string CodeGenerator<T>::output() { __asm("int3"); }
 
 template <typename T>
@@ -814,6 +878,7 @@ int main() {
   parser.lexer = std::make_unique<NLexer>("");
   NFANode<std::string> *root;
   DFACCodeGenerator<std::string> cg;
+  DFANLVMCodeGenerator<std::string> nlvmg;
   while (1) {
     std::string line;
     std::cout << "> ";
@@ -838,6 +903,11 @@ int main() {
       root = parser.compile();
       cg.run(root);
       std::cout << cg.output();
+      continue;
+    } else if (line == ".nlvm") {
+      root = parser.compile();
+      nlvmg.run(root);
+      nlvmg.output();
       continue;
     }
     parser.repl_feed(line);
