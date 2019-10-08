@@ -819,8 +819,31 @@ void DFANLVMCodeGenerator<T>::generate(
       builder.module.TheContext, get_name(node->state_info.value()) + "{::}E",
       builder.module.main());
   builder.module.Builder.SetInsertPoint(BBend);
+  // TODO restore string position and return with tag
   builder.module.Builder.CreateUnreachable();
   builder.module.Builder.SetInsertPoint(BB);
+  if (node->final) {
+    // TODO store the tag and string position upon getting here
+    auto em = false;
+    std::set<std::string> emitted;
+    std::string emit;
+    for (auto state : node->state_info.value()) {
+      if (state->named_rule.has_value()) {
+        auto val = state->named_rule.value();
+        if (emitted.count(val))
+          continue;
+        emitted.insert(val);
+        emit = val;
+        em = true;
+      }
+    }
+    builder.module.Builder.CreateStore(
+        builder.get_or_create_tag(em ? emit : "<Unknown Final State>"),
+        builder.module.last_tag);
+    builder.module.Builder.CreateStore(
+        builder.module.Builder.CreateCall(builder.module.nlex_current_p, {}),
+        builder.module.last_final_state_position);
+  }
   auto readv = builder.module.Builder.CreateCall(builder.module.nlex_current_f,
                                                  {}, "readv");
 
