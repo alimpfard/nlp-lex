@@ -818,6 +818,8 @@ void DFANLVMCodeGenerator<T>::generate(
   BasicBlock *BBend = BasicBlock::Create(
       builder.module.TheContext, get_name(node->state_info.value()) + "{::}E",
       builder.module.main());
+  builder.module.Builder.SetInsertPoint(BBend);
+  builder.module.Builder.CreateUnreachable();
   builder.module.Builder.SetInsertPoint(BB);
   auto readv = builder.module.Builder.CreateCall(builder.module.nlex_current_f,
                                                  {}, "readv");
