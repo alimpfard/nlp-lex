@@ -31,8 +31,6 @@ static llvm::AllocaInst *createEntryBlockAlloca(llvm::Function *TheFunction,
   return TmpB.CreateAlloca(ty, 0, VarName.c_str());
 }
 
-
-
 struct Module {
 public:
   llvm::LLVMContext TheContext;
@@ -43,6 +41,7 @@ public:
   llvm::Function *nlex_current_p;
   llvm::Function *nlex_restore;
   llvm::Function *nlex_next;
+  llvm::Function *nlex_start;
 
   llvm::Function *_main = nullptr;
   llvm::BasicBlock *main_entry;
@@ -50,12 +49,20 @@ public:
   llvm::AllocaInst *last_tag;
   llvm::AllocaInst *last_final_state_position;
 
+  llvm::Type *input_struct_type;
+
   llvm::Function *main() {
     if (_main)
       return _main;
-
+    llvm::Type *members[] = {
+        llvm::Type::getInt32Ty(TheContext),
+        llvm::Type::getInt32Ty(TheContext),
+        llvm::PointerType::get(llvm::Type::getInt8Ty(TheContext), 0),
+    };
+    input_struct_type = llvm::StructType::create(members);
+    llvm::Type *args[] = {llvm::PointerType::get(input_struct_type, 0)};
     llvm::FunctionType *ncf =
-        llvm::FunctionType::get(llvm::Type::getVoidTy(TheContext), {}, false);
+        llvm::FunctionType::get(llvm::Type::getVoidTy(TheContext), args, false);
 
     _main = llvm::Function::Create(ncf, llvm::Function::InternalLinkage,
                                    "__nlex_root", TheModule.get());
@@ -99,6 +106,8 @@ public:
     nlex_current_p =
         llvm::Function::Create(ncp, llvm::Function::ExternalLinkage,
                                "__nlex_position", TheModule.get());
+    nlex_start = llvm::Function::Create(ncp, llvm::Function::ExternalLinkage,
+                                        "__nlex_true_start", TheModule.get());
   }
 };
 

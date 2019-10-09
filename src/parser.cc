@@ -820,11 +820,51 @@ void DFANLVMCodeGenerator<T>::generate(
       builder.module.main());
   builder.module.Builder.SetInsertPoint(BBend);
   // TODO restore string position and return with tag
-  builder.module.Builder.CreateCall(
-      builder.module.nlex_restore,
-      {builder.module.Builder.CreateLoad(
-          builder.module.last_final_state_position)});
+  if (!node->final) {
+    // builder.module.Builder.CreateRetVoid();
+
+    builder.module.Builder.CreateCall(
+        builder.module.nlex_restore,
+        {builder.module.Builder.CreateLoad(
+            builder.module.last_final_state_position)});
+  }
+  auto istruct = builder.module.main()->arg_begin();
+  auto startm = builder.module.Builder.CreateLoad(
+      builder.module.Builder.CreateInBoundsGEP(
+          istruct,
+          {ConstantInt::get(Type::getInt32Ty(builder.module.TheContext), 0),
+           ConstantInt::get(Type::getInt32Ty(builder.module.TheContext), 0)},
+          "startptr"));
+  builder.module.Builder.CreateStore(
+      builder.module.Builder.CreateSub(
+          builder.module.Builder.CreateTrunc(
+              builder.module.Builder.CreateSub(
+                  builder.module.Builder.CreatePtrToInt(
+                      builder.module.Builder.CreateCall(
+                          builder.module.nlex_current_p, {}),
+                      Type::getInt64Ty(builder.module.TheContext)),
+                  builder.module.Builder.CreatePtrToInt(
+                      builder.module.Builder.CreateCall(
+                          builder.module.nlex_start, {}),
+                      Type::getInt64Ty(builder.module.TheContext))),
+              Type::getInt32Ty(builder.module.TheContext)),
+          startm),
+      builder.module.Builder.CreateInBoundsGEP(
+          istruct,
+          {ConstantInt::get(Type::getInt32Ty(builder.module.TheContext), 0),
+           ConstantInt::get(Type::getInt32Ty(builder.module.TheContext), 1)},
+          "length"));
+  builder.module.Builder.CreateStore(
+      builder.module.Builder.CreateLoad(builder.module.last_tag),
+      builder.module.Builder.CreateInBoundsGEP(
+          istruct,
+          {
+              ConstantInt::get(Type::getInt32Ty(builder.module.TheContext), 0),
+              ConstantInt::get(Type::getInt32Ty(builder.module.TheContext), 2),
+          },
+          "tag"));
   builder.module.Builder.CreateRetVoid();
+
   builder.module.Builder.SetInsertPoint(BB);
   if (node->final) {
     // TODO store the tag and string position upon getting here

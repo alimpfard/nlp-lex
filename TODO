@@ -31,6 +31,7 @@ stopword "test", "shit", "blah", -"stopwords.list"
 #   - consequently, allow `(?:)' expressions
 #
 # - Codegen
+#   store start position upon first call
 #   implement library functions __nlex_*
 #
 # - testing the lexer live?
