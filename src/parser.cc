@@ -820,7 +820,11 @@ void DFANLVMCodeGenerator<T>::generate(
       builder.module.main());
   builder.module.Builder.SetInsertPoint(BBend);
   // TODO restore string position and return with tag
-  builder.module.Builder.CreateUnreachable();
+  builder.module.Builder.CreateCall(
+      builder.module.nlex_restore,
+      {builder.module.Builder.CreateLoad(
+          builder.module.last_final_state_position)});
+  builder.module.Builder.CreateRetVoid();
   builder.module.Builder.SetInsertPoint(BB);
   if (node->final) {
     // TODO store the tag and string position upon getting here
