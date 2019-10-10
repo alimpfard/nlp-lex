@@ -1,10 +1,12 @@
 #pragma once
 
+#include <cstring>
 #include <map>
 #include <memory>
 #include <optional>
 #include <set>
 #include <stack>
+#include <string_view>
 #include <unordered_set>
 #include <utility>
 #include <variant>
@@ -12,6 +14,7 @@
 
 #include "nfa.hpp"
 #include "regexp.hpp"
+#include "codepoints.hpp"
 
 enum class SymbolType { Const, Define };
 enum class ParserState {
@@ -48,7 +51,7 @@ class NParser {
 
   std::map<std::string, bool> gen_lexer_options;
   std::set<std::string> gen_lexer_stopwords;
-  std::map<char, char> gen_lexer_normalisations;
+  std::map<std::string, std::string> gen_lexer_normalisations;
 
 public:
   std::unique_ptr<NLexer> lexer;

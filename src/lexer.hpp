@@ -7,6 +7,7 @@
 #include <variant>
 #include <vector>
 
+#include "codepoints.hpp"
 #include "regexp.hpp"
 
 enum TokenType {

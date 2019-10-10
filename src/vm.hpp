@@ -44,7 +44,7 @@ public:
   llvm::Function *nlex_start;
 
   llvm::Function *_main = nullptr;
-  llvm::BasicBlock *main_entry;
+  llvm::BasicBlock *main_entry, *BBfinalise;
 
   llvm::AllocaInst *last_tag;
   llvm::AllocaInst *last_final_state_position;
@@ -119,6 +119,47 @@ public:
 
   void begin() {
     // grumble grumble
+
+    module.BBfinalise =
+        llvm::BasicBlock::Create(module.TheContext, "_escape", module.main());
+    module.Builder.SetInsertPoint(module.BBfinalise);
+    auto istruct = module.main()->arg_begin();
+    auto startm = module.Builder.CreateLoad(module.Builder.CreateInBoundsGEP(
+        istruct,
+        {llvm::ConstantInt::get(llvm::Type::getInt32Ty(module.TheContext), 0),
+         llvm::ConstantInt::get(llvm::Type::getInt32Ty(module.TheContext), 0)},
+        "startptr"));
+    module.Builder.CreateStore(
+        module.Builder.CreateSub(
+            module.Builder.CreateTrunc(
+                module.Builder.CreateSub(
+                    module.Builder.CreatePtrToInt(
+                        module.Builder.CreateCall(module.nlex_current_p, {}),
+                        llvm::Type::getInt64Ty(module.TheContext)),
+                    module.Builder.CreatePtrToInt(
+                        module.Builder.CreateCall(module.nlex_start, {}),
+                        llvm::Type::getInt64Ty(module.TheContext))),
+                llvm::Type::getInt32Ty(module.TheContext)),
+            startm),
+        module.Builder.CreateInBoundsGEP(
+            istruct,
+            {llvm::ConstantInt::get(llvm::Type::getInt32Ty(module.TheContext),
+                                    0),
+             llvm::ConstantInt::get(llvm::Type::getInt32Ty(module.TheContext),
+                                    1)},
+            "length"));
+    module.Builder.CreateStore(
+        module.Builder.CreateLoad(module.last_tag),
+        module.Builder.CreateInBoundsGEP(
+            istruct,
+            {
+                llvm::ConstantInt::get(
+                    llvm::Type::getInt32Ty(module.TheContext), 0),
+                llvm::ConstantInt::get(
+                    llvm::Type::getInt32Ty(module.TheContext), 2),
+            },
+            "tag"));
+    module.Builder.CreateRetVoid();
   }
   void end() {
     // finish the function

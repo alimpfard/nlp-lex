@@ -173,9 +173,28 @@ void NParser::parse() {
       statestack.pop(); // name
       break;
     }
-    case ParserState::Normal:
-      printf("Not impl'd yet\n");
+    case ParserState::Normal: {
+      if (token.type != TOK_LITSTRING && token.type != TOK_NAME) {
+        failing = true;
+        std::printf("expected either a string literal or a bare listing of "
+                    "characters. invalid token %s - %s\n",
+                    reverse_token_type[token.type],
+                    std::get<std::string>(token.value).c_str());
+        break;
+      }
+      std::string ns = std::get<std::string>(persist);
+      std::string replaced = std::get<std::string>(token.value);
+      for (auto cp : codepoints(replaced))
+        if (!gen_lexer_normalisations.count(cp)) {
+          std::printf("registered normalisation '%s' for '%s'\n", ns.c_str(),
+                      cp.c_str());
+          gen_lexer_normalisations[cp] = ns;
+        } else if (gen_lexer_normalisations[cp] != cp)
+          std::printf(
+              "a normalisation of '%s' has already been registered for '%s'\n",
+              gen_lexer_normalisations[cp].c_str(), cp.c_str());
       break;
+    }
     }
   } while (!failing);
 }
@@ -821,49 +840,12 @@ void DFANLVMCodeGenerator<T>::generate(
   builder.module.Builder.SetInsertPoint(BBend);
   // TODO restore string position and return with tag
   if (!node->final) {
-    // builder.module.Builder.CreateRetVoid();
-
     builder.module.Builder.CreateCall(
         builder.module.nlex_restore,
         {builder.module.Builder.CreateLoad(
             builder.module.last_final_state_position)});
   }
-  auto istruct = builder.module.main()->arg_begin();
-  auto startm = builder.module.Builder.CreateLoad(
-      builder.module.Builder.CreateInBoundsGEP(
-          istruct,
-          {ConstantInt::get(Type::getInt32Ty(builder.module.TheContext), 0),
-           ConstantInt::get(Type::getInt32Ty(builder.module.TheContext), 0)},
-          "startptr"));
-  builder.module.Builder.CreateStore(
-      builder.module.Builder.CreateSub(
-          builder.module.Builder.CreateTrunc(
-              builder.module.Builder.CreateSub(
-                  builder.module.Builder.CreatePtrToInt(
-                      builder.module.Builder.CreateCall(
-                          builder.module.nlex_current_p, {}),
-                      Type::getInt64Ty(builder.module.TheContext)),
-                  builder.module.Builder.CreatePtrToInt(
-                      builder.module.Builder.CreateCall(
-                          builder.module.nlex_start, {}),
-                      Type::getInt64Ty(builder.module.TheContext))),
-              Type::getInt32Ty(builder.module.TheContext)),
-          startm),
-      builder.module.Builder.CreateInBoundsGEP(
-          istruct,
-          {ConstantInt::get(Type::getInt32Ty(builder.module.TheContext), 0),
-           ConstantInt::get(Type::getInt32Ty(builder.module.TheContext), 1)},
-          "length"));
-  builder.module.Builder.CreateStore(
-      builder.module.Builder.CreateLoad(builder.module.last_tag),
-      builder.module.Builder.CreateInBoundsGEP(
-          istruct,
-          {
-              ConstantInt::get(Type::getInt32Ty(builder.module.TheContext), 0),
-              ConstantInt::get(Type::getInt32Ty(builder.module.TheContext), 2),
-          },
-          "tag"));
-  builder.module.Builder.CreateRetVoid();
+  builder.module.Builder.CreateBr(builder.module.BBfinalise);
 
   builder.module.Builder.SetInsertPoint(BB);
   if (node->final) {

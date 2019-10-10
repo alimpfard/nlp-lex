@@ -176,7 +176,9 @@ inline Token NLexer::_next() {
   }
   case LexerState::Name: {
     const Token &mtoken = error_token();
-    if (prev_token.length == 1 && c == '<') {
+    if (codepoints::is_single_code_point(
+            std::get<std::string>(prev_token.value)) &&
+        c == '<') {
       // norm
       if (strncmp("=", source_p, 1) != 0) {
         lexer_error(*this, Errors::Unexpected, mtoken, ErrorPosition::On,
