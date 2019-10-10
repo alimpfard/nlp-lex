@@ -957,6 +957,8 @@ int main() {
       continue;
     } else if (line == ".nlvm") {
       root = parser.compile();
+      nlvmg.builder.prepare(parser.gen_lexer_normalisations,
+                            parser.gen_lexer_stopwords);
       nlvmg.run(root);
       nlvmg.output();
       continue;
