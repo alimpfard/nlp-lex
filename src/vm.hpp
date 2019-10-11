@@ -164,16 +164,43 @@ public:
     // create global values
     auto nlex_fed_string = new llvm::GlobalVariable(
         llvm::PointerType::get(llvm::Type::getInt8Ty(module.TheContext), 0),
-        false, llvm::GlobalValue::InternalLinkage, nullptr, "nlex_fed_string");
+        false, llvm::GlobalValue::InternalLinkage,
+        llvm::Constant::getNullValue(llvm::PointerType::get(
+            llvm::Type::getInt8Ty(module.TheContext), 0)),
+        "nlex_fed_string");
     module.TheModule->getGlobalList().push_back(nlex_fed_string);
     auto nlex_true_start = new llvm::GlobalVariable(
         llvm::PointerType::get(llvm::Type::getInt8Ty(module.TheContext), 0),
-        false, llvm::GlobalValue::InternalLinkage, nullptr, "nlex_true_start");
+        false, llvm::GlobalValue::InternalLinkage,
+        llvm::Constant::getNullValue(llvm::PointerType::get(
+            llvm::Type::getInt8Ty(module.TheContext), 0)),
+        "nlex_true_start");
     module.TheModule->getGlobalList().push_back(nlex_true_start);
     auto nlex_tmp_char = new llvm::GlobalVariable(
         llvm::Type::getInt8Ty(module.TheContext), false,
-        llvm::GlobalValue::InternalLinkage, nullptr, "nlex_tmp_char");
+        llvm::GlobalValue::InternalLinkage,
+        llvm::Constant::getNullValue(llvm::Type::getInt8Ty(module.TheContext)),
+        "nlex_tmp_char");
     module.TheModule->getGlobalList().push_back(nlex_tmp_char);
+    auto nlex_injected = new llvm::GlobalVariable(
+        llvm::PointerType::get(llvm::Type::getInt8Ty(module.TheContext), 0),
+        false, llvm::GlobalValue::InternalLinkage,
+        llvm::Constant::getNullValue(llvm::PointerType::get(
+            llvm::Type::getInt8Ty(module.TheContext), 0)),
+        "nlex_injected");
+    module.TheModule->getGlobalList().push_back(nlex_injected);
+    auto nlex_injected_length = new llvm::GlobalVariable(
+        llvm::Type::getInt32Ty(module.TheContext), false,
+        llvm::GlobalValue::InternalLinkage,
+        llvm::Constant::getNullValue(llvm::Type::getInt8Ty(module.TheContext)),
+        "nlex_injected_length");
+    module.TheModule->getGlobalList().push_back(nlex_injected_length);
+    auto nlex_injected_length_diff = new llvm::GlobalVariable(
+        llvm::Type::getInt32Ty(module.TheContext), false,
+        llvm::GlobalValue::InternalLinkage,
+        llvm::Constant::getNullValue(llvm::Type::getInt8Ty(module.TheContext)),
+        "nlex_injected_length_diff");
+    module.TheModule->getGlobalList().push_back(nlex_injected_length_diff);
 
     // create "library" functions
     llvm::IRBuilder<> builder(module.TheContext);
@@ -188,17 +215,53 @@ public:
     BB = llvm::BasicBlock::Create(module.TheContext, "entry",
                                   module.nlex_current_p);
     builder.SetInsertPoint(BB);
-    builder.CreateRet(builder.CreateLoad(nlex_fed_string));
+    builder.CreateRet(
+        builder.CreateGEP(builder.CreateLoad(nlex_fed_string),
+                          {builder.CreateLoad(nlex_injected_length_diff)}));
 
     // nlex_restore - restore position from passed in pointer
     BB = llvm::BasicBlock::Create(module.TheContext, "entry",
                                   module.nlex_restore);
     builder.SetInsertPoint(BB);
-    builder.CreateStore(module.nlex_restore->arg_begin(),
-                        builder.CreateLoad(nlex_fed_string));
+    builder.CreateStore(module.nlex_restore->arg_begin(), nlex_fed_string);
+    builder.CreateStore(
+        llvm::ConstantInt::get(llvm::Type::getInt32Ty(module.TheContext), 0),
+        nlex_injected_length);
+    builder.CreateStore(
+        llvm::ConstantInt::get(llvm::Type::getInt32Ty(module.TheContext), 0),
+        nlex_injected_length_diff);
+    builder.CreateRetVoid();
 
     // nlex_next - advance character position
     BB = llvm::BasicBlock::Create(module.TheContext, "entry", module.nlex_next);
+    auto *uBB =
+        llvm::BasicBlock::Create(module.TheContext, "entry", module.nlex_next);
+    auto *pBB =
+        llvm::BasicBlock::Create(module.TheContext, "entry", module.nlex_next);
+    builder.SetInsertPoint(BB);
+    auto len = builder.CreateLoad(nlex_injected_length);
+    builder.CreateCondBr(
+        builder.CreateICmpSGT(
+            len, llvm::ConstantInt::get(
+                     llvm::Type::getInt32Ty(module.TheContext), 0)),
+        uBB, pBB);
+    // inject
+    builder.SetInsertPoint(uBB);
+    builder.CreateStore(
+        builder.CreateNSWAdd(len,
+                             llvm::ConstantInt::get(
+                                 llvm::Type::getInt32Ty(module.TheContext), 1)),
+        nlex_injected_length);
+    builder.CreateStore(
+        builder.CreateGEP(builder.CreateLoad(nlex_injected),
+                          {llvm::ConstantInt::get(
+                              llvm::Type::getInt32Ty(module.TheContext), -1)}),
+        nlex_injected);
+    builder.CreateStore(builder.CreateLoad(builder.CreateLoad(nlex_injected)),
+                        nlex_tmp_char);
+    builder.CreateRetVoid();
+    // no inject
+    BB = pBB;
     builder.SetInsertPoint(BB);
     auto fs = builder.CreateLoad(nlex_fed_string);
     auto gep = builder.CreateInBoundsGEP(
@@ -225,9 +288,17 @@ public:
           if (i == norm.size()) {
 
             auto BBend = llvm::BasicBlock::Create(
-                module.TheContext, "default_escape-" + norm.substr(0, i),
-                module.nlex_next);
+                module.TheContext, "default_escape-" + norm, module.nlex_next);
             // match, TODO: call inject
+            mbuilder.CreateStore(get_or_create_tag(norm), nlex_injected);
+            mbuilder.CreateStore(
+                llvm::ConstantInt::get(
+                    llvm::Type::getInt32Ty(module.TheContext), norm.size()),
+                nlex_injected_length);
+            mbuilder.CreateStore(llvm::ConstantInt::get(
+                                     llvm::Type::getInt32Ty(module.TheContext),
+                                     pnorm.second.size() - norm.size()),
+                                 nlex_injected_length_diff);
             sw = mbuilder.CreateSwitch(cvv, BBend);
             mbuilder.SetInsertPoint(BBend);
             mbuilder.CreateRetVoid();
@@ -260,8 +331,12 @@ public:
         }
       }
     }
-    // nlex_start;
-  }
+    // nlex_start - return the true start of the fed string
+    BB =
+        llvm::BasicBlock::Create(module.TheContext, "entry", module.nlex_start);
+    builder.SetInsertPoint(BB);
+    builder.CreateRet(builder.CreateLoad(nlex_true_start));
+  } // namespace nlvm
   void end() {
     // finish the function
 
@@ -295,5 +370,5 @@ public:
     return registered_tags[tag] =
                mk_string(module.TheModule.get(), module.TheContext, tag);
   }
-};
+}; // namespace nlvm
 } // namespace nlvm
