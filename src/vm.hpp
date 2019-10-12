@@ -114,6 +114,7 @@ public:
 class Builder {
 public:
   Module module;
+  llvm::BasicBlock *first_root = nullptr;
 
   Builder(std::string mname) : module(mname) {}
 
@@ -234,10 +235,10 @@ public:
 
     // nlex_next - advance character position
     BB = llvm::BasicBlock::Create(module.TheContext, "entry", module.nlex_next);
-    auto *uBB =
-        llvm::BasicBlock::Create(module.TheContext, "entry", module.nlex_next);
-    auto *pBB =
-        llvm::BasicBlock::Create(module.TheContext, "entry", module.nlex_next);
+    auto *uBB = llvm::BasicBlock::Create(module.TheContext, "has_inject",
+                                         module.nlex_next);
+    auto *pBB = llvm::BasicBlock::Create(module.TheContext, "no_inject",
+                                         module.nlex_next);
     builder.SetInsertPoint(BB);
     auto len = builder.CreateLoad(nlex_injected_length);
     builder.CreateCondBr(
@@ -282,14 +283,12 @@ public:
       for (int i = 0; i <= norm.size(); i++) {
         if (!levels.count(norm.substr(0, i))) {
           // we don't have it in the cache
-
           // create a toplevel block
           llvm::SwitchInst *sw;
           if (i == norm.size()) {
 
             auto BBend = llvm::BasicBlock::Create(
                 module.TheContext, "default_escape-" + norm, module.nlex_next);
-            // match, TODO: call inject
             mbuilder.CreateStore(get_or_create_tag(norm), nlex_injected);
             mbuilder.CreateStore(
                 llvm::ConstantInt::get(
@@ -339,6 +338,11 @@ public:
   } // namespace nlvm
   void end() {
     // finish the function
+    if (first_root) {
+      llvm::IRBuilder<> builder(module.TheContext);
+      builder.SetInsertPoint(module.main_entry);
+      builder.CreateBr(first_root);
+    }
 
     llvm::verifyFunction(*module.main());
     module.TheModule->print(llvm::errs(), nullptr);
@@ -370,5 +374,5 @@ public:
     return registered_tags[tag] =
                mk_string(module.TheModule.get(), module.TheContext, tag);
   }
-}; // namespace nlvm
+};
 } // namespace nlvm

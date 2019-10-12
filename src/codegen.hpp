@@ -47,6 +47,7 @@ public:
 template <typename T> struct DFACCodeGenerator : public CodeGenerator<T> {
 public:
   std::list<std::pair<std::string, std::string>> output_cases;
+
   DFACCodeGenerator()
       : CodeGenerator<T>(
             {CodegenStartPhase::DFAPhase, CodegenTarget::TargetC}) {}
@@ -59,6 +60,7 @@ public:
 template <typename T> struct DFANLVMCodeGenerator : public CodeGenerator<T> {
 public:
   nlvm::Builder builder;
+  llvm::BasicBlock *root_bb;
   DFANLVMCodeGenerator()
       : CodeGenerator<T>(
             {CodegenStartPhase::DFAPhase, CodegenTarget::TargetNLVM}),

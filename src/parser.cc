@@ -896,9 +896,12 @@ void DFANLVMCodeGenerator<T>::generate(
                          std::to_string((int)tr->input), 10),
         dst);
   }
+  if (node->start)
+    root_bb = BB;
 }
 
 template <typename T> std::string DFANLVMCodeGenerator<T>::output() {
+  builder.first_root = this->root_bb;
   builder.end();
   return "";
 }
