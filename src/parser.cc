@@ -929,6 +929,76 @@ void DFANLVMCodeGenerator<T>::generate(
     if (!blocks.count(node->default_transition))
       generate(node->default_transition, visited, blocks);
     deflBB = blocks[node->default_transition];
+    auto bb_ = BasicBlock::Create(builder.module.TheContext, "",
+                                  builder.module.main());
+    builder.module.Builder.SetInsertPoint(bb_);
+    // consume as many chars as needed for a complete unicode codepoint
+    {
+      auto bb0 = BasicBlock::Create(builder.module.TheContext, "",
+                                    builder.module.main());
+      auto bb1 = BasicBlock::Create(builder.module.TheContext, "",
+                                    builder.module.main());
+      auto bb2 = BasicBlock::Create(builder.module.TheContext, "",
+                                    builder.module.main());
+      decltype(bb0) bbs[] = {bb0, bb1, bb2};
+      auto bbsel1 = BasicBlock::Create(builder.module.TheContext, "",
+                                       builder.module.main());
+      auto bbsel2 = BasicBlock::Create(builder.module.TheContext, "",
+                                       builder.module.main());
+      auto bbphi = BasicBlock::Create(builder.module.TheContext, "",
+                                      builder.module.main());
+      auto valskip = builder.module.Builder.CreateCall(
+          builder.module.nlex_get_utf8_length, {readv});
+      auto lt2 = builder.module.Builder.CreateICmpSLT(
+          valskip, llvm::ConstantInt::get(
+                       llvm::Type::getInt32Ty(builder.module.TheContext), 2));
+      builder.module.Builder.CreateCondBr(lt2, bbsel1, bbsel2);
+      builder.module.Builder.SetInsertPoint(bbsel1);
+      auto s1 = builder.module.Builder.CreateSelect(
+          builder.module.Builder.CreateICmpEQ(
+              valskip,
+              llvm::ConstantInt::get(
+                  llvm::Type::getInt32Ty(builder.module.TheContext), 0)),
+          llvm::BlockAddress::get(builder.module.main(), deflBB),
+          llvm::BlockAddress::get(builder.module.main(), bb2));
+      builder.module.Builder.CreateBr(bbphi);
+      builder.module.Builder.SetInsertPoint(bbsel2);
+      auto s2 = builder.module.Builder.CreateSelect(
+          builder.module.Builder.CreateICmpEQ(
+              valskip,
+              llvm::ConstantInt::get(
+                  llvm::Type::getInt32Ty(builder.module.TheContext), 2)),
+          llvm::BlockAddress::get(builder.module.main(), bb1),
+          llvm::BlockAddress::get(builder.module.main(), bb0));
+      builder.module.Builder.CreateBr(bbphi);
+      builder.module.Builder.SetInsertPoint(bbphi);
+      auto phi = builder.module.Builder.CreatePHI(
+          llvm::PointerType::get(
+              llvm::Type::getInt8Ty(builder.module.TheContext), 0),
+          2);
+      phi->addIncoming(s1, bbsel1);
+      phi->addIncoming(s2, bbsel2);
+
+      for (auto i = 0; i < 3; i++) {
+        auto bb = bbs[i];
+        builder.module.Builder.SetInsertPoint(bb);
+        builder.module.Builder.CreateCall(builder.module.nlex_next);
+        auto val =
+            builder.module.Builder.CreateCall(builder.module.nlex_current_f);
+        builder.module.add_value_to_token(val);
+        if (i < 2)
+          builder.module.Builder.CreateBr(bbs[i + 1]);
+        else
+          builder.module.Builder.CreateBr(deflBB);
+      }
+      builder.module.Builder.SetInsertPoint(bbphi);
+      auto ibr = builder.module.Builder.CreateIndirectBr(phi, 4);
+      ibr->addDestination(deflBB); // 0
+      ibr->addDestination(bb2);    // 1
+      ibr->addDestination(bb1);    // 2
+      ibr->addDestination(bb0);    // 3
+    }
+    deflBB = bb_;
   }
   builder.module.Builder.SetInsertPoint(BB);
   if (outgoings.size() > 0) {

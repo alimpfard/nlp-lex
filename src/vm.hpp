@@ -43,6 +43,7 @@ public:
   llvm::Function *nlex_feed;
   llvm::Function *nlex_next;
   llvm::Function *nlex_start;
+  llvm::Function *nlex_get_utf8_length;
 
   llvm::GlobalVariable *nlex_match_start;
   llvm::GlobalVariable *token_value;
@@ -96,7 +97,7 @@ public:
 
     _main = llvm::Function::Create(ncf, llvm::Function::ExternalLinkage,
                                    "__nlex_root", TheModule.get());
-    main_entry = llvm::BasicBlock::Create(TheContext, "entry", _main);
+    main_entry = llvm::BasicBlock::Create(TheContext, "", _main);
 
     last_tag = createEntryBlockAlloca(
         _main, "ltag",
@@ -122,6 +123,13 @@ public:
     nlex_current_f =
         llvm::Function::Create(ncf, llvm::Function::InternalLinkage,
                                "__nlex_current", TheModule.get());
+    llvm::FunctionType *ucf =
+        llvm::FunctionType::get(llvm::Type::getInt32Ty(TheContext),
+                                {llvm::Type::getInt8Ty(TheContext)}, false);
+
+    nlex_get_utf8_length =
+        llvm::Function::Create(ucf, llvm::Function::InternalLinkage,
+                               "__nlex_utf8_length", TheModule.get());
 
     llvm::FunctionType *nln =
         llvm::FunctionType::get(llvm::Type::getVoidTy(TheContext), {}, false);
@@ -265,22 +273,20 @@ public:
     llvm::IRBuilder<> builder(module.TheContext);
 
     // nlex_current_f - get current character
-    auto BB = llvm::BasicBlock::Create(module.TheContext, "entry",
-                                       module.nlex_current_f);
+    auto BB =
+        llvm::BasicBlock::Create(module.TheContext, "", module.nlex_current_f);
     builder.SetInsertPoint(BB);
     builder.CreateRet(builder.CreateLoad(nlex_tmp_char));
 
     // nlex_current_p - get current position in string
-    BB = llvm::BasicBlock::Create(module.TheContext, "entry",
-                                  module.nlex_current_p);
+    BB = llvm::BasicBlock::Create(module.TheContext, "", module.nlex_current_p);
     builder.SetInsertPoint(BB);
     builder.CreateRet(
         builder.CreateGEP(builder.CreateLoad(nlex_fed_string),
                           {builder.CreateLoad(nlex_injected_length_diff)}));
 
     // nlex_restore - restore position from passed in pointer
-    BB = llvm::BasicBlock::Create(module.TheContext, "entry",
-                                  module.nlex_restore);
+    BB = llvm::BasicBlock::Create(module.TheContext, "", module.nlex_restore);
     builder.SetInsertPoint(BB);
     builder.CreateStore(module.nlex_restore->arg_begin(), nlex_fed_string);
     builder.CreateStore(
@@ -291,7 +297,7 @@ public:
         nlex_injected_length_diff);
     builder.CreateRetVoid();
     // nlex_feed - feed string to lexer
-    BB = llvm::BasicBlock::Create(module.TheContext, "entry", module.nlex_feed);
+    BB = llvm::BasicBlock::Create(module.TheContext, "", module.nlex_feed);
     builder.SetInsertPoint(BB);
     builder.CreateStore(module.nlex_feed->arg_begin(), nlex_fed_string);
     builder.CreateStore(module.nlex_feed->arg_begin(), nlex_true_start);
@@ -303,7 +309,7 @@ public:
         nlex_injected_length_diff);
     builder.CreateRetVoid();
     // nlex_next - advance character position
-    BB = llvm::BasicBlock::Create(module.TheContext, "entry", module.nlex_next);
+    BB = llvm::BasicBlock::Create(module.TheContext, "", module.nlex_next);
     auto *uBB = llvm::BasicBlock::Create(module.TheContext, "has_inject",
                                          module.nlex_next);
     auto *pBB = llvm::BasicBlock::Create(module.TheContext, "no_inject",
@@ -439,10 +445,60 @@ public:
       }
     }
     // nlex_start - return the true start of the fed string
-    BB =
-        llvm::BasicBlock::Create(module.TheContext, "entry", module.nlex_start);
+    BB = llvm::BasicBlock::Create(module.TheContext, "", module.nlex_start);
     builder.SetInsertPoint(BB);
     builder.CreateRet(builder.CreateLoad(nlex_true_start));
+
+    // nlex_get_utf8_length - return the number of expected extra chars to
+    // consume for the given starting byte in a utf8 sequence
+    BB = llvm::BasicBlock::Create(module.TheContext, "",
+                                  module.nlex_get_utf8_length);
+    auto _4 = llvm::BasicBlock::Create(module.TheContext, "",
+                                       module.nlex_get_utf8_length);
+    auto _6 = llvm::BasicBlock::Create(module.TheContext, "",
+                                       module.nlex_get_utf8_length);
+    auto _8 = llvm::BasicBlock::Create(module.TheContext, "",
+                                       module.nlex_get_utf8_length);
+    auto _11 = llvm::BasicBlock::Create(module.TheContext, "",
+                                        module.nlex_get_utf8_length);
+    builder.SetInsertPoint(BB);
+    auto arg = module.nlex_get_utf8_length->arg_begin();
+    auto icmp = builder.CreateICmpULT(
+        arg,
+        llvm::ConstantInt::get(llvm::Type::getInt8Ty(module.TheContext), 127));
+    builder.CreateCondBr(icmp, _11, _4);
+    builder.SetInsertPoint(_4);
+    auto icmp_4 = builder.CreateICmpULT(
+        arg,
+        llvm::ConstantInt::get(llvm::Type::getInt8Ty(module.TheContext), -33));
+    builder.CreateCondBr(icmp_4, _11, _6);
+    builder.SetInsertPoint(_6);
+    auto icmp_6 = builder.CreateICmpULT(
+        arg,
+        llvm::ConstantInt::get(llvm::Type::getInt8Ty(module.TheContext), -17));
+    builder.CreateCondBr(icmp_4, _11, _8);
+    builder.SetInsertPoint(_8);
+    auto icmp_8 = builder.CreateICmpULT(
+        arg,
+        llvm::ConstantInt::get(llvm::Type::getInt8Ty(module.TheContext), -9));
+    auto sel = builder.CreateSelect(
+        icmp_8,
+        llvm::ConstantInt::get(llvm::Type::getInt32Ty(module.TheContext), 3),
+        llvm::ConstantInt::get(llvm::Type::getInt32Ty(module.TheContext), 0));
+    builder.CreateBr(_11);
+    builder.SetInsertPoint(_11);
+    auto phi = builder.CreatePHI(llvm::Type::getInt32Ty(module.TheContext), 4);
+    phi->addIncoming(
+        llvm::ConstantInt::get(llvm::Type::getInt32Ty(module.TheContext), 0),
+        BB);
+    phi->addIncoming(
+        llvm::ConstantInt::get(llvm::Type::getInt32Ty(module.TheContext), 1),
+        _4);
+    phi->addIncoming(
+        llvm::ConstantInt::get(llvm::Type::getInt32Ty(module.TheContext), 2),
+        _6);
+    phi->addIncoming(sel, _8);
+    builder.CreateRet(phi);
   } // namespace nlvm
   void end() {
     // finish the function
