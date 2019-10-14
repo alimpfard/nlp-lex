@@ -23,10 +23,11 @@ non-captured (inlined) matches can be defined as such:
 
 the regex engine is currently very limited in what it supports, however here is a road map:
 
-- [ ] execution
+- [X] execution
+- [ ] standalone execution
 - [X] state traversal codegen
-- [-] helper functions codegen
-- [-] normalisation codegen
+- [X] helper functions codegen
+- [X] normalisation codegen
 - [ ] stopword codegen
 - [X] normalisation declarations (`c <= abcd`)
 - [X] stopword declarations (`stopwords "stop" "word"`)
