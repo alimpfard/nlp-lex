@@ -875,7 +875,7 @@ void DFANLVMCodeGenerator<T>::generate(
       builder.module.TheContext, get_name(node->state_info.value()) + "{::}E",
       builder.module.main());
   builder.module.Builder.SetInsertPoint(BBend);
-  // TODO restore string position and return with tag
+  // restore string position and return with tag
 
   if (!node->final) {
     builder.module.Builder.CreateCall(
@@ -894,7 +894,7 @@ void DFANLVMCodeGenerator<T>::generate(
 
   builder.module.Builder.SetInsertPoint(BB);
   if (node->final) {
-    // TODO store the tag and string position upon getting here
+    // store the tag and string position upon getting here
     auto em = false;
     std::set<std::string> emitted;
     std::string emit;
@@ -909,11 +909,15 @@ void DFANLVMCodeGenerator<T>::generate(
       }
     }
     builder.module.Builder.CreateStore(
-        builder.get_or_create_tag(em ? emit : "<Unknown Final State>"),
+        builder.get_or_create_tag(em ? emit : "<Unknown State>"),
         builder.module.last_tag);
     builder.module.Builder.CreateStore(
         builder.module.Builder.CreateCall(builder.module.nlex_current_p, {}),
         builder.module.last_final_state_position);
+    builder.module.Builder.CreateStore(
+        llvm::ConstantInt::get(llvm::Type::getInt8Ty(builder.module.TheContext),
+                               (int)!em),
+        builder.module.nlex_errc);
   }
   builder.module.Builder.CreateCall(builder.module.nlex_next, {});
   auto readv = builder.module.Builder.CreateCall(builder.module.nlex_current_f,

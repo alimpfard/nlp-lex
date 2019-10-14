@@ -4,6 +4,7 @@ struct sresult {
     char const* start;
     int length;
     char const *tag;
+    char errc;
 };
 extern void __nlex_root(struct sresult*);
 extern void __nlex_feed(char const *p);
@@ -22,8 +23,8 @@ int main() {
       __nlex_feed(s);
       while (1) {
         __nlex_root(&res);
-        printf("'%.*s' %d %s\n", res.length, res.start, res.length, res.tag);
-        if (last == res.start)
+        printf("%smatch {'%.*s' %d %s}\n", (res.errc?"no ":""), res.length, res.start, res.length, res.tag);
+        if (last == res.start || res.errc)
           break;
         last = res.start;
       }

@@ -9,6 +9,7 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/PassManager.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Verifier.h"
 #include <algorithm>
@@ -54,6 +55,7 @@ public:
 
   llvm::AllocaInst *last_tag;
   llvm::AllocaInst *last_final_state_position;
+  llvm::AllocaInst *nlex_errc;
 
   llvm::Type *input_struct_type;
 
@@ -88,7 +90,8 @@ public:
                                0),          // token value
         llvm::Type::getInt32Ty(TheContext), // token length
         llvm::PointerType::get(llvm::Type::getInt8Ty(TheContext),
-                               0), // token tag
+                               0),         // token tag
+        llvm::Type::getInt8Ty(TheContext), // error code (0 = ok)
     };
     input_struct_type = llvm::StructType::create(members);
     llvm::Type *args[] = {llvm::PointerType::get(input_struct_type, 0)};
@@ -105,11 +108,16 @@ public:
     last_final_state_position = createEntryBlockAlloca(
         _main, "lfinals_p",
         llvm::PointerType::get(llvm::Type::getInt8Ty(TheContext), 0));
+    nlex_errc = createEntryBlockAlloca(_main, "lerrc",
+                                       llvm::Type::getInt8Ty(TheContext));
     llvm::IRBuilder<> builder(TheContext);
     builder.SetInsertPoint(main_entry);
     builder.CreateStore(
         llvm::ConstantInt::get(llvm::Type::getInt32Ty(TheContext), 0),
         token_length);
+    builder.CreateStore(
+        llvm::ConstantInt::get(llvm::Type::getInt8Ty(TheContext), 0),
+        nlex_errc);
     builder.CreateStore(builder.CreateCall(nlex_current_p, {}),
                         nlex_match_start);
     return _main;
@@ -224,6 +232,17 @@ public:
                     llvm::Type::getInt32Ty(module.TheContext), 2),
             },
             "tag"));
+    module.Builder.CreateStore(
+        module.Builder.CreateLoad(module.nlex_errc),
+        module.Builder.CreateInBoundsGEP(
+            istruct,
+            {
+                llvm::ConstantInt::get(
+                    llvm::Type::getInt32Ty(module.TheContext), 0),
+                llvm::ConstantInt::get(
+                    llvm::Type::getInt32Ty(module.TheContext), 3),
+            },
+            "errc"));
     module.Builder.CreateRetVoid();
   }
   void prepare(std::map<std::string, std::string> normalisations,
