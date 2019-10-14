@@ -230,10 +230,11 @@ std::vector<Regexp *> get_all_finals(Regexp *exp) {
     ends.push_back(exp);
     break;
   }
-  case RegexpType::Escape:
+  case RegexpType::Escape: {
     std::printf("Escapes not yet implemented\n");
     unreachable();
     break;
+  }
   }
   return ends;
 }

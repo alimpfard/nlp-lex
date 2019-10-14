@@ -487,6 +487,11 @@ std::optional<Regexp> NLexer::regexp_expression() {
     advance(1);
     c = *source_p;
     advance(1);
+
+    if (strchr("?+*{}()[]\\|.", c) != NULL) {
+      // switch to literal
+      return Regexp{std::string{source_p - 1, 1}, RegexpType::Literal, c};
+    }
     switch (c) {
     case 'x': // hex and unicode: TODO
     case 'u':
