@@ -467,6 +467,11 @@ void NFANode<T>::aggregate_dot(
       transitions.insert({this, transition->target, transition->input});
       transition->target->aggregate_dot(nodes, anodes, transitions);
     }
+    auto default_transition = deep_output_end(this)->default_transition;
+    if (default_transition) {
+      transitions.insert({this, default_transition, '\0'});
+      default_transition->aggregate_dot(nodes, anodes, transitions);
+    }
     // for (auto transition : incoming_transitions) {
     //   transitions.insert({this, transition->target, '<'});
     // }
@@ -538,6 +543,10 @@ void DFANode<T>::aggregate_dot(
     for (auto transition : outgoing_transitions) {
       transitions.insert({this, transition->target, transition->input});
       transition->target->aggregate_dot(nodes, anodes, transitions);
+    }
+    if (default_transition) {
+      transitions.insert({this, default_transition, '\0'});
+      default_transition->aggregate_dot(nodes, anodes, transitions);
     }
     // for (auto transition : incoming_transitions) {
     //   transitions.insert({this, transition->target, '<'});
@@ -725,7 +734,34 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
       dfanode->add_transition(
           new Transition<DFANode<std::set<NFANode<T> *>>, char>{nextdfanode,
                                                                 qq});
+      if (!visited.count(eps_state))
+        remaining.push(eps_state);
+    }
 
+    NFANode<T> *defl = nullptr;
+    for (auto s : current)
+      if (s->default_transition) {
+        defl = s->default_transition;
+        break;
+      }
+    if (defl) {
+      std::printf("Processing default transition %p for current : %s\n", defl,
+                  get_name(current).c_str());
+
+      std::set<NFANode<T> *> eps_state = get_epsilon_closure(defl);
+      DFANode<std::set<NFANode<T> *>> *nextdfanode;
+
+      auto epsname = get_name(eps_state);
+
+      if (dfa_map.count(epsname))
+        nextdfanode = dfa_map[epsname];
+      else {
+        nextdfanode = dfa_map[epsname] =
+            new DFANode<std::set<NFANode<T> *>>{eps_state};
+        std::printf("generated extra state: %s\n", epsname.c_str());
+      }
+
+      dfanode->default_transition_to(nextdfanode);
       if (!visited.count(eps_state))
         remaining.push(eps_state);
     }
@@ -888,9 +924,23 @@ void DFANLVMCodeGenerator<T>::generate(
   for (auto tr : node->outgoing_transitions) {
     outgoings.insert(tr->input);
   }
+  llvm::BasicBlock *deflBB = nullptr;
+  if (node->default_transition != nullptr) {
+    if (!blocks.count(node->default_transition))
+      generate(node->default_transition, visited, blocks);
+    deflBB = blocks[node->default_transition];
+  }
+  builder.module.Builder.SetInsertPoint(BB);
   if (outgoings.size() > 0) {
-    auto switchinst =
-        builder.module.Builder.CreateSwitch(readv, BBend, outgoings.size());
+    if (deflBB)
+      builder.module.add_value_to_token(readv);
+    auto switchinst = builder.module.Builder.CreateSwitch(
+        readv, deflBB ? deflBB : BBend, outgoings.size());
+    if (deflBB) // don't go past the end
+      switchinst->addCase(
+          ConstantInt::get(IntegerType::get(builder.module.TheContext, 8), "0",
+                           10),
+          BBend);
     for (auto tr : node->outgoing_transitions) {
       // todo: be less naive
       if (!blocks.count(tr->target))
@@ -900,7 +950,8 @@ void DFANLVMCodeGenerator<T>::generate(
       auto dst = BasicBlock::Create(builder.module.TheContext, "casejmp",
                                     builder.module.main());
       builder.module.Builder.SetInsertPoint(dst);
-      builder.module.add_char_to_token(tr->input);
+      if (!deflBB)
+        builder.module.add_char_to_token(tr->input);
       builder.module.Builder.CreateBr(jdst);
       builder.module.Builder.SetInsertPoint(BB);
       switchinst->addCase(
@@ -909,7 +960,15 @@ void DFANLVMCodeGenerator<T>::generate(
           dst);
     }
   } else {
-    builder.module.Builder.CreateBr(BBend);
+    if (deflBB) {
+      builder.module.add_value_to_token(readv);
+      builder.module.Builder.CreateCondBr(
+          builder.module.Builder.CreateICmpNE(
+              readv,
+              ConstantInt::get(Type::getInt8Ty(builder.module.TheContext), 0)),
+          deflBB, BBend);
+    } else
+      builder.module.Builder.CreateBr(BBend);
   }
   if (node->start)
     root_bb = BB;

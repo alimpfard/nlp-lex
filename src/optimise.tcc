@@ -164,6 +164,14 @@ void NFANode<T>::optimise(std::set<NFANode<T> *> visited, int step) {
           state_info = node->state_info;
           named_rule = node->named_rule;
         }
+        if (node->default_transition) {
+          if (default_transition &&
+              default_transition != node->default_transition) {
+            std::printf("overriding default transition %p to %p on %p",
+                        default_transition, node->default_transition, this);
+          }
+          default_transition = node->default_transition;
+        }
         deld = true;
       dontdelete:;
       }
@@ -223,6 +231,16 @@ void NFANode<T>::optimise(std::set<NFANode<T> *> visited, int step) {
           b_candidate->state_info =
               c_candidate->state_info; // XXX this might clash
           b_candidate->named_rule = c_candidate->named_rule;
+        }
+        if (c_candidate->default_transition) {
+          if (b_candidate->default_transition &&
+              b_candidate->default_transition !=
+                  c_candidate->default_transition) {
+            std::printf("overriding default transition %p to %p on %p",
+                        b_candidate->default_transition,
+                        c_candidate->default_transition, b_candidate);
+          }
+          b_candidate->default_transition = c_candidate->default_transition;
         }
       }
       // std::printf("\tconsidering outgoing transition %p }\n",

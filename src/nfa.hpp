@@ -40,6 +40,11 @@ public:
       outgoing_transitions;
   std::set<Transition<DFANode, char> *, TransitionPointerComparer<StateInfoT>>
       /* reconstructed before optimisation */ incoming_transitions;
+
+  DFANode<StateInfoT> *default_transition =
+      nullptr; // where to go if nothing else matches
+               // nullptr :- fail match and revert back to last final state
+
   std::optional<std::string> named_rule;
   DFANode(StateInfoT s) : state_info(s) {}
   DFANode()
@@ -60,6 +65,13 @@ public:
   //     typename std::set<Transition<DFANode, char> *,
   //                       TransitionPointerComparer<StateInfoT>>::iterator);
   void add_transition(Transition<DFANode, char> *);
+  void default_transition_to(DFANode<StateInfoT> *node) {
+    if (default_transition != nullptr)
+      std::printf("[WARN] redefinition of the default transition for node %p "
+                  "from %p to %p\n",
+                  this, default_transition, node);
+    default_transition = node;
+  }
 };
 
 template <typename StateInfoT> class NFANode {
@@ -94,6 +106,10 @@ public:
                                             AnythingTransitionT>> *,
            TransitionPointerComparer<StateInfoT>>
       /* reconstructed before optimisation */ incoming_transitions;
+
+  NFANode<StateInfoT> *default_transition =
+      nullptr; // where to go if nothing else matches
+               // nullptr :- fail match and revert back to last final state
   std::optional<std::string> named_rule;
   NFANode(StateInfoT s) : state_info(s) {}
   NFANode()
@@ -135,6 +151,17 @@ public:
                       TransitionPointerComparer<StateInfoT>>::iterator);
   void add_transition(Transition<NFANode, std::variant<char, EpsilonTransitionT,
                                                        AnythingTransitionT>> *);
+  virtual void default_transition_to(NFANode<StateInfoT> *node) {
+    node = deep_input_end(node);
+    auto oe = get_output_end();
+    for (auto oe : oe) {
+      if (oe->default_transition != nullptr)
+        std::printf("[WARN] redefinition of the default transition for node %p "
+                    "from %p to %p\n",
+                    oe, oe->default_transition, node);
+      oe->default_transition = node;
+    }
+  }
   DFANode<std::set<NFANode<StateInfoT> *>> *to_dfa(); // call on root~
 };
 
@@ -198,7 +225,8 @@ template <typename K> struct NFANodePointerComparer {
     if (a->start == b->start && a->final == b->final && /*
         a->state_info == b->state_info && a->named_rule == b->named_rule*/
         1) {
-      return veqv(a->outgoing_transitions, b->outgoing_transitions);
+      return a->default_transition == b->default_transition &&
+             veqv(a->outgoing_transitions, b->outgoing_transitions);
     }
     return false;
   }
@@ -223,7 +251,8 @@ template <typename K> struct DFANodePointerComparer {
     if (a->start == b->start && a->final == b->final && /*
         a->state_info == b->state_info && a->named_rule == b->named_rule*/
         1) {
-      return veqv(a->outgoing_transitions, b->outgoing_transitions);
+      return a->default_transition == b->default_transition &&
+             veqv(a->outgoing_transitions, b->outgoing_transitions);
     }
     return false;
   }

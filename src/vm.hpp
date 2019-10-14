@@ -68,6 +68,16 @@ public:
         llvm::ConstantInt::get(llvm::Type::getInt8Ty(TheContext), (int)c),
         tvalp);
   }
+  void add_value_to_token(llvm::Value *c) {
+    auto llen = Builder.CreateLoad(token_length);
+    auto llenp1 = Builder.CreateAdd(
+        llen, llvm::ConstantInt::get(llvm::Type::getInt32Ty(TheContext), 1));
+    Builder.CreateStore(llenp1, token_length);
+    auto tvalp = Builder.CreateInBoundsGEP(
+        token_value,
+        {llvm::ConstantInt::get(llvm::Type::getInt32Ty(TheContext), 0), llen});
+    Builder.CreateStore(c, tvalp);
+  }
 
   llvm::Function *main() {
     if (_main)

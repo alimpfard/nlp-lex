@@ -488,10 +488,16 @@ std::optional<Regexp> NLexer::regexp_expression() {
     c = *source_p;
     advance(1);
 
-    if (strchr("?+*{}()[]\\|.", c) != NULL) {
+    if (strchr("?+*{}()[]\\|.", c) != NULL)
       // switch to literal
       return Regexp{std::string{source_p - 1, 1}, RegexpType::Literal, c};
-    }
+
+    const char *escapes = "rtvna";
+    const char *vescapes = "\r\t\v\n\a";
+    if (const char *svv = strchr(escapes, c); svv != NULL)
+      return Regexp{std::string{source_p - 1, 1}, RegexpType::Literal,
+                    vescapes[(ptrdiff_t)(svv - escapes)]};
+    // magic escapes
     switch (c) {
     case 'x': // hex and unicode: TODO
     case 'u':
@@ -926,8 +932,12 @@ Regexp::compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
       // we can transform this to many transitions instead
       for (auto c : s)
         tl->transition_to(tl2, c);
-    } else
-      tl->transition_to(tl2, t);
+    } else {
+      NFANode<std::string> *tlm = new NFANode<std::string>{"Moot:E" + mangle()};
+      for (auto c : s)
+        tl->transition_to(tlm, c);
+      tl->default_transition_to(tl2);
+    }
     tl = transform_by_quantifiers(
         new PseudoNFANode<std::string>{"S" + mangle(), tl, tl2});
     parent->epsilon_transition_to(tl);
