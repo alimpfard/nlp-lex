@@ -1,0 +1,6 @@
+x <= y
+z <= a
+
+word :: [abcdefghijklmnoprstuvwxyzABCDEFGHIJKLMNOPRSTUVWXYZ]+
+number :: [0123456789]+
+space :: [  ]+

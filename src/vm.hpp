@@ -40,8 +40,13 @@ public:
   llvm::Function *nlex_current_f;
   llvm::Function *nlex_current_p;
   llvm::Function *nlex_restore;
+  llvm::Function *nlex_feed;
   llvm::Function *nlex_next;
   llvm::Function *nlex_start;
+
+  llvm::GlobalVariable *nlex_match_start;
+  llvm::GlobalVariable *token_value;
+  llvm::GlobalVariable *token_length;
 
   llvm::Function *_main = nullptr;
   llvm::BasicBlock *main_entry, *BBfinalise;
@@ -51,20 +56,35 @@ public:
 
   llvm::Type *input_struct_type;
 
+  void add_char_to_token(char c) {
+    auto llen = Builder.CreateLoad(token_length);
+    auto llenp1 = Builder.CreateAdd(
+        llen, llvm::ConstantInt::get(llvm::Type::getInt32Ty(TheContext), 1));
+    Builder.CreateStore(llenp1, token_length);
+    auto tvalp = Builder.CreateInBoundsGEP(
+        token_value,
+        {llvm::ConstantInt::get(llvm::Type::getInt32Ty(TheContext), 0), llen});
+    Builder.CreateStore(
+        llvm::ConstantInt::get(llvm::Type::getInt8Ty(TheContext), (int)c),
+        tvalp);
+  }
+
   llvm::Function *main() {
     if (_main)
       return _main;
     llvm::Type *members[] = {
-        llvm::Type::getInt32Ty(TheContext),
-        llvm::Type::getInt32Ty(TheContext),
-        llvm::PointerType::get(llvm::Type::getInt8Ty(TheContext), 0),
+        llvm::PointerType::get(llvm::Type::getInt8Ty(TheContext),
+                               0),          // token value
+        llvm::Type::getInt32Ty(TheContext), // token length
+        llvm::PointerType::get(llvm::Type::getInt8Ty(TheContext),
+                               0), // token tag
     };
     input_struct_type = llvm::StructType::create(members);
     llvm::Type *args[] = {llvm::PointerType::get(input_struct_type, 0)};
     llvm::FunctionType *ncf =
         llvm::FunctionType::get(llvm::Type::getVoidTy(TheContext), args, false);
 
-    _main = llvm::Function::Create(ncf, llvm::Function::InternalLinkage,
+    _main = llvm::Function::Create(ncf, llvm::Function::ExternalLinkage,
                                    "__nlex_root", TheModule.get());
     main_entry = llvm::BasicBlock::Create(TheContext, "entry", _main);
 
@@ -74,7 +94,13 @@ public:
     last_final_state_position = createEntryBlockAlloca(
         _main, "lfinals_p",
         llvm::PointerType::get(llvm::Type::getInt8Ty(TheContext), 0));
-
+    llvm::IRBuilder<> builder(TheContext);
+    builder.SetInsertPoint(main_entry);
+    builder.CreateStore(
+        llvm::ConstantInt::get(llvm::Type::getInt32Ty(TheContext), 0),
+        token_length);
+    builder.CreateStore(builder.CreateCall(nlex_current_p, {}),
+                        nlex_match_start);
     return _main;
   }
 
@@ -99,6 +125,8 @@ public:
 
     nlex_restore = llvm::Function::Create(nrs, llvm::Function::InternalLinkage,
                                           "__nlex_restore", TheModule.get());
+    nlex_feed = llvm::Function::Create(nrs, llvm::Function::ExternalLinkage,
+                                       "__nlex_feed", TheModule.get());
     llvm::FunctionType *ncp = llvm::FunctionType::get(
         llvm::PointerType::get(llvm::Type::getInt8Ty(TheContext), 0), {},
         false);
@@ -108,6 +136,29 @@ public:
                                "__nlex_position", TheModule.get());
     nlex_start = llvm::Function::Create(ncp, llvm::Function::InternalLinkage,
                                         "__nlex_true_start", TheModule.get());
+
+    nlex_match_start = new llvm::GlobalVariable(
+        llvm::PointerType::get(llvm::Type::getInt8Ty(TheContext), 0), false,
+        llvm::GlobalValue::InternalLinkage,
+        llvm::Constant::getNullValue(
+            llvm::PointerType::get(llvm::Type::getInt8Ty(TheContext), 0)),
+        "nlex_match_start");
+    TheModule->getGlobalList().push_back(nlex_match_start);
+
+    token_value = new llvm::GlobalVariable(
+        llvm::ArrayType::get(llvm::Type::getInt8Ty(TheContext), 1024), false,
+        llvm::GlobalValue::InternalLinkage,
+        llvm::Constant::getNullValue(
+            llvm::ArrayType::get(llvm::Type::getInt8Ty(TheContext), 1024)),
+        "ltoken_value");
+    TheModule->getGlobalList().push_back(token_value);
+
+    token_length = new llvm::GlobalVariable(
+        llvm::Type::getInt32Ty(TheContext), false,
+        llvm::GlobalValue::InternalLinkage,
+        llvm::Constant::getNullValue(llvm::Type::getInt32Ty(TheContext)),
+        "ltoken_length");
+    TheModule->getGlobalList().push_back(token_length);
   }
 };
 
@@ -119,27 +170,24 @@ public:
   Builder(std::string mname) : module(mname) {}
 
   void begin() {
+
     module.BBfinalise =
         llvm::BasicBlock::Create(module.TheContext, "_escape", module.main());
     module.Builder.SetInsertPoint(module.BBfinalise);
     auto istruct = module.main()->arg_begin();
-    auto startm = module.Builder.CreateLoad(module.Builder.CreateInBoundsGEP(
+    auto stgep = module.Builder.CreateInBoundsGEP(
         istruct,
         {llvm::ConstantInt::get(llvm::Type::getInt32Ty(module.TheContext), 0),
          llvm::ConstantInt::get(llvm::Type::getInt32Ty(module.TheContext), 0)},
-        "startptr"));
+        "startptr");
     module.Builder.CreateStore(
-        module.Builder.CreateSub(
-            module.Builder.CreateTrunc(
-                module.Builder.CreateSub(
-                    module.Builder.CreatePtrToInt(
-                        module.Builder.CreateCall(module.nlex_current_p, {}),
-                        llvm::Type::getInt64Ty(module.TheContext)),
-                    module.Builder.CreatePtrToInt(
-                        module.Builder.CreateCall(module.nlex_start, {}),
-                        llvm::Type::getInt64Ty(module.TheContext))),
-                llvm::Type::getInt32Ty(module.TheContext)),
-            startm),
+        llvm::ConstantExpr::getBitCast(
+            module.token_value,
+            llvm::PointerType::get(llvm::Type::getInt8Ty(module.TheContext),
+                                   0)),
+        stgep);
+    module.Builder.CreateStore(
+        module.Builder.CreateLoad(module.token_length),
         module.Builder.CreateInBoundsGEP(
             istruct,
             {llvm::ConstantInt::get(llvm::Type::getInt32Ty(module.TheContext),
@@ -232,7 +280,18 @@ public:
         llvm::ConstantInt::get(llvm::Type::getInt32Ty(module.TheContext), 0),
         nlex_injected_length_diff);
     builder.CreateRetVoid();
-
+    // nlex_feed - feed string to lexer
+    BB = llvm::BasicBlock::Create(module.TheContext, "entry", module.nlex_feed);
+    builder.SetInsertPoint(BB);
+    builder.CreateStore(module.nlex_feed->arg_begin(), nlex_fed_string);
+    builder.CreateStore(module.nlex_feed->arg_begin(), nlex_true_start);
+    builder.CreateStore(
+        llvm::ConstantInt::get(llvm::Type::getInt32Ty(module.TheContext), 0),
+        nlex_injected_length);
+    builder.CreateStore(
+        llvm::ConstantInt::get(llvm::Type::getInt32Ty(module.TheContext), 0),
+        nlex_injected_length_diff);
+    builder.CreateRetVoid();
     // nlex_next - advance character position
     BB = llvm::BasicBlock::Create(module.TheContext, "entry", module.nlex_next);
     auto *uBB = llvm::BasicBlock::Create(module.TheContext, "has_inject",
@@ -249,14 +308,14 @@ public:
     // inject
     builder.SetInsertPoint(uBB);
     builder.CreateStore(
-        builder.CreateNSWAdd(len,
-                             llvm::ConstantInt::get(
-                                 llvm::Type::getInt32Ty(module.TheContext), 1)),
+        builder.CreateNSWAdd(
+            len, llvm::ConstantInt::get(
+                     llvm::Type::getInt32Ty(module.TheContext), -1)),
         nlex_injected_length);
     builder.CreateStore(
         builder.CreateGEP(builder.CreateLoad(nlex_injected),
                           {llvm::ConstantInt::get(
-                              llvm::Type::getInt32Ty(module.TheContext), -1)}),
+                              llvm::Type::getInt32Ty(module.TheContext), 1)}),
         nlex_injected);
     builder.CreateStore(builder.CreateLoad(builder.CreateLoad(nlex_injected)),
                         nlex_tmp_char);
@@ -269,13 +328,23 @@ public:
         fs,
         {llvm::ConstantInt::get(llvm::Type::getInt32Ty(module.TheContext), 1)});
     builder.CreateStore(gep, nlex_fed_string);
-    auto cvv = builder.CreateLoad(gep);
+    auto cvv = builder.CreateLoad(fs);
     // create a select of all specified normalisations and then set
     std::map<std::string, llvm::SwitchInst *> levels;
     llvm::IRBuilder<> mbuilder(module.TheContext);
     auto BBend = llvm::BasicBlock::Create(module.TheContext, "default_escape",
                                           module.nlex_next);
+
+    if (normalisations.size() == 0)
+      builder.CreateBr(BBend);
     mbuilder.SetInsertPoint(BBend);
+    mbuilder.CreateStore(cvv, nlex_tmp_char);
+    // mbuilder.CreateStore(
+    //     mbuilder.CreateGEP(mbuilder.CreateLoad(nlex_fed_string),
+    //                        {llvm::ConstantInt::get(
+    //                            llvm::Type::getInt32Ty(module.TheContext),
+    //                            1)}),
+    //     nlex_fed_string);
     mbuilder.CreateRetVoid();
     for (auto pnorm : normalisations) {
       mbuilder.SetInsertPoint(BB);
@@ -289,22 +358,51 @@ public:
 
             auto BBend = llvm::BasicBlock::Create(
                 module.TheContext, "default_escape-" + norm, module.nlex_next);
-            mbuilder.CreateStore(get_or_create_tag(norm), nlex_injected);
+            mbuilder.CreateStore(
+                get_or_create_tag(norm.substr(1, norm.size())),
+                nlex_injected); // consume one byte and store the rest
             mbuilder.CreateStore(
                 llvm::ConstantInt::get(
-                    llvm::Type::getInt32Ty(module.TheContext), norm.size()),
+                    llvm::Type::getInt32Ty(module.TheContext), norm.size() - 1),
                 nlex_injected_length);
             mbuilder.CreateStore(llvm::ConstantInt::get(
                                      llvm::Type::getInt32Ty(module.TheContext),
                                      pnorm.second.size() - norm.size()),
                                  nlex_injected_length_diff);
+
+            mbuilder.CreateStore( // store the first character (literal)
+                llvm::ConstantInt::get(llvm::Type::getInt8Ty(module.TheContext),
+                                       (int)norm[0]),
+                nlex_tmp_char);
+            auto gep = mbuilder.CreateInBoundsGEP(
+                fs, {llvm::ConstantInt::get(
+                        llvm::Type::getInt32Ty(module.TheContext), i)});
+            auto cvv = mbuilder.CreateLoad(gep);
+
             sw = mbuilder.CreateSwitch(cvv, BBend);
             mbuilder.SetInsertPoint(BBend);
+
+            mbuilder.CreateStore(
+                mbuilder.CreateLoad(mbuilder.CreateLoad(nlex_fed_string)),
+                nlex_tmp_char);
+            mbuilder.CreateStore(
+                mbuilder.CreateGEP(
+                    mbuilder.CreateLoad(nlex_fed_string),
+                    {llvm::ConstantInt::get(
+                        llvm::Type::getInt32Ty(module.TheContext), 1)}),
+                nlex_fed_string);
+
             mbuilder.CreateRetVoid();
             levels[norm.substr(0, i)] = sw;
             continue;
-          } else
+          } else {
+
+            auto gep = mbuilder.CreateInBoundsGEP(
+                fs, {llvm::ConstantInt::get(
+                        llvm::Type::getInt32Ty(module.TheContext), i)});
+            auto cvv = mbuilder.CreateLoad(gep);
             sw = mbuilder.CreateSwitch(cvv, BBend);
+          }
           auto cBB = llvm::BasicBlock::Create(
               module.TheContext, norm.substr(0, i), module.nlex_next);
           sw->addCase(

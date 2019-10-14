@@ -839,11 +839,19 @@ void DFANLVMCodeGenerator<T>::generate(
       builder.module.main());
   builder.module.Builder.SetInsertPoint(BBend);
   // TODO restore string position and return with tag
+
   if (!node->final) {
     builder.module.Builder.CreateCall(
         builder.module.nlex_restore,
         {builder.module.Builder.CreateLoad(
             builder.module.last_final_state_position)});
+  } else {
+    builder.module.Builder.CreateCall(
+        builder.module.nlex_restore,
+        {builder.module.Builder.CreateInBoundsGEP(
+            builder.module.Builder.CreateCall(builder.module.nlex_current_p),
+            {llvm::ConstantInt::get(
+                llvm::Type::getInt32Ty(builder.module.TheContext), -1)})});
   }
   builder.module.Builder.CreateBr(builder.module.BBfinalise);
 
@@ -870,6 +878,7 @@ void DFANLVMCodeGenerator<T>::generate(
         builder.module.Builder.CreateCall(builder.module.nlex_current_p, {}),
         builder.module.last_final_state_position);
   }
+  builder.module.Builder.CreateCall(builder.module.nlex_next, {});
   auto readv = builder.module.Builder.CreateCall(builder.module.nlex_current_f,
                                                  {}, "readv");
 
@@ -878,23 +887,28 @@ void DFANLVMCodeGenerator<T>::generate(
   for (auto tr : node->outgoing_transitions) {
     outgoings.insert(tr->input);
   }
-  auto switchinst =
-      builder.module.Builder.CreateSwitch(readv, BBend, outgoings.size());
-  for (auto tr : node->outgoing_transitions) {
-    // todo: be less naive
-    if (!blocks.count(tr->target))
-      generate(tr->target, visited, blocks);
+  if (outgoings.size() > 0) {
+    auto switchinst =
+        builder.module.Builder.CreateSwitch(readv, BBend, outgoings.size());
+    for (auto tr : node->outgoing_transitions) {
+      // todo: be less naive
+      if (!blocks.count(tr->target))
+        generate(tr->target, visited, blocks);
 
-    auto jdst = blocks[tr->target];
-    auto dst = BasicBlock::Create(builder.module.TheContext, "casejmp",
-                                  builder.module.main());
-    builder.module.Builder.SetInsertPoint(dst);
-    builder.module.Builder.CreateBr(jdst);
-    builder.module.Builder.SetInsertPoint(BB);
-    switchinst->addCase(
-        ConstantInt::get(IntegerType::get(builder.module.TheContext, 8),
-                         std::to_string((int)tr->input), 10),
-        dst);
+      auto jdst = blocks[tr->target];
+      auto dst = BasicBlock::Create(builder.module.TheContext, "casejmp",
+                                    builder.module.main());
+      builder.module.Builder.SetInsertPoint(dst);
+      builder.module.add_char_to_token(tr->input);
+      builder.module.Builder.CreateBr(jdst);
+      builder.module.Builder.SetInsertPoint(BB);
+      switchinst->addCase(
+          ConstantInt::get(IntegerType::get(builder.module.TheContext, 8),
+                           std::to_string((int)tr->input), 10),
+          dst);
+    }
+  } else {
+    builder.module.Builder.CreateBr(BBend);
   }
   if (node->start)
     root_bb = BB;
@@ -946,7 +960,7 @@ int main() {
       root->print_dot();
       continue;
     } else if (line == ".end") {
-      root = parser.compile();
+      // root = parser.compile();
       // root->print();
       break;
     } else if (line == ".opt=") {
