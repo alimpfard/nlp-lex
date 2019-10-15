@@ -482,7 +482,8 @@ std::optional<Regexp> NLexer::regexp_expression() {
   if (c == '.') {
     // match anything
     advance(1);
-    return Regexp{std::string{source_p - 1, 1}, RegexpType::Dot, c};
+    return Regexp{std::string{source_p - 1, 1}, RegexpType::CharacterClass,
+                  "]\n"};
   }
   // escaped character
   if (c == '\\') {
