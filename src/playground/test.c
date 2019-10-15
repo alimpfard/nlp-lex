@@ -24,7 +24,7 @@ int main() {
       while (1) {
         __nlex_root(&res);
         printf("%smatch {'%.*s' %d %s}\n", (res.errc?"no ":""), res.length, res.start, res.length, res.tag);
-        if (last == res.start || res.errc)
+        if (res.errc || res.length == 0)
           break;
         last = res.start;
       }

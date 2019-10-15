@@ -1,0 +1,136 @@
+import Library/Data/Object/nullable.
+
+var rawdata is File new: 'UnicodeData.txt', generateLines.
+var ccdata is HashMap new
+  put: Array new at: 'Ll',
+  put: Array new at: 'Lm',
+  put: Array new at: 'Lt',
+  put: Array new at: 'Lu',
+  put: Array new at: 'Lo',
+  put: Array new at: 'Mc',
+  put: Array new at: 'Me',
+  put: Array new at: 'Mn',
+  put: Array new at: 'Nd',
+  put: Array new at: 'Nl',
+  put: Array new at: 'No',
+  put: Array new at: 'Pc',
+  put: Array new at: 'Pd',
+  put: Array new at: 'Pi',
+  put: Array new at: 'Pf',
+  put: Array new at: 'Ps',
+  put: Array new at: 'Pe',
+  put: Array new at: 'Po',
+  put: Array new at: 'Sc',
+  put: Array new at: 'Sk',
+  put: Array new at: 'Sm',
+  put: Array new at: 'So',
+  put: Array new at: 'Zl',
+  put: Array new at: 'Zp',
+  put: Array new at: 'Zs',
+  put: Array new at: 'Cc',
+  put: Array new at: 'Cf',
+  put: Array new at: 'Cn',
+  put: Array new at: 'Co'.
+  # put: Array new at: 'Cs'.
+
+var out is File new: 'classes.hpp', open: 'w+'.
+out write: ?>
+#include <string_view>
+namespace UnicodeClasses {
+<?.
+
+rawdata each_v: {:line
+  var info is line split: ';'.
+  ccdata at: info @ 2, nullable push: info @ 0.
+}.
+
+ccdata each: {:k:v
+  out write: '\tconstexpr static std::string_view Class_%s = "%:L";\n' % [k, '', v fmap!: {\:x '\\U${{x paddingLeft: 8, replace: ' ' with: '0'}}$'}].
+}.
+
+out write: '\tconstexpr static std::string_view Class_L = "%:L";' % [
+  '',
+  (ccdata @ 'Ll') +
+  (ccdata @ 'Lm') +
+  (ccdata @ 'Lt') +
+  (ccdata @ 'Lu') +
+  (ccdata @ 'Lo')
+].
+
+out write: '\tconstexpr static std::string_view Class_M = "%:L";' % [
+  '',
+  (ccdata @ 'Mc') +
+  (ccdata @ 'Me') +
+  (ccdata @ 'Mn')
+].
+
+out write: '\tconstexpr static std::string_view Class_N = "%:L";' % [
+  '',
+  (ccdata @ 'Nd') +
+  (ccdata @ 'Nl') +
+  (ccdata @ 'No')
+].
+
+
+out write: '\tconstexpr static std::string_view Class_S = "%:L";' % [
+  '',
+  (ccdata @ 'Sc') +
+  (ccdata @ 'Sk') +
+  (ccdata @ 'Sm') +
+  (ccdata @ 'So')
+].
+
+
+out write: '\tconstexpr static std::string_view Class_Z = "%:L";' % [
+  '',
+  (ccdata @ 'Zl') +
+  (ccdata @ 'Zp') +
+  (ccdata @ 'Zs')
+].
+
+
+out write: '\tconstexpr static std::string_view Class_P = "%:L";' % [
+  '',
+  (ccdata @ 'Pc') +
+  (ccdata @ 'Pd') +
+  (ccdata @ 'Pi') +
+  (ccdata @ 'Pf') +
+  (ccdata @ 'Ps') +
+  (ccdata @ 'Pe') +
+  (ccdata @ 'Po')
+].
+
+out write: '\tconstexpr static std::string_view Class_C = "%:L";' % [
+  '',
+  (ccdata @ 'Cc') +
+  (ccdata @ 'Cf') +
+  (ccdata @ 'Cn') +
+  (ccdata @ 'Co')
+].
+
+# write specific combinations
+out write: '\tconstexpr static std::string_view Words = "%:L";\n' % [
+  '',
+  (ccdata @ 'Ll') +
+  (ccdata @ 'Lu') +
+  (ccdata @ 'Lt') +
+  (ccdata @ 'Lo') +
+  (ccdata @ 'Lm') +
+  (ccdata @ 'Mn') +
+  (ccdata @ 'Nd') +
+  (ccdata @ 'Pc')
+].
+
+out write: '\tconstexpr static std::string_view Whitespaces = "%:L";\n' % [
+  '',
+  (ccdata @ 'Zl') +
+  (ccdata @ 'Zp') +
+  (ccdata @ 'Zs') +
+  '\f\n\r\t\v\x85'
+].
+
+out write: '\tconstexpr static std::string_view Digits = Class_Nd;\n'.
+
+
+out write: '} // namespace UnicodeClasses\n'.
+out close.

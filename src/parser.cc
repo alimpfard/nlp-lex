@@ -5,11 +5,13 @@
 #include "lexer.hpp"
 #include "optimise.tcc"
 
+#include <array>
 #include <iostream>
 #include <memory>
 #include <queue>
 #include <sstream>
 #include <stdarg.h>
+#include <thread>
 
 #include "vm.hpp"
 
@@ -263,7 +265,7 @@ NFANode<std::string> *NParser::compile() {
     toplevels.insert(node); // nullptr marks toplevel rule
   }
 
-  reconstruct_forwards(root_node, {});
+  // reconstruct_forwards(root_node, {});
 
   // mark final states and give them names
   for (auto &it : values) {
@@ -865,8 +867,6 @@ void DFANLVMCodeGenerator<T>::generate(
   if (visited.count(node))
     return;
   visited.insert(node);
-  if (node->start)
-    node->print_dot();
   // generate any choice and add to output_cases
   BasicBlock *BB = BasicBlock::Create(builder.module.TheContext,
                                       get_name(node->state_info.value()),
@@ -1074,6 +1074,19 @@ template <typename T> void CodeGenerator<T>::run(NFANode<T> *node) {
   generate(node->to_dfa());
 }
 
+std::string exec(const char *cmd, const bool &run) {
+  std::array<char, 256> buffer;
+  std::string result;
+  std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
+  if (!pipe) {
+    return "";
+  }
+  while (run && fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
+    result += buffer.data();
+  }
+  return result;
+}
+
 #ifdef TEST
 int main() {
   NParser parser;
@@ -1106,12 +1119,48 @@ int main() {
       cg.run(root);
       std::cout << cg.output();
       continue;
+    } else if (line == ".gengraph") {
+      parser.generate_graph = !parser.generate_graph;
+      printf("will %sgenerate a graph\n", parser.generate_graph ? "" : "not ");
+      continue;
     } else if (line == ".nlvm") {
       root = parser.compile();
-      nlvmg.builder.prepare(parser.gen_lexer_normalisations,
-                            parser.gen_lexer_stopwords);
-      nlvmg.run(root);
-      nlvmg.output();
+      auto rootdfa = root->to_dfa();
+      if (parser.generate_graph) {
+        std::set<DFANode<std::set<NFANode<std::string> *>> *,
+                 DFANodePointerComparer<std::set<NFANode<std::string> *>>>
+            nodes;
+        std::set<DFANode<std::set<NFANode<std::string> *>> *> anodes;
+        std::unordered_set<CanonicalTransition<
+            DFANode<std::set<NFANode<std::string> *>>, char>>
+            transitions;
+
+        rootdfa->aggregate_dot(nodes, anodes, transitions);
+
+        std::string name = std::tmpnam(nullptr);
+        auto fp = std::fopen(name.c_str(), "w+");
+        std::fprintf(fp, "%s\n", rootdfa->gen_dot(anodes, transitions).c_str());
+        std::fclose(fp);
+
+        bool run = true;
+
+        std::thread render{[&]() {
+          nlvmg.builder.prepare(parser.gen_lexer_normalisations,
+                                parser.gen_lexer_stopwords);
+
+          nlvmg.generate(rootdfa);
+          nlvmg.output();
+          run = false;
+        }};
+        exec(("../tools/wm '" + name + "'").c_str(), run);
+        render.join();
+      } else {
+        nlvmg.builder.prepare(parser.gen_lexer_normalisations,
+                              parser.gen_lexer_stopwords);
+
+        nlvmg.generate(rootdfa);
+        nlvmg.output();
+      }
       continue;
     }
     parser.repl_feed(line);

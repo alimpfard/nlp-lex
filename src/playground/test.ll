@@ -59,23 +59,21 @@ define dso_local i32 @main() local_unnamed_addr #0 !dbg !9 {
   br label %23, !dbg !61
 
 ; <label>:23:                                     ; preds = %23, %13
-  %24 = phi i8* [ inttoptr (i64 -1 to i8*), %13 ], [ %32, %23 ], !dbg !62
-  call void @llvm.dbg.value(metadata i8* %24, metadata !30, metadata !DIExpression()), !dbg !48
   call void @llvm.dbg.value(metadata %0* %1, metadata !14, metadata !DIExpression(DW_OP_deref)), !dbg !34
-  call void @__nlex_root(%0* nonnull %1) #5, !dbg !63
-  %25 = load i8, i8* %9, align 8, !dbg !65, !tbaa !66
-  %26 = icmp eq i8 %25, 0, !dbg !69
-  %27 = select i1 %26, i8* getelementptr inbounds ([1 x i8], [1 x i8]* @.str.5, i64 0, i64 0), i8* getelementptr inbounds ([4 x i8], [4 x i8]* @.str.4, i64 0, i64 0), !dbg !69
-  %28 = load i32, i32* %10, align 8, !dbg !70, !tbaa !71
-  %29 = load i8*, i8** %11, align 8, !dbg !72, !tbaa !73
-  %30 = load i8*, i8** %12, align 8, !dbg !74, !tbaa !75
-  %31 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([24 x i8], [24 x i8]* @.str.3, i64 0, i64 0), i8* %27, i32 %28, i8* %29, i32 %28, i8* %30), !dbg !76
-  %32 = load i8*, i8** %11, align 8, !dbg !77, !tbaa !73
-  %33 = icmp ne i8* %24, %32, !dbg !79
-  %34 = load i8, i8* %9, align 8, !dbg !80
-  %35 = icmp eq i8 %34, 0, !dbg !81
-  %36 = and i1 %33, %35, !dbg !82
-  br i1 %36, label %23, label %13, !dbg !82, !llvm.loop !83
+  call void @__nlex_root(%0* nonnull %1) #5, !dbg !62
+  %24 = load i8, i8* %9, align 8, !dbg !64, !tbaa !65
+  %25 = icmp eq i8 %24, 0, !dbg !68
+  %26 = select i1 %25, i8* getelementptr inbounds ([1 x i8], [1 x i8]* @.str.5, i64 0, i64 0), i8* getelementptr inbounds ([4 x i8], [4 x i8]* @.str.4, i64 0, i64 0), !dbg !68
+  %27 = load i32, i32* %10, align 8, !dbg !69, !tbaa !70
+  %28 = load i8*, i8** %11, align 8, !dbg !71, !tbaa !72
+  %29 = load i8*, i8** %12, align 8, !dbg !73, !tbaa !74
+  %30 = call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([24 x i8], [24 x i8]* @.str.3, i64 0, i64 0), i8* %26, i32 %27, i8* %28, i32 %27, i8* %29), !dbg !75
+  %31 = load i8, i8* %9, align 8, !dbg !76, !tbaa !65
+  %32 = icmp ne i8 %31, 0, !dbg !78
+  %33 = load i32, i32* %10, align 8, !dbg !79
+  %34 = icmp eq i32 %33, 0, !dbg !80
+  %35 = or i1 %32, %34, !dbg !81
+  br i1 %35, label %13, label %23, !dbg !81, !llvm.loop !82
 }
 
 ; Function Attrs: argmemonly nounwind
@@ -168,26 +166,25 @@ attributes #5 = { nounwind }
 !59 = !DILocation(line: 23, column: 19, scope: !31)
 !60 = !DILocation(line: 23, column: 7, scope: !31)
 !61 = !DILocation(line: 24, column: 7, scope: !31)
-!62 = !DILocation(line: 0, scope: !31)
-!63 = !DILocation(line: 25, column: 9, scope: !64)
-!64 = distinct !DILexicalBlock(scope: !31, file: !1, line: 24, column: 17)
-!65 = !DILocation(line: 26, column: 49, scope: !64)
-!66 = !{!67, !39, i64 24}
-!67 = !{!"sresult", !45, i64 0, !68, i64 8, !45, i64 16, !39, i64 24}
-!68 = !{!"int", !39, i64 0}
-!69 = !DILocation(line: 26, column: 45, scope: !64)
-!70 = !DILocation(line: 26, column: 69, scope: !64)
-!71 = !{!67, !68, i64 8}
-!72 = !DILocation(line: 26, column: 81, scope: !64)
-!73 = !{!67, !45, i64 0}
-!74 = !DILocation(line: 26, column: 104, scope: !64)
-!75 = !{!67, !45, i64 16}
-!76 = !DILocation(line: 26, column: 9, scope: !64)
-!77 = !DILocation(line: 27, column: 25, scope: !78)
-!78 = distinct !DILexicalBlock(scope: !64, file: !1, line: 27, column: 13)
-!79 = !DILocation(line: 27, column: 18, scope: !78)
-!80 = !DILocation(line: 27, column: 38, scope: !78)
-!81 = !DILocation(line: 27, column: 34, scope: !78)
-!82 = !DILocation(line: 27, column: 31, scope: !78)
-!83 = distinct !{!83, !47, !84}
-!84 = !DILocation(line: 31, column: 5, scope: !9)
+!62 = !DILocation(line: 25, column: 9, scope: !63)
+!63 = distinct !DILexicalBlock(scope: !31, file: !1, line: 24, column: 17)
+!64 = !DILocation(line: 26, column: 49, scope: !63)
+!65 = !{!66, !39, i64 24}
+!66 = !{!"sresult", !45, i64 0, !67, i64 8, !45, i64 16, !39, i64 24}
+!67 = !{!"int", !39, i64 0}
+!68 = !DILocation(line: 26, column: 45, scope: !63)
+!69 = !DILocation(line: 26, column: 69, scope: !63)
+!70 = !{!66, !67, i64 8}
+!71 = !DILocation(line: 26, column: 81, scope: !63)
+!72 = !{!66, !45, i64 0}
+!73 = !DILocation(line: 26, column: 104, scope: !63)
+!74 = !{!66, !45, i64 16}
+!75 = !DILocation(line: 26, column: 9, scope: !63)
+!76 = !DILocation(line: 27, column: 17, scope: !77)
+!77 = distinct !DILexicalBlock(scope: !63, file: !1, line: 27, column: 13)
+!78 = !DILocation(line: 27, column: 13, scope: !77)
+!79 = !DILocation(line: 27, column: 29, scope: !77)
+!80 = !DILocation(line: 27, column: 36, scope: !77)
+!81 = !DILocation(line: 27, column: 22, scope: !77)
+!82 = distinct !{!82, !47, !83}
+!83 = !DILocation(line: 31, column: 5, scope: !9)

@@ -7,6 +7,8 @@
 #include <cstring>
 #include <type_traits>
 
+#include "unicode/class.hpp"
+
 inline static void lexer_error_impl(char const *fmt, va_list arg) {
   std::vprintf(fmt, arg);
 }
@@ -490,15 +492,88 @@ std::optional<Regexp> NLexer::regexp_expression() {
 
     if (strchr("?+*{}()[]\\|.", c) != NULL)
       // switch to literal
-      return Regexp{std::string{source_p - 1, 1}, RegexpType::Literal, c};
+      return Regexp{std::string{source_p - 2, 2}, RegexpType::Literal, c};
 
-    const char *escapes = "rtvna";
-    const char *vescapes = "\r\t\v\n\a";
-    if (const char *svv = strchr(escapes, c); svv != NULL)
-      return Regexp{std::string{source_p - 1, 1}, RegexpType::Literal,
-                    vescapes[(ptrdiff_t)(svv - escapes)]};
     // magic escapes
     switch (c) {
+    case 's': // whitespace
+      return Regexp{std::string{source_p - 2, 2}, RegexpType::CharacterClass,
+                    (std::string)UnicodeClasses::all_of_class(
+                        UnicodeClasses::Whitespaces)};
+    case 'S': // whitespace
+      return Regexp{std::string{source_p - 2, 2}, RegexpType::CharacterClass,
+                    "]" + (std::string)UnicodeClasses::all_of_class(
+                              UnicodeClasses::Whitespaces)};
+    case 'w':
+      return Regexp{std::string{source_p - 2, 2}, RegexpType::CharacterClass,
+                    (std::string)UnicodeClasses::Words};
+    case 'W':
+      return Regexp{std::string{source_p - 2, 2}, RegexpType::CharacterClass,
+                    "]" + (std::string)UnicodeClasses::all_of_class(
+                              UnicodeClasses::Words)};
+    case 'd':
+      return Regexp{std::string{source_p - 2, 2}, RegexpType::CharacterClass,
+                    (std::string)UnicodeClasses::Digits};
+    case 'D':
+      return Regexp{std::string{source_p - 2, 2}, RegexpType::CharacterClass,
+                    "]" + (std::string)UnicodeClasses::all_of_class(
+                              UnicodeClasses::Digits)};
+    case '0':
+      return Regexp{std::string{source_p - 2, 2}, RegexpType::Literal, '\0'};
+    case 'n':
+      return Regexp{std::string{source_p - 2, 2}, RegexpType::Literal, '\n'};
+    case 'f':
+      return Regexp{std::string{source_p - 2, 2}, RegexpType::Literal, '\f'};
+    case 'r':
+      return Regexp{std::string{source_p - 2, 2}, RegexpType::Literal, '\r'};
+    case 't':
+      return Regexp{std::string{source_p - 2, 2}, RegexpType::Literal, '\t'};
+    case 'v':
+      return Regexp{std::string{source_p - 2, 2}, RegexpType::Literal, '\v'};
+    case 'p':
+    case 'P': {
+      char pc = *source_p;
+      if (pc != '{')
+        lexer_error(*this, Errors::InvalidRegexpSyntax, error_token(),
+                    ErrorPosition::On,
+                    "Expected an open-brace '{' to follow \\p or \\P");
+      else
+        advance(1); // attempt to read charclass
+      // charclass can have two or one chars
+      char bf[3] = {0}, *bufv = &bf[0];
+      pc = *source_p;
+      if (strchr("LMNPSZC", pc) == NULL)
+        lexer_error(*this, Errors::InvalidRegexpSyntax, error_token(),
+                    ErrorPosition::On,
+                    "Invalid unicode character class, expected any of LMNPSZC "
+                    "but got %c",
+                    pc);
+      *(bufv++) = pc;
+      advance(1);
+      pc = *source_p;
+      if (pc == '}') {
+        return Regexp{std::string{source_p - 5, 5}, RegexpType::CharacterClass,
+                      (c == 'P' ? "]" : "") +
+                          (std::string)UnicodeClasses::all_of_class(bf)};
+      }
+      *(bufv++) = pc;
+      advance(1);
+      pc = *source_p;
+      if (pc == '}') {
+        advance(1);
+        return Regexp{std::string{source_p - 6, 6}, RegexpType::CharacterClass,
+                      (c == 'P' ? "]" : "") +
+                          (std::string)UnicodeClasses::all_of_class(bf)};
+      } else {
+        lexer_error(
+            *this, Errors::InvalidRegexpSyntax, error_token(),
+            ErrorPosition::On,
+            "Expected a close-brace '}' to follow \\p or \\P expression");
+        return Regexp{std::string{source_p - 6, 6}, RegexpType::CharacterClass,
+                      (c == 'P' ? "]" : "") +
+                          (std::string)UnicodeClasses::all_of_class(bf)};
+      }
+    }
     case 'x': // hex and unicode: TODO
     case 'u':
       lexer_error(*this, Errors::RegexpUnsupported, error_token(),
@@ -664,6 +739,28 @@ std::optional<Regexp> NLexer::regexp_quantifier(Regexp &reg) {
 }
 
 Regexp Regexp::concat(const Regexp &other) {
+  if (type == RegexpType::CharacterClass) {
+    if (other.type == RegexpType::Alternative) {
+      bool yes = true;
+      auto in = std::get<std::string>(inner);
+      bool glinv = in[0] == '[';
+      for (auto ch : other.children)
+        if (ch->type != RegexpType::CharacterClass) {
+          yes = false;
+          break;
+        } else if ((std::get<std::string>(ch->inner)[0] == '[' ^ glinv)) {
+          yes = false;
+          break;
+        }
+      if (yes) {
+        std::string ss = in;
+        for (auto ch : other.children)
+          ss += std::get<std::string>(ch->inner).substr(0, (int)glinv);
+        return Regexp{str + (std::string{"|"} + other.str),
+                      RegexpType::CharacterClass, ss};
+      }
+    }
+  }
   if (other.type == RegexpType::Alternative) {
     std::vector<Regexp *> vec;
     vec.push_back(new Regexp(*this));
@@ -925,19 +1022,37 @@ Regexp::compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
       s.erase(s.begin());
       inv = true;
     }
-    AnythingTransitionT t = {inv, s};
     NFANode<std::string> *tl = new NFANode<std::string>{"B" + mangle()};
     NFANode<std::string> *tl2 = new NFANode<std::string>{"E" + mangle()};
+    NFANode<std::string> *tl_1 = new NFANode<std::string>{"B_C1" + mangle()};
+    NFANode<std::string> *tl_2 = new NFANode<std::string>{"B_C2" + mangle()};
+    NFANode<std::string> *tl_3 = new NFANode<std::string>{"B_C3" + mangle()};
+    NFANode<std::string> *tl_end = tl2;
     if (!inv) {
       // we can transform this to many transitions instead
-      for (auto c : s)
-        tl->transition_to(tl2, c);
     } else {
-      NFANode<std::string> *tlm = new NFANode<std::string>{"Moot:E" + mangle()};
-      for (auto c : s)
-        tl->transition_to(tlm, c);
+      tl_end = new NFANode<std::string>{"Moot:E" + mangle()};
       tl->default_transition_to(tl2);
     }
+
+    for (auto cus : codepoints(s)) {
+      if (cus.size() == 1)
+        tl->transition_to(tl_end, cus[0]);
+      else if (cus.size() == 2) {
+        tl->transition_to(tl_1, cus[0]);
+        tl_1->transition_to(tl_end, cus[1]);
+      } else if (cus.size() == 3) {
+        tl->transition_to(tl_1, cus[0]);
+        tl_1->transition_to(tl_2, cus[1]);
+        tl_2->transition_to(tl_end, cus[2]);
+      } else if (cus.size() == 4) {
+        tl->transition_to(tl_1, cus[0]);
+        tl_1->transition_to(tl_2, cus[1]);
+        tl_2->transition_to(tl_3, cus[2]);
+        tl_3->transition_to(tl_end, cus[3]);
+      }
+    }
+
     tl = transform_by_quantifiers(
         new PseudoNFANode<std::string>{"S" + mangle(), tl, tl2});
     parent->epsilon_transition_to(tl);

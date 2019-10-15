@@ -53,9 +53,10 @@ public:
   std::map<std::string, bool> gen_lexer_options;
   std::set<std::string> gen_lexer_stopwords;
   std::map<std::string, std::string> gen_lexer_normalisations;
+  bool generate_graph = false;
 
   std::unique_ptr<NLexer> lexer;
-  int max_opt_steps = 10;
+  int max_opt_steps = 0;
   NFANode<std::string> *compile(std::string code);
   NFANode<std::string> *compile();
   void repl_feed(std::string code);

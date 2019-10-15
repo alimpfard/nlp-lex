@@ -1,0 +1,4 @@
+#! /bin/sh
+
+fname=$1
+dot $fname -Tpdf > ${fname}.pdf && evince $fname.pdf 2>&1 >/dev/null

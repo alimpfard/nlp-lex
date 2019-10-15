@@ -18,4 +18,5 @@ all() {
   compile
 }
 
-gen $@; paste; compile
+gen $@
+paste; compile

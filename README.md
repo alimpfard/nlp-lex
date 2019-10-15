@@ -24,7 +24,7 @@ non-captured (inlined) matches can be defined as such:
 the regex engine is currently very limited in what it supports, however here is a road map:
 
 - [X] execution
-- [ ] standalone execution
+- [X] standalone execution
 - [X] state traversal codegen
 - [X] helper functions codegen
 - [X] normalisation codegen
@@ -37,6 +37,8 @@ the regex engine is currently very limited in what it supports, however here is 
 - [X] semi-optimised alternative matching
 - [X] basic character classes
 - [ ] character classes with extensions
+- [ ] valid escapes in character classes (`[\p{Ll}\p{Lm}]`)
+- [X] unicode character classes (`\p{...}`)
 - [ ] optimised alternative matching
 - [ ] alternatives with priorities
 - [X] simple quantifiers (\+, \*)
