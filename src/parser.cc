@@ -13,6 +13,9 @@
 #include <stdarg.h>
 #include <thread>
 
+#include <algorithm>
+#include <execution>
+
 #include "vm.hpp"
 
 constexpr EpsilonTransitionT EpsilonTransition{};
@@ -714,31 +717,33 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
     if (dfa_root == nullptr)
       dfa_root = dfanode;
 
-    for (auto qq : all_alphabet(current)) {
+    auto alphabets = all_alphabet(current);
+    std::for_each(
+        std::execution::par_unseq, alphabets.begin(), alphabets.end(),
+        [&](auto qq) {
+          std::printf("processing output symbol '%c' for current : %s\n", qq,
+                      get_name(current).c_str());
 
-      std::printf("processing output symbol '%c' for current : %s\n", qq,
-                  get_name(current).c_str());
+          std::set<NFANode<T> *> eps_state =
+              get_epsilon_closure(get_states(current, qq));
+          DFANode<std::set<NFANode<T> *>> *nextdfanode;
 
-      std::set<NFANode<T> *> eps_state =
-          get_epsilon_closure(get_states(current, qq));
-      DFANode<std::set<NFANode<T> *>> *nextdfanode;
+          auto epsname = get_name(eps_state);
 
-      auto epsname = get_name(eps_state);
+          if (dfa_map.count(epsname))
+            nextdfanode = dfa_map[epsname];
+          else {
+            nextdfanode = dfa_map[epsname] =
+                new DFANode<std::set<NFANode<T> *>>{eps_state};
+            std::printf("generated extra state: %s\n", epsname.c_str());
+          }
 
-      if (dfa_map.count(epsname))
-        nextdfanode = dfa_map[epsname];
-      else {
-        nextdfanode = dfa_map[epsname] =
-            new DFANode<std::set<NFANode<T> *>>{eps_state};
-        std::printf("generated extra state: %s\n", epsname.c_str());
-      }
-
-      dfanode->add_transition(
-          new Transition<DFANode<std::set<NFANode<T> *>>, char>{nextdfanode,
-                                                                qq});
-      if (!visited.count(eps_state))
-        remaining.push(eps_state);
-    }
+          dfanode->add_transition(
+              new Transition<DFANode<std::set<NFANode<T> *>>, char>{nextdfanode,
+                                                                    qq});
+          if (!visited.count(eps_state))
+            remaining.push(eps_state);
+        });
 
     NFANode<T> *defl = nullptr;
     for (auto s : current)
