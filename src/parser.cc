@@ -18,7 +18,10 @@
 
 #include "vm.hpp"
 
+#include "termdisplay.hpp"
+
 constexpr EpsilonTransitionT EpsilonTransition{};
+static Display::SingleLineTermStatus slts;
 
 NFANode<std::string> *NParser::compile(std::string code) {
   lexer = std::make_unique<NLexer>(code);
@@ -689,6 +692,10 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
     if (visited.count(current))
       continue;
 
+    slts.show("[{<red>}DFAGen{<clean>}] Generating for node set "
+              "{<green>}'%s'{<clean>}",
+              get_name(current).c_str());
+
     visited.insert(current);
     DFANode<std::set<NFANode<T> *>> *dfanode;
 
@@ -701,18 +708,16 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
           new DFANode<std::set<NFANode<T> *>>{current};
     for (auto s : current) {
       if (s->final) {
-        std::printf("state %s was final, so marking %s as such\n",
-                    get_name(s).c_str(), get_name(current).c_str());
+        // std::printf("state %s was final, so marking %s as such\n",
+        //             get_name(s).c_str(), get_name(current).c_str());
         dfanode->final = true;
       }
       if (s->start) {
-        std::printf("state %s was start, so marking %s as such\n",
-                    get_name(s).c_str(), get_name(current).c_str());
+        // std::printf("state %s was start, so marking %s as such\n",
+        //             get_name(s).c_str(), get_name(current).c_str());
         dfanode->start = true;
       }
     }
-
-    std::printf("current : %s\n", get_name(current).c_str());
 
     if (dfa_root == nullptr)
       dfa_root = dfanode;
@@ -721,8 +726,9 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
     std::for_each(
         std::execution::par_unseq, alphabets.begin(), alphabets.end(),
         [&](auto qq) {
-          std::printf("processing output symbol '%c' for current : %s\n", qq,
-                      get_name(current).c_str());
+          slts.show("[{<red>}DFAGen{<clean>}] [{<red>}Resolution{<clean>}] "
+                    "{<green>}'%s'{<clean>} :: {<magenta>}%d{<clean>} = ('%c')",
+                    get_name(current).c_str(), qq, qq);
 
           std::set<NFANode<T> *> eps_state =
               get_epsilon_closure(get_states(current, qq));
@@ -735,7 +741,6 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
           else {
             nextdfanode = dfa_map[epsname] =
                 new DFANode<std::set<NFANode<T> *>>{eps_state};
-            std::printf("generated extra state: %s\n", epsname.c_str());
           }
 
           dfanode->add_transition(
@@ -752,8 +757,9 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
         break;
       }
     if (defl) {
-      std::printf("Processing default transition %p for current : %s\n", defl,
-                  get_name(current).c_str());
+      slts.show("[{<red>}DFAGen{<clean>}] [{<red>}Default{<clean>}] "
+                "{<green>}'%s'{<clean>} :: transition %p\n",
+                get_name(current).c_str(), defl);
 
       std::set<NFANode<T> *> eps_state = get_epsilon_closure(defl);
       DFANode<std::set<NFANode<T> *>> *nextdfanode;
@@ -765,7 +771,6 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
       else {
         nextdfanode = dfa_map[epsname] =
             new DFANode<std::set<NFANode<T> *>>{eps_state};
-        std::printf("generated extra state: %s\n", epsname.c_str());
       }
 
       dfanode->default_transition_to(nextdfanode);
@@ -872,6 +877,9 @@ void DFANLVMCodeGenerator<T>::generate(
   if (visited.count(node))
     return;
   visited.insert(node);
+  slts.show("[{<red>}NodeGen{<clean>}] Generating for node set "
+            "{<green>}'%s'{<clean>}",
+            get_name(node->state_info.value()).c_str());
   // generate any choice and add to output_cases
   BasicBlock *BB = BasicBlock::Create(builder.module.TheContext,
                                       get_name(node->state_info.value()),
