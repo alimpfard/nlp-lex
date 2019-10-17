@@ -21,7 +21,7 @@
 #include "termdisplay.hpp"
 
 constexpr EpsilonTransitionT EpsilonTransition{};
-static Display::SingleLineTermStatus slts;
+Display::SingleLineTermStatus slts;
 
 NFANode<std::string> *NParser::compile(std::string code) {
   lexer = std::make_unique<NLexer>(code);
@@ -863,7 +863,6 @@ template <typename T>
 void DFANLVMCodeGenerator<T>::generate(
     DFANode<std::set<NFANode<T> *>> *node,
     std::set<DFANode<std::set<NFANode<T> *>> *> visited) {
-  builder.begin();
   std::map<DFANode<std::set<NFANode<T> *>> *, llvm::BasicBlock *> blk{};
   generate(node, visited, blk);
 }
@@ -1107,6 +1106,7 @@ int main() {
   NFANode<std::string> *root;
   DFACCodeGenerator<std::string> cg;
   DFANLVMCodeGenerator<std::string> nlvmg;
+  nlvmg.builder.begin();
   while (1) {
     std::string line;
     std::cout << "> ";

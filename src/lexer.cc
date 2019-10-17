@@ -553,6 +553,7 @@ std::optional<Regexp> NLexer::regexp_expression() {
       advance(1);
       pc = *source_p;
       if (pc == '}') {
+        advance(1);
         return Regexp{std::string{source_p - 5, 5}, RegexpType::CharacterClass,
                       (c == 'P' ? "]" : "") +
                           (std::string)UnicodeClasses::all_of_class(bf)};

@@ -145,10 +145,11 @@ public:
   typename std::set<Transition<NFANode, std::variant<char, EpsilonTransitionT,
                                                      AnythingTransitionT>> *,
                     TransitionPointerComparer<StateInfoT>>::iterator
-  erase_transition_it(typename std::set<
-                      Transition<NFANode, std::variant<char, EpsilonTransitionT,
-                                                       AnythingTransitionT>> *,
-                      TransitionPointerComparer<StateInfoT>>::iterator);
+      erase_transition_it(
+          typename std::set<
+              Transition<NFANode, std::variant<char, EpsilonTransitionT,
+                                               AnythingTransitionT>> *,
+              TransitionPointerComparer<StateInfoT>>::iterator);
   void add_transition(Transition<NFANode, std::variant<char, EpsilonTransitionT,
                                                        AnythingTransitionT>> *);
   virtual void default_transition_to(NFANode<StateInfoT> *node) {
