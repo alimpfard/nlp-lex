@@ -39,7 +39,7 @@ void NParser::parse() {
   statestack = {};
   statestack.push(ParserState::Toplevel);
   bool failing = false;
-  std::variant<std::string> persist;
+  std::variant<std::string, int> persist;
   do {
     Token token = lexer->next();
     if (token.type == TOK_EOF)
@@ -54,6 +54,9 @@ void NParser::parse() {
         break;
       case TOK_STOPWORD:
         statestack.push(ParserState::Stopword);
+        break;
+      case TOK_IGNORE:
+        statestack.push(ParserState::Ignore);
         break;
       case TOK_NAME:
         persist = std::get<std::string>(token.value);
@@ -84,6 +87,17 @@ void NParser::parse() {
           std::get<bool>(token.value);
       statestack.pop(); // OptionName
       statestack.pop(); // Option
+      break;
+    case ParserState::Ignore:
+      if (token.type == TokenType::TOK_CBRAC) {
+        statestack.pop();
+        break;
+      }
+      if (token.type != TokenType::TOK_NAME) {
+        statestack.pop();
+        goto doitagain;
+      }
+      gen_lexer_ignores.insert(std::get<std::string>(token.value));
       break;
     case ParserState::Stopword:
       if (token.type != TokenType::TOK_LITSTRING &&
@@ -1159,7 +1173,8 @@ int main() {
 
         std::thread render{[&]() {
           nlvmg.builder.prepare(parser.gen_lexer_normalisations,
-                                parser.gen_lexer_stopwords);
+                                parser.gen_lexer_stopwords,
+                                parser.gen_lexer_ignores);
 
           nlvmg.generate(rootdfa);
           nlvmg.output();
@@ -1169,7 +1184,8 @@ int main() {
         render.join();
       } else {
         nlvmg.builder.prepare(parser.gen_lexer_normalisations,
-                              parser.gen_lexer_stopwords);
+                              parser.gen_lexer_stopwords,
+                              parser.gen_lexer_ignores);
 
         nlvmg.generate(rootdfa);
         nlvmg.output();

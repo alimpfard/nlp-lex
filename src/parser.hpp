@@ -24,6 +24,8 @@ enum class ParserState {
   OptionName,
   // Stopword
   Stopword,
+  // Ignore
+  Ignore,
   // Name
   Name,
   Define,
@@ -52,6 +54,7 @@ class NParser {
 public:
   std::map<std::string, bool> gen_lexer_options;
   std::set<std::string> gen_lexer_stopwords;
+  std::set<std::string> gen_lexer_ignores;
   std::map<std::string, std::string> gen_lexer_normalisations;
   bool generate_graph = false;
 

@@ -3,4 +3,6 @@ number :: \d+(\.\d*(e-?\d+)?)?
 punc   :: [.,:;'"()*%!~]+
 space  :: [   ]+
 
-stopword "64" "hello" " "
+ignore [space]
+
+stopword "64" "hello"

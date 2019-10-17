@@ -13,6 +13,7 @@
 enum TokenType {
   TOK_OPTION,
   TOK_STOPWORD,
+  TOK_IGNORE,
   TOK_OPCONST,
   TOK_OPDEFINE,
   TOK_OPNORMAL,
@@ -22,12 +23,14 @@ enum TokenType {
   TOK_NAME,
   TOK_REGEX,
   TOK_EOF,
+  TOK_CBRAC, // terminate ignore
   TOK_ERROR
 };
 
 static char *reverse_token_type[TOK_ERROR + 1] = {
     [TOK_OPTION] = "Option",
     [TOK_STOPWORD] = "Stopword",
+    [TOK_IGNORE] = "Ignore",
     [TOK_OPCONST] = "Const",
     [TOK_OPDEFINE] = "Define",
     [TOK_OPNORMAL] = "Normalise",
@@ -37,6 +40,7 @@ static char *reverse_token_type[TOK_ERROR + 1] = {
     [TOK_NAME] = "Name",
     [TOK_REGEX] = "Regexp",
     [TOK_EOF] = "EOF",
+    [TOK_CBRAC] = "CloseBracket",
     [TOK_ERROR] = "Error"};
 
 struct Token {
@@ -78,10 +82,16 @@ enum LexerState {
                 /* String -> Stopword
                  * newline -> Toplevel
                  */
-  String,       // -> String
-  Const,        // String -> Toplevel
-  Normal,       // -> Toplevel
-  Define,       // -> Toplevel (parses a regex)
+  Ignore,       // [ -> IgnoreBrac
+
+  IgnoreBrac, // valid tokens
+              // Name -> IgnoreBrac
+              // ] -> Toplevel
+
+  String, // -> String
+  Const,  // String -> Toplevel
+  Normal, // -> Toplevel
+  Define, // -> Toplevel (parses a regex)
 };
 
 enum ErrorPosition {

@@ -148,6 +148,13 @@ inline Token NLexer::_next() {
       return Token{TOK_STOPWORD, lineno, offset - strlen("stopword"),
                    strlen("stopword"), empty_string};
     }
+    if (c == 'i' && strncmp("gnore", source_p, strlen("gnore")) == 0 &&
+        !isalnum(*(source_p + strlen("gnore")))) {
+      state = LexerState::Ignore;
+      advance(strlen("gnore"));
+      return Token{TOK_IGNORE, lineno, offset - strlen("ignore"),
+                   strlen("ignore"), empty_string};
+    }
     length = 0;
     buffer[length++] = c;
     do {
@@ -252,6 +259,38 @@ inline Token NLexer::_next() {
     state = LexerState::Toplevel;
 
     return Token{TOK_BOOL, lineno, offset - length, length, truth};
+    break;
+  }
+  case LexerState::Ignore: {
+    if (c != '[') {
+
+      const Token &mtoken = error_token();
+      lexer_error(*this, Errors::Unexpected, mtoken, ErrorPosition::On,
+                  "Expected an open bracket '['");
+      return mtoken;
+    }
+    state = LexerState::IgnoreBrac;
+    return next();
+  }
+  case LexerState::IgnoreBrac: {
+    if (c == ']') {
+      state = LexerState::Toplevel;
+      return Token{TOK_CBRAC, lineno, offset - 1, 1, std::string{"]"}};
+    }
+    buffer[++length] = c;
+    do {
+      c = *(source_p++);
+      buffer[++length] = c;
+      offset++;
+    } while (!isspace(c) && c != ']');
+
+    buffer[length] = 0;
+    offset--;
+    if (c == ']')
+      source_p--;
+
+    return Token{TOK_NAME, lineno, offset - length, length,
+                 std::string{buffer, length}};
     break;
   }
   case LexerState::Stopword: {

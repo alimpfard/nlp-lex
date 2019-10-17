@@ -250,7 +250,7 @@ public:
     module.Builder.CreateRetVoid();
   }
   void prepare(std::map<std::string, std::string> normalisations,
-               std::set<std::string> stopwords) {
+               std::set<std::string> stopwords, std::set<std::string> ignores) {
     // create global values
     {
       auto nlex_fed_string = new llvm::GlobalVariable(
@@ -606,6 +606,37 @@ public:
       }
       module.BBfinalise = fbb;
     }
+    // skip ignored states if specified
+    if (ignores.size() > 0) {
+      auto fbb = llvm::BasicBlock::Create(module.TheContext, "_ignore_res",
+                                          module.main());
+      auto *prev_fbb = module.BBfinalise;
+      WordTree<std::string> wtree{stopwords};
+      llvm::IRBuilder<> builder{module.TheContext};
+
+      auto tcabb = llvm::BasicBlock::Create(module.TheContext, "_tailcall_self",
+                                            module.main());
+      builder.SetInsertPoint(tcabb);
+      builder.CreateCall(module.main(), {module.main()->arg_begin()})
+          ->setTailCall(true);
+      builder.CreateRetVoid();
+
+      builder.SetInsertPoint(fbb);
+      auto tag = builder.CreateLoad(module.last_tag);
+      auto ptag = builder.CreatePtrToInt(
+          tag, llvm::Type::getInt64Ty(module.TheContext));
+      llvm::BasicBlock *nextbb;
+      for (auto ign : ignores) {
+        nextbb = llvm::BasicBlock::Create(module.TheContext,
+                                          "__ignore_res_" + ign, module.main());
+        builder.CreateCondBr(
+            builder.CreateICmpEQ(get_or_create_tag_constint(ign), ptag), tcabb,
+            nextbb);
+        builder.SetInsertPoint(nextbb);
+      }
+      builder.CreateBr(prev_fbb);
+      module.BBfinalise = fbb;
+    }
   }
   void end() {
     // finish the function
@@ -644,6 +675,19 @@ public:
       return registered_tags[tag];
     return registered_tags[tag] =
                mk_string(module.TheModule.get(), module.TheContext, tag);
+  }
+  llvm::ConstantInt *get_or_create_tag_constint(std::string tag) {
+    llvm::Constant *s;
+    if (registered_tags.count(tag))
+      s = registered_tags[tag];
+    else
+      s = registered_tags[tag] =
+          mk_string(module.TheModule.get(), module.TheContext, tag);
+    return to_int(s);
+  }
+  llvm::ConstantInt *to_int(llvm::Constant *s) {
+    return (llvm::ConstantInt *)llvm::ConstantExpr::getPtrToInt(
+        s, llvm::Type::getInt64Ty(module.TheContext));
   }
 };
 } // namespace nlvm

@@ -138,6 +138,43 @@
           }
         }
       }
+      {
+        'begin' : '(ignore)(\\s*)'
+        'beginCaptures' : {
+          '1' : {
+            'name' : 'keyword.NLex'
+          }
+          '2' : {
+            'name' : 'punctuation.NLex'
+          }
+        }
+        'patterns' : [
+          {
+            'include' : '#ignores'
+          }
+        ]
+        'end' : '(^)'
+        'endCaptures' : {
+          '1' : {
+            'name' : 'punctuation.NLex'
+          }
+        }
+      }
+    ]
+  }
+  'ignores' : {
+    'patterns' : [
+      {
+        'match' : '(\\w+)(\\s*)'
+        'captures' : {
+          '1' : {
+            'name' : 'entity.name.type.class.NLex'
+          }
+          '2' : {
+            'name' : 'punctuation.NLex'
+          }
+        }
+      }
     ]
   }
   'main__1' : {
