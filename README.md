@@ -28,7 +28,7 @@ the regex engine is currently very limited in what it supports, however here is 
 - [X] state traversal codegen
 - [X] helper functions codegen
 - [X] normalisation codegen
-- [ ] stopword codegen
+- [X] stopword codegen
 - [X] normalisation declarations (`c <= abcd`)
 - [X] stopword declarations (`stopwords "stop" "word"`)
 - [X] normal literal character matching
@@ -45,5 +45,6 @@ the regex engine is currently very limited in what it supports, however here is 
 - [X] medium-simple quantifiers ({x,y})
 - [X] not-simple quantifiers (?)
 - [X] insane quantifiers (??)
+- [ ] rule actions (design a DSL for it...?)
 - [ ] backreferences
 - [ ] recursive matching
