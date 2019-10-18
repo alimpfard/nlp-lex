@@ -356,13 +356,13 @@ public:
               len, llvm::ConstantInt::get(
                        llvm::Type::getInt32Ty(module.TheContext), -1)),
           nlex_injected_length);
+      auto ld = builder.CreateLoad(nlex_injected);
       builder.CreateStore(
-          builder.CreateGEP(builder.CreateLoad(nlex_injected),
+          builder.CreateGEP(ld,
                             {llvm::ConstantInt::get(
                                 llvm::Type::getInt32Ty(module.TheContext), 1)}),
           nlex_injected);
-      builder.CreateStore(builder.CreateLoad(builder.CreateLoad(nlex_injected)),
-                          nlex_tmp_char);
+      builder.CreateStore(builder.CreateLoad(ld), nlex_tmp_char);
       builder.CreateRetVoid();
       // no inject
       BB = pBB;
@@ -399,17 +399,22 @@ public:
             // create a toplevel block
             llvm::SwitchInst *sw;
             if (i == norm.size()) {
-
-              auto BBend = llvm::BasicBlock::Create(module.TheContext,
-                                                    "default_escape-" + norm,
-                                                    module.nlex_next);
+              if (i > 1)
+                mbuilder.CreateStore(
+                    mbuilder.CreateGEP(
+                        mbuilder.CreateLoad(nlex_fed_string),
+                        {llvm::ConstantInt::get(
+                            llvm::Type::getInt32Ty(module.TheContext),
+                            norm.size() - 1)}),
+                    nlex_fed_string);
               mbuilder.CreateStore(
-                  get_or_create_tag(norm.substr(1, norm.size())),
+                  get_or_create_tag(
+                      pnorm.second.substr(1, pnorm.second.size())),
                   nlex_injected); // consume one byte and store the rest
               mbuilder.CreateStore(
                   llvm::ConstantInt::get(
                       llvm::Type::getInt32Ty(module.TheContext),
-                      norm.size() - 1),
+                      pnorm.second.size() - 1),
                   nlex_injected_length);
               mbuilder.CreateStore(
                   llvm::ConstantInt::get(
@@ -419,28 +424,10 @@ public:
 
               mbuilder.CreateStore( // store the first character (literal)
                   llvm::ConstantInt::get(
-                      llvm::Type::getInt8Ty(module.TheContext), (int)norm[0]),
+                      llvm::Type::getInt8Ty(module.TheContext),
+                      (int)pnorm.second[0]),
                   nlex_tmp_char);
-              auto gep = mbuilder.CreateInBoundsGEP(
-                  fs, {llvm::ConstantInt::get(
-                          llvm::Type::getInt32Ty(module.TheContext), i)});
-              auto cvv = mbuilder.CreateLoad(gep);
-
-              sw = mbuilder.CreateSwitch(cvv, BBend);
-              mbuilder.SetInsertPoint(BBend);
-
-              mbuilder.CreateStore(
-                  mbuilder.CreateLoad(mbuilder.CreateLoad(nlex_fed_string)),
-                  nlex_tmp_char);
-              mbuilder.CreateStore(
-                  mbuilder.CreateGEP(
-                      mbuilder.CreateLoad(nlex_fed_string),
-                      {llvm::ConstantInt::get(
-                          llvm::Type::getInt32Ty(module.TheContext), 1)}),
-                  nlex_fed_string);
-
               mbuilder.CreateRetVoid();
-              levels[norm.substr(0, i)] = sw;
               continue;
             } else {
 
@@ -670,7 +657,12 @@ public:
   }
 
   std::map<std::string, llvm::Constant *> registered_tags;
-  llvm::Value *get_or_create_tag(std::string tag) {
+  llvm::Value *get_or_create_tag(std::string tag, bool istag = true) {
+    if (istag) {
+      auto pos = tag.find("{::}");
+      if (pos != tag.npos)
+        tag = tag.substr(0, pos);
+    }
     if (registered_tags.count(tag))
       return registered_tags[tag];
     return registered_tags[tag] =
