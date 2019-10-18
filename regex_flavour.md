@@ -29,7 +29,7 @@
         + `\s`           Whitespace character          (Line Sep | Par Sep | Space Sep)
         + `\S`           non-whitespace character      (reverse of `\s`)
         + `\d`           Decimal digit character       (Number Decimal)
-        + `\D`           non-digit characte            (reverse of `\d`)
+        + `\D`           non-digit character            (reverse of `\d`)
 
     2. Unicode Classes or properties
 
@@ -42,7 +42,7 @@
         + `?`        1 or 0 times
         + `*`        0 or more times
         + `+`        1 or more times
-        + `{m,n}`    (n <= m) at least n but no more than m times
+        + `{n,m}`    (n <= m) at least n but no more than m times
         + `{n,}`     at least n times
         + `{n}`      n times
 
