@@ -320,6 +320,28 @@ inline Token NLexer::_next() {
       isfile = true;
     else if (c == '"')
       source_p--;
+    else {
+      advance(-1); // attempt to parse regex
+      Token errtok = error_token();
+      auto opt = _regexp();
+      if (!opt.has_value()) {
+        const Token &mtoken = error_token();
+        lexer_error(
+            *this, Errors::InvalidRegexp, mtoken, ErrorPosition::On,
+            "Expected a valid regex (see above for possible diagnosis)");
+        return mtoken;
+      }
+      Regexp regex = opt.value();
+      if (!regex.sanity_check(*this)) {
+        errtok.length = regex.str.size();
+        lexer_error(*this, Errors::InvalidRegexp, errtok, ErrorPosition::After,
+                    "Malformed Regular expression");
+        return errtok;
+      }
+      state = LexerState::Toplevel;
+      return Token{TOK_REGEX, lineno, offset - regex.str.size(),
+                   regex.str.size(), regex};
+    }
     std::optional<std::string> vstr = string();
     state = LexerState::Toplevel;
     if (!vstr.has_value()) {
@@ -996,11 +1018,27 @@ void Regexp::resolve(
       reg->is_leaf = false;
     } else /* Const */ {
       // construct a literal regexp
-      std::string s = std::get<std::string>(std::get<2>(val));
-      for (char c : s)
-        children.push_back(new Regexp{std::string{c}, RegexpType::Literal, c});
-      str = s;
-      type = RegexpType::Concat;
+      auto vv = std::get<2>(val);
+      if (std::holds_alternative<std::string>(vv)) {
+        std::string s = std::get<std::string>(vv);
+        for (char c : s)
+          children.push_back(
+              new Regexp{std::string{c}, RegexpType::Literal, c});
+        str = s;
+        type = RegexpType::Concat;
+      } else {
+        auto *reg = std::get<Regexp *>(vv);
+        type = reg->type;
+        children = reg->children;
+        str = reg->str;
+        inner = reg->inner;
+        named_rule = "";
+
+        plus = plus || reg->plus;
+        star = star || reg->star;
+        lazy = lazy || reg->lazy;
+        reg->is_leaf = false;
+      }
     }
     was_reference = true;
     referenced_symbol = name;

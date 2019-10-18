@@ -166,7 +166,32 @@ void NParser::parse() {
       break;
     }
     case ParserState::Const: {
-      if (token.type != TOK_LITSTRING && token.type != TOK_FILESTRING) {
+      if (token.type == TOK_REGEX) {
+        std::string name = std::get<std::string>(persist);
+        if (name.size() == 0) {
+          printf("huh?\n");
+        }
+        if (values.count(name) != 0) {
+          failing = true;
+          auto entry = std::get<1>(values[name]);
+          std::printf(
+              "symbol '%s' has been previously defined at line %d, offset %d\n",
+              name.c_str(), entry.lineno, entry.offset);
+          break;
+        }
+        Regexp reg = std::get<Regexp>(token.value);
+        reg.resolve(values);
+        reg.named_rule = name;
+        values[name] = std::make_tuple<SymbolType, SymbolDebugInformation,
+                                       std::variant<std::string, Regexp *>>(
+            SymbolType::Const,
+            {SymbolType::Const, token.lineno, token.offset, token.length, name,
+             reg.str},
+            new Regexp{reg});
+        statestack.pop(); // const
+        statestack.pop(); // name
+        break;
+      } else if (token.type != TOK_LITSTRING && token.type != TOK_FILESTRING) {
         failing = true;
         std::printf("expected a string, invalid token %s - %s\n",
                     reverse_token_type[token.type],

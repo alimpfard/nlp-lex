@@ -7,7 +7,7 @@ paste() {
 }
 
 compile() {
-  opt all.ll -o all.bc -da -constmerge -gvn -globaldce -instcombine -lcssa -licm -adce -constprop -inline
+  opt all.ll -o all.bc -da -constmerge -gvn -globaldce -instcombine -lcssa -licm -adce -constprop -inline -tailcallelim -instcombine -adce
   llc -filetype=obj -relocation-model=pic all.bc
   gcc all.o
 }
