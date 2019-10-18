@@ -72,6 +72,7 @@ the regex engine is currently very limited in what it supports, however here is 
 - [ ] optimised alternative matching
 - [ ] alternatives with priorities
 - [ ] File strings
+- [X] Zero-width assertions
 - [X] simple quantifiers (\+, \*)
 - [X] medium-simple quantifiers ({x,y})
 - [X] not-simple quantifiers (?)

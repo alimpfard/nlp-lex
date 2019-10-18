@@ -34,7 +34,7 @@
     2. Unicode Classes or properties
 
         + `\p{property-name}`   Unicode Class (L|Z|M|N|P) and their subcategories
-    
+
 4. Quantifiers
 
     1. Greedy
@@ -45,16 +45,16 @@
         + `{m,n}`    (n <= m) at least n but no more than m times
         + `{n,}`     at least n times
         + `{n}`      n times
-    
+
     2. Reluctant
 
         + `*?`       0 or more times
-        + `+?`       1 or more times 
-    
+        + `+?`       1 or more times
 
-5. Assertions (not yet implemented)
 
-    + `^`      beginning of line 
+5. Assertions
+
+    + `^`      beginning of line
     + `$`      end of line
     + `\b`     word boundary
     + `\B`     non-word boundary
