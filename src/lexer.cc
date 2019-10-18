@@ -1204,18 +1204,20 @@ Regexp::transform_by_quantifiers(NFANode<std::string> *node) const {
     std::multimap<const Regexp *, NFANode<std::string> *> node_cache;
     auto leading_ = false;
     for (auto i = 0; i < rp.lowbound - 2; i++)
-      node = rgc->compile(
-          node_cache, node,
-          string_format("Rpt%d{::}%s", i, rgc->mangle().c_str()), leading_);
+      node = rgc->compile(node_cache, node,
+                          string_format("%s{::}%s{::}Rpt%d", mangle().c_str(),
+                                        rgc->mangle().c_str(), i),
+                          leading_);
 
     if (rp.has_highbound) {
       if (rp.highbound == -1) {
         auto tl0 = new NFANode<std::string>{"Br*" + mangle()};
         auto tp0 = new NFANode<std::string>{"Er*" + mangle()};
-        auto tnode = rgc->compile(node_cache, tl0,
-                                  string_format("Rpt%d{::}%s", rp.lowbound - 2,
-                                                rgc->mangle().c_str()),
-                                  leading_);
+        auto tnode =
+            rgc->compile(node_cache, tl0,
+                         string_format("%s{::}%s{::}Rpt%d", mangle().c_str(),
+                                       rgc->mangle().c_str(), rp.lowbound - 2),
+                         leading_);
 
         tl0->epsilon_transition_to(tnode);
         tnode->epsilon_transition_to(tp0);
@@ -1227,23 +1229,26 @@ Regexp::transform_by_quantifiers(NFANode<std::string> *node) const {
         rgc->repeat = rp;
 
       } else {
-        node = rgc->compile(node_cache, node,
-                            string_format("Rpt%d{::}%s", rp.lowbound - 2,
-                                          rgc->mangle().c_str()),
-                            leading_);
+        node =
+            rgc->compile(node_cache, node,
+                         string_format("%s{::}%s{::}Rpt%d", mangle().c_str(),
+                                       rgc->mangle().c_str(), rp.lowbound - 2),
+                         leading_);
         rgc->lazy = true;
         for (auto i = rp.lowbound; i < rp.highbound; i++)
-          node = rgc->compile(
-              node_cache, node,
-              string_format("Rpt%d{::}%s", i, rgc->mangle().c_str()), leading_);
+          node =
+              rgc->compile(node_cache, node,
+                           string_format("%s{::}%s{::}Rpt%d", mangle().c_str(),
+                                         rgc->mangle().c_str(), i),
+                           leading_);
         rgc->lazy = lz;
         rgc->repeat = rp;
       }
     } else {
-      node = rgc->compile(
-          node_cache, node,
-          string_format("Rpt%d{::}%s", rp.lowbound - 2, rgc->mangle().c_str()),
-          leading_);
+      node = rgc->compile(node_cache, node,
+                          string_format("%s{::}%s{::}Rpt%d", mangle().c_str(),
+                                        rgc->mangle().c_str(), rp.lowbound - 2),
+                          leading_);
       rgc->lazy = lz;
       rgc->repeat = rp;
     }

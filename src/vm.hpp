@@ -408,8 +408,8 @@ public:
                             norm.size() - 1)}),
                     nlex_fed_string);
               mbuilder.CreateStore(
-                  get_or_create_tag(
-                      pnorm.second.substr(1, pnorm.second.size())),
+                  get_or_create_tag(pnorm.second.substr(1, pnorm.second.size()),
+                                    false),
                   nlex_injected); // consume one byte and store the rest
               mbuilder.CreateStore(
                   llvm::ConstantInt::get(

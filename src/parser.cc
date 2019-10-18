@@ -19,6 +19,7 @@
 #include "vm.hpp"
 
 #include "termdisplay.hpp"
+#include <mutex>
 
 constexpr EpsilonTransitionT EpsilonTransition{};
 Display::SingleLineTermStatus slts;
@@ -606,10 +607,9 @@ get_states(const std::set<NFANode<T> *> &states,
 }
 
 template <typename T>
-static std::set<NFANode<T> *>
-get_epsilon_closure(NFANode<T> *node,
-                    std::map<std::set<NFANode<T> *>, std::set<NFANode<T> *>>
-                        epsilon_closures = {}) {
+static std::set<NFANode<T> *> get_epsilon_closure(
+    NFANode<T> *node,
+    std::map<std::set<NFANode<T> *>, std::set<NFANode<T> *>> epsilon_closures) {
   std::set<NFANode<T> *> key;
   key.insert(node);
 
@@ -635,10 +635,9 @@ get_epsilon_closure(NFANode<T> *node,
 }
 
 template <typename T>
-static std::set<NFANode<T> *>
-get_epsilon_closure(const std::set<NFANode<T> *> nodes,
-                    std::map<std::set<NFANode<T> *>, std::set<NFANode<T> *>>
-                        epsilon_closures = {}) {
+static std::set<NFANode<T> *> get_epsilon_closure(
+    const std::set<NFANode<T> *> nodes,
+    std::map<std::set<NFANode<T> *>, std::set<NFANode<T> *>> epsilon_closures) {
   if (epsilon_closures.count(nodes))
     return epsilon_closures[nodes];
 
@@ -692,7 +691,7 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
   DFANode<std::set<NFANode<T> *>> *dfa_root = nullptr;
   std::map<std::string, DFANode<std::set<NFANode<T> *>> *> dfa_map;
 
-  std::set<NFANode<T> *> init = get_epsilon_closure(this);
+  std::set<NFANode<T> *> init = get_epsilon_closure(this, {});
 
   std::queue<std::set<NFANode<T> *>> remaining;
   remaining.push(init);
@@ -736,7 +735,9 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
     if (dfa_root == nullptr)
       dfa_root = dfanode;
 
-    auto alphabets = all_alphabet(current);
+    auto salphabets = all_alphabet(current);
+    std::vector<char> alphabets{salphabets.begin(), salphabets.end()};
+    std::mutex m;
     std::for_each(
         std::execution::par_unseq, alphabets.begin(), alphabets.end(),
         [&](auto qq) {
@@ -744,10 +745,12 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
                     "{<green>}'%s'{<clean>} :: {<magenta>}%d{<clean>} = ('%c')",
                     get_name(current).c_str(), qq, qq);
 
-          std::set<NFANode<T> *> eps_state =
-              get_epsilon_closure(get_states(current, qq));
+          std::set<NFANode<T> *> eps_state;
           DFANode<std::set<NFANode<T> *>> *nextdfanode;
-
+          {
+            std::lock_guard lg{m};
+            eps_state = get_epsilon_closure(get_states(current, qq), {});
+          }
           auto epsname = get_name(eps_state);
 
           if (dfa_map.count(epsname))
@@ -756,7 +759,6 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
             nextdfanode = dfa_map[epsname] =
                 new DFANode<std::set<NFANode<T> *>>{eps_state};
           }
-
           dfanode->add_transition(
               new Transition<DFANode<std::set<NFANode<T> *>>, char>{nextdfanode,
                                                                     qq});
@@ -775,7 +777,7 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
                 "{<green>}'%s'{<clean>} :: transition %p\n",
                 get_name(current).c_str(), defl);
 
-      std::set<NFANode<T> *> eps_state = get_epsilon_closure(defl);
+      std::set<NFANode<T> *> eps_state = get_epsilon_closure(defl, {});
       DFANode<std::set<NFANode<T> *>> *nextdfanode;
 
       auto epsname = get_name(eps_state);

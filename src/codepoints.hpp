@@ -2,7 +2,7 @@
 
 class Codepoints {
   char const *p;
-  int length;
+  size_t length;
 
 public:
   Codepoints(char const *sp, int len) : p(sp), length(len) {}

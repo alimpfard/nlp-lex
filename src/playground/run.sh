@@ -1,5 +1,5 @@
 gen() {
-  (cat $1; echo ".gengraph"; echo ".nlvm"; echo ".end") | ../a.out 2> ll.ll
+  (cat $1; echo ".nlvm"; echo ".end") | ../a.out 2> ll.ll
 }
 
 paste() {

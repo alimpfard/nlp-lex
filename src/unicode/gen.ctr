@@ -48,7 +48,7 @@ ccdata each: {:k:v
   out write: '\tconstexpr static std::string_view Class_%s = "%:L";\n' % [k, '', v fmap!: {\:x '\\U${{x paddingLeft: 8, replace: ' ' with: '0'}}$'}].
 }.
 
-out write: '\tconstexpr static std::string_view Class_L = "%:L";' % [
+out write: '\tconstexpr static std::string_view Class_L = "%:L";\n' % [
   '',
   (ccdata @ 'Ll') +
   (ccdata @ 'Lm') +
@@ -57,14 +57,14 @@ out write: '\tconstexpr static std::string_view Class_L = "%:L";' % [
   (ccdata @ 'Lo')
 ].
 
-out write: '\tconstexpr static std::string_view Class_M = "%:L";' % [
+out write: '\tconstexpr static std::string_view Class_M = "%:L";\n' % [
   '',
   (ccdata @ 'Mc') +
   (ccdata @ 'Me') +
   (ccdata @ 'Mn')
 ].
 
-out write: '\tconstexpr static std::string_view Class_N = "%:L";' % [
+out write: '\tconstexpr static std::string_view Class_N = "%:L";\n' % [
   '',
   (ccdata @ 'Nd') +
   (ccdata @ 'Nl') +
@@ -72,7 +72,7 @@ out write: '\tconstexpr static std::string_view Class_N = "%:L";' % [
 ].
 
 
-out write: '\tconstexpr static std::string_view Class_S = "%:L";' % [
+out write: '\tconstexpr static std::string_view Class_S = "%:L";\n' % [
   '',
   (ccdata @ 'Sc') +
   (ccdata @ 'Sk') +
@@ -81,7 +81,7 @@ out write: '\tconstexpr static std::string_view Class_S = "%:L";' % [
 ].
 
 
-out write: '\tconstexpr static std::string_view Class_Z = "%:L";' % [
+out write: '\tconstexpr static std::string_view Class_Z = "%:L";\n' % [
   '',
   (ccdata @ 'Zl') +
   (ccdata @ 'Zp') +
@@ -89,7 +89,7 @@ out write: '\tconstexpr static std::string_view Class_Z = "%:L";' % [
 ].
 
 
-out write: '\tconstexpr static std::string_view Class_P = "%:L";' % [
+out write: '\tconstexpr static std::string_view Class_P = "%:L";\n' % [
   '',
   (ccdata @ 'Pc') +
   (ccdata @ 'Pd') +
@@ -100,7 +100,7 @@ out write: '\tconstexpr static std::string_view Class_P = "%:L";' % [
   (ccdata @ 'Po')
 ].
 
-out write: '\tconstexpr static std::string_view Class_C = "%:L";' % [
+out write: '\tconstexpr static std::string_view Class_C = "%:L";\n' % [
   '',
   (ccdata @ 'Cc') +
   (ccdata @ 'Cf') +
