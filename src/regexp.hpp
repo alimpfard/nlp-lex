@@ -23,6 +23,7 @@ enum RegexpType {
   Literal,
   Escape,
   CharacterClass,
+  Assertion,
 };
 
 struct RepeatQuantifier {
@@ -33,7 +34,7 @@ struct RepeatQuantifier {
 struct Regexp {
   // here there be dragons
   RegexpType type;
-  std::variant<std::string, char, Regexp *> inner;
+  std::variant<std::string, char, Regexp *, std::vector<RegexpAssertion>> inner;
   std::vector<Regexp *> children;
 
   bool is_leaf;
@@ -43,7 +44,8 @@ struct Regexp {
 public:
   std::string str;
 
-  bool plus, star, lazy;
+  bool plus, star, lazy, store = false;
+  int index = 0; // applies for nested and backref (escape)
   std::optional<RepeatQuantifier> repeat;
 
   bool operator==(const Regexp &other) const;
@@ -72,6 +74,12 @@ public:
   }
 
   Regexp(std::string str, RegexpType type, Regexp *inner)
+      : type(type), inner(inner), plus(), star(), lazy(), str(str), repeat(),
+        is_leaf(true), was_reference(false) {
+    children = {};
+  }
+
+  Regexp(std::string str, RegexpType type, std::vector<RegexpAssertion> inner)
       : type(type), inner(inner), plus(), star(), lazy(), str(str), repeat(),
         is_leaf(true), was_reference(false) {
     children = {};

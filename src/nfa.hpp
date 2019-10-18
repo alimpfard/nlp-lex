@@ -17,6 +17,14 @@ template <typename T> NFANode<T> *deep_output_end(NFANode<T> *node);
 
 static const AnythingTransitionT AnythingTransition{true, "\r\n"};
 
+enum class RegexpAssertion {
+  SetPosition,
+  LineBeginning,
+  LineEnd,
+  TrueBeginning,
+  MatchBeginning,
+};
+
 template <typename StateInfoT> class DFANode {
 public:
   std::optional<StateInfoT> state_info;
@@ -44,6 +52,8 @@ public:
   DFANode<StateInfoT> *default_transition =
       nullptr; // where to go if nothing else matches
                // nullptr :- fail match and revert back to last final state
+
+  std::vector<RegexpAssertion> assertions = {};
 
   std::optional<std::string> named_rule;
   DFANode(StateInfoT s) : state_info(s) {}
@@ -111,6 +121,7 @@ public:
       nullptr; // where to go if nothing else matches
                // nullptr :- fail match and revert back to last final state
   std::optional<std::string> named_rule;
+  std::vector<RegexpAssertion> assertions = {};
   NFANode(StateInfoT s) : state_info(s) {}
   NFANode()
       : state_info(), final(false), start(false), outgoing_transitions(),
@@ -223,8 +234,9 @@ template <typename K> struct NFANodePointerComparer {
     if (dynamic_cast<const PseudoNFANode<K> *>(a) !=
         dynamic_cast<const PseudoNFANode<K> *>(b))
       return false;
-    if (a->start == b->start && a->final == b->final && /*
-        a->state_info == b->state_info && a->named_rule == b->named_rule*/
+    if (a->start == b->start && a->final == b->final &&
+        a->assertions == b->assertions && /*
+a->state_info == b->state_info && a->named_rule == b->named_rule*/
         1) {
       return a->default_transition == b->default_transition &&
              veqv(a->outgoing_transitions, b->outgoing_transitions);

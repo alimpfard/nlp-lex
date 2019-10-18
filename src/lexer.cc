@@ -536,7 +536,7 @@ std::optional<Regexp> NLexer::regexp_expression() {
   if (c == '\0')
     return {};
   // character literal
-  if (strchr("?+*{}()[]\\|.", c) == NULL) {
+  if (strchr("?+*{}()[]\\|.^$", c) == NULL) {
     advance(1);
     return Regexp{std::string{source_p - 1, 1}, RegexpType::Literal, c};
   }
@@ -551,7 +551,30 @@ std::optional<Regexp> NLexer::regexp_expression() {
     advance(1);
     c = *source_p;
     advance(1);
-
+    if (isdigit(c)) {
+      // backref ?
+      static char buf[40];
+      int len = 0;
+      while (isdigit(c)) {
+        buf[len++] = c;
+        advance(1);
+        c = *source_p;
+      }
+      buf[len] = 0;
+      int backrefnum = atoi(buf);
+      advance(-1);
+      if (backrefnum > nested_index) {
+        lexer_error(*this, Errors::InvalidRegexpSyntax, error_token(),
+                    ErrorPosition::On,
+                    "Backreference references future or current match (%d>%d)",
+                    backrefnum, nested_index);
+        backrefnum = nested_index - 2;
+      }
+      auto reg =
+          Regexp{std::string{source_p - len, len}, RegexpType::Escape, '\\'};
+      reg.index = backrefnum;
+      return reg;
+    }
     if (strchr("?+*{}()[]\\|.", c) != NULL)
       // switch to literal
       return Regexp{std::string{source_p - 2, 2}, RegexpType::Literal, c};
@@ -637,13 +660,39 @@ std::optional<Regexp> NLexer::regexp_expression() {
                           (std::string)UnicodeClasses::all_of_class(bf)};
       }
     }
+    case 'K':
+      return Regexp{std::string{source_p - 2, 2},
+                    RegexpType::Assertion,
+                    {RegexpAssertion::SetPosition}};
+    case 'A':
+      return Regexp{std::string{source_p - 2, 2},
+                    RegexpType::Assertion,
+                    {RegexpAssertion::TrueBeginning}};
+    case 'G':
+      return Regexp{std::string{source_p - 2, 2},
+                    RegexpType::Assertion,
+                    {RegexpAssertion::MatchBeginning}};
     case 'x': // hex and unicode: TODO
     case 'u':
       lexer_error(*this, Errors::RegexpUnsupported, error_token(),
                   ErrorPosition::On, "Unicode/Hex escapes not yet supported");
     default:
+      lexer_error(*this, Errors::RegexpUnknown, error_token(),
+                  ErrorPosition::On, "Unknown escape '%c'", c);
       return Regexp{std::string{source_p - 2, 2}, RegexpType::Escape, c};
     }
+  }
+  if (c == '^') {
+    advance(1);
+    return Regexp{std::string{source_p - 2, 2},
+                  RegexpType::Assertion,
+                  {RegexpAssertion::LineBeginning}};
+  }
+  if (c == '$') {
+    advance(1);
+    return Regexp{std::string{source_p - 2, 2},
+                  RegexpType::Assertion,
+                  {RegexpAssertion::LineEnd}};
   }
   // character class
   if (c == '[') {
@@ -677,13 +726,44 @@ std::optional<Regexp> NLexer::regexp_expression() {
   }
   // parenthesised expression
   if (c == '(') {
+    nested_index++;
     advance(1);
     c = *source_p;
     if (c == '?') {
-      const Token &mtoken = error_token();
-      lexer_error(*this, Errors::RegexpUnsupported, mtoken, ErrorPosition::On,
-                  "Lookarounds are not supported");
-      return {};
+      // (?imIM:subexpr) -> set option
+      advance(1);
+      c = *source_p;
+      if (strchr("imIM", c) != NULL) {
+        const Token &mtoken = error_token();
+        lexer_error(*this, Errors::RegexpUnsupported, mtoken, ErrorPosition::On,
+                    "Subexpr options are not supported");
+        return {};
+      }
+      if (c == '<' || c == '=') {
+        const Token &mtoken = error_token();
+        lexer_error(*this, Errors::RegexpUnsupported, mtoken, ErrorPosition::On,
+                    "Lookarounds are not supported");
+        return {};
+      }
+      if (c == ':') {
+        // (?:...) shy group, set index -1, but increment index count anyway
+        auto reg = regexp();
+        if (!reg.has_value())
+          return reg;
+        auto &rv = reg.value();
+        c = *source_p;
+        if (c != ')') {
+          const Token &mtoken = error_token();
+          lexer_error(*this, Errors::InvalidRegexpSyntax, mtoken,
+                      ErrorPosition::On, "Unbalanced parenthesis");
+          return {};
+        }
+        advance(1);
+        auto reg_ = Regexp{std::string{"(?:"} + rv.str + ")",
+                           RegexpType::Nested, new Regexp{rv}};
+        reg_.index = -1;
+        return reg_;
+      }
     }
     auto reg = regexp();
     if (!reg.has_value())
@@ -697,8 +777,10 @@ std::optional<Regexp> NLexer::regexp_expression() {
       return {};
     }
     advance(1); // )
-    return Regexp{std::string{"("} + rv.str + ")", RegexpType::Nested,
-                  new Regexp{rv}};
+    auto reg_ = Regexp{std::string{"("} + rv.str + ")", RegexpType::Nested,
+                       new Regexp{rv}};
+    reg_.index = nested_index;
+    return reg_;
   }
   if (c == ')') {
     return {};
@@ -802,6 +884,14 @@ std::optional<Regexp> NLexer::regexp_quantifier(Regexp &reg) {
 }
 
 Regexp Regexp::concat(const Regexp &other) {
+  if (type == RegexpType::Assertion && other.type == RegexpType::Assertion) {
+    auto assertions = std::get<std::vector<RegexpAssertion>>(inner);
+    std::vector<RegexpAssertion> asserts{assertions.cbegin(),
+                                         assertions.cend()};
+    for (auto as : std::get<std::vector<RegexpAssertion>>(other.inner))
+      asserts.push_back(as);
+    return Regexp{str + other.str, RegexpType::Assertion, asserts};
+  }
   if (type == RegexpType::CharacterClass) {
     if (other.type == RegexpType::Alternative) {
       bool yes = true;
@@ -929,6 +1019,14 @@ bool Regexp::sanity_check(const NLexer &lexer) {
                 "and lazy) is not sane");
     return false;
   }
+  if (std::holds_alternative<std::vector<RegexpAssertion>>(inner) &&
+      (star || plus || lazy || repeat.has_value())) {
+    // Assertions cannot have quantifiers
+    std::printf("[I] Note: %s\n",
+                "use of assertions with other quantifiers (star, plus, "
+                "lazy and repeat) is not sane");
+    return false;
+  }
   return true;
 }
 
@@ -979,6 +1077,9 @@ bool Regexp::operator==(const Regexp &other) const {
     /* fallthrough */
   case Escape:
     return std::get<char>(inner) == std::get<char>(other.inner);
+  case Assertion:
+    return std::get<std::vector<RegexpAssertion>>(inner) ==
+           std::get<std::vector<RegexpAssertion>>(other.inner);
   }
 }
 
@@ -992,6 +1093,7 @@ void Regexp::resolve(
   case RegexpType::Dot:
   case RegexpType::Escape:
   case RegexpType::CharacterClass:
+  case RegexpType::Assertion:
     return;
   case RegexpType::Nested:
     return std::get<Regexp *>(inner)->resolve(values);
@@ -1070,6 +1172,15 @@ Regexp::compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
                    mangle();
   NFANode<std::string> *result;
   switch (type) {
+  case RegexpType::Assertion: {
+    // wat do?
+    auto assert = std::get<std::vector<RegexpAssertion>>(inner);
+    NFANode<std::string> *tl = new NFANode<std::string>{"A" + mangle()};
+    parent->epsilon_transition_to(tl);
+    tl->assertions = assert;
+    result = tl;
+    break;
+  }
   case RegexpType::Literal: {
     char t = std::get<char>(inner);
     NFANode<std::string> *tl = new NFANode<std::string>{"B" + mangle()};

@@ -278,6 +278,9 @@ std::vector<Regexp *> get_all_finals(Regexp *exp) {
     ends.push_back(exp);
     break;
   }
+  case RegexpType::Assertion:
+    ends.push_back(exp);
+    break;
   case RegexpType::Escape: {
     std::printf("Escapes not yet implemented\n");
     unreachable();
@@ -534,6 +537,29 @@ template <typename T> void DFANode<T>::print_dot() {
   std::printf("%s\n", gen_dot(anodes, transitions).c_str());
 }
 
+auto print_asserts(std::vector<RegexpAssertion> asserts) {
+  std::ostringstream oss;
+  for (auto a : asserts)
+    switch (a) {
+    case RegexpAssertion::SetPosition:
+      oss << " SetPosition";
+      break;
+    case RegexpAssertion::LineBeginning:
+      oss << " LineBeginning";
+      break;
+    case RegexpAssertion::LineEnd:
+      oss << " LineEnd";
+      break;
+    case RegexpAssertion::TrueBeginning:
+      oss << " TrueBeginning";
+      break;
+    case RegexpAssertion::MatchBeginning:
+      oss << " MatchBeginning";
+      break;
+    }
+  return oss.str().substr(1);
+}
+
 template <typename T>
 std::string DFANode<T>::gen_dot(
     std::set<DFANode<T> *> nodes,
@@ -550,8 +576,12 @@ std::string DFANode<T>::gen_dot(
     oss << "node [shape = "
         << (node->start ? "square" : node->final ? "doublecircle" : "circle")
         << (", label = \"" + get_name(node->state_info.value(), false, true) +
-            "\\nat " + string_format("%p", node) + "\"")
-        << "] LR_" << nodeids[node] << ";" << ss_end;
+            "\\nat " + string_format("%p", node))
+        << (node->assertions.size() > 0
+                ? string_format("[asserts %s]",
+                                print_asserts(node->assertions).c_str())
+                : "")
+        << '"' << "] LR_" << nodeids[node] << ";" << ss_end;
   }
   for (auto tr : transitions) {
     int fid, tid;
@@ -729,6 +759,13 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
 
     if (visited.count(current))
       continue;
+    std::vector<RegexpAssertion> assertions;
+
+    for (auto c : current) {
+      auto as = c->assertions;
+      for (auto a : as)
+        assertions.push_back(a);
+    }
 
     slts.show("[{<red>}DFAGen{<clean>}] Generating for node set "
               "{<green>}'%s'{<clean>}",
@@ -790,6 +827,7 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
           if (!visited.count(eps_state))
             remaining.push(eps_state);
         });
+    dfanode->assertions = assertions;
 
     NFANode<T> *defl = nullptr;
     for (auto s : current)
@@ -815,6 +853,7 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
       }
 
       dfanode->default_transition_to(nextdfanode);
+
       if (!visited.count(eps_state))
         remaining.push(eps_state);
     }
@@ -924,6 +963,7 @@ void DFANLVMCodeGenerator<T>::generate(
   BasicBlock *BB = BasicBlock::Create(builder.module.TheContext,
                                       get_name(node->state_info.value()),
                                       builder.module.main());
+  llvm::BasicBlock *BBnode = BB;
   BasicBlock *BBend = BasicBlock::Create(
       builder.module.TheContext, get_name(node->state_info.value()) + "{::}E",
       builder.module.main());
@@ -946,6 +986,99 @@ void DFANLVMCodeGenerator<T>::generate(
   builder.module.Builder.CreateBr(builder.module.BBfinalise);
 
   builder.module.Builder.SetInsertPoint(BB);
+  // if there are assertions, apply them now
+  auto tstart = builder.module.Builder.CreateCall(builder.module.nlex_start);
+  auto tnext = builder.module.Builder.CreateCall(builder.module.nlex_current_p);
+  auto tprev = builder.module.Builder.CreateGEP(
+      tnext, {llvm::ConstantInt::get(
+                 llvm::Type::getInt32Ty(builder.module.TheContext), -1)});
+  auto assert = false;
+  for (auto assertion : node->assertions) {
+    switch (assertion) {
+    case RegexpAssertion::SetPosition: {
+      slts.show("[{<red>}ERR{<clean>}] Unimplemented assertion "
+                "{<magenta>}\\K{<clean>}");
+      abort();
+      break;
+    }
+    case RegexpAssertion::LineBeginning: {
+      BBnode = BasicBlock::Create(builder.module.TheContext,
+                                  "assertPass(^)::" +
+                                      get_name(node->state_info.value()),
+                                  builder.module.main());
+      // check if we're at the beginning of the string (fed_string==true_start)
+      // or last character (fed_string-1) is \n
+      builder.module.Builder.CreateCondBr(
+          builder.module.Builder.CreateOr(
+              builder.module.Builder.CreateICmpEQ(tprev, tstart),
+              builder.module.Builder.CreateICmpEQ(
+                  builder.module.Builder.CreateLoad(tprev),
+                  llvm::ConstantInt::get(
+                      llvm::Type::getInt8Ty(builder.module.TheContext),
+                      (int)'\n')))
+          /* assert pass */
+          ,
+          BBnode
+          /* assert fail */
+          ,
+          BBend);
+      builder.module.Builder.SetInsertPoint(BBnode);
+      // BB = BBnode;
+      break;
+    }
+    case RegexpAssertion::LineEnd: {
+      BBnode = BasicBlock::Create(builder.module.TheContext,
+                                  "assertPass($)::" +
+                                      get_name(node->state_info.value()),
+                                  builder.module.main());
+      // check if we're at the end of the string (next char is zero or \n)
+      auto nextc = builder.module.Builder.CreateLoad(tnext);
+      builder.module.Builder.CreateCondBr(
+          builder.module.Builder.CreateOr(
+              builder.module.Builder.CreateICmpEQ(
+                  nextc,
+                  llvm::ConstantInt::get(
+                      llvm::Type::getInt8Ty(builder.module.TheContext), 0)),
+              builder.module.Builder.CreateICmpEQ(
+                  nextc, llvm::ConstantInt::get(
+                             llvm::Type::getInt8Ty(builder.module.TheContext),
+                             (int)'\n')))
+          /* assert pass */
+          ,
+          BBnode
+          /* assert fail */
+          ,
+          BBend);
+      builder.module.Builder.SetInsertPoint(BBnode);
+      // BB = BBnode;
+      break;
+    }
+    case RegexpAssertion::TrueBeginning: {
+      BBnode = BasicBlock::Create(builder.module.TheContext,
+                                  "assertPass(A)::" +
+                                      get_name(node->state_info.value()),
+                                  builder.module.main());
+      // check if we're at the beginning of the string (fed_string==true_start)
+      builder.module.Builder.CreateCondBr(
+          builder.module.Builder.CreateICmpEQ(tprev, tstart)
+          /* assert pass */
+          ,
+          BBnode
+          /* assert fail */
+          ,
+          BBend);
+      builder.module.Builder.SetInsertPoint(BBnode);
+      // BB = BBnode;
+      break;
+    }
+    case RegexpAssertion::MatchBeginning: {
+      slts.show("[{<red>}ERR{<clean>}] Unimplemented assertion "
+                "{<magenta>}\\G{<clean>}");
+      abort();
+      break;
+    }
+    }
+  }
   if (node->final) {
     // store the tag and string position upon getting here
     auto em = false;
@@ -1057,7 +1190,7 @@ void DFANLVMCodeGenerator<T>::generate(
     }
     deflBB = bb_;
   }
-  builder.module.Builder.SetInsertPoint(BB);
+  builder.module.Builder.SetInsertPoint(BBnode);
   if (outgoings.size() > 0) {
     if (deflBB)
       builder.module.add_value_to_token(readv);
@@ -1080,7 +1213,7 @@ void DFANLVMCodeGenerator<T>::generate(
       if (!deflBB)
         builder.module.add_char_to_token(tr->input);
       builder.module.Builder.CreateBr(jdst);
-      builder.module.Builder.SetInsertPoint(BB);
+      builder.module.Builder.SetInsertPoint(BBnode);
       switchinst->addCase(
           ConstantInt::get(IntegerType::get(builder.module.TheContext, 8),
                            std::to_string((int)tr->input), 10),
