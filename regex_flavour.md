@@ -82,8 +82,8 @@
 
 9. Subexpr calls (not yet implemented)
 
-    + Explanation: Subexpr calling attempts to match a given group (not recursive) *again*, and then continuing from the ending position (if the match was a success) or terminating and reverting to the closest valid match
-    + `\g<n>`   attemt to call the `n`th group (leftmost and recursive calls are not allowed)
+    + Explanation: Subexpr calling attempts to match a given group *again*, and then continuing from the ending position (if the match was a success) or terminating and reverting to the closest valid match
+    + `\g<n>`   attemt to call the `n`th group (leftmost calls are undefined)
 
 10. Capture groups (not yet implemented)
 
@@ -94,8 +94,8 @@
 
 | support         | '+' quantifier | Nested character classes | Non-greedy quantifiers | Non-capturing groups | Recursion      | Lookahead      | Lookbehind     | Backreferences | Indexable captures | Directives         | Conditionals       | Atomic Groups      | Named Captures     | Comments           | Embedded code      | Unicode Property   | Balancing Groups   | Variable length lookbehind |
 | :-------------  | :------------- | :-------------           | :-------------         | :-------------       | :------------- | :------------- | :------------- | :------------- | :-------------     | :-------------     | :-------------     | :-------------     | :-------------     | :-------------     | :-------------     | :-------------     | :-------------     | :-------------             |
-| Current support | Yes            | No                       | Yes                    | No                   | No             | No             | No             | No             | No                 | No                 | No                 | Yes                | No                 | No                 | No                 | Partial            | No                 | No                         |
-| Planned support | -              | No                       | -                      | Yes                  | No             | Yes            | Yes            | Yes            | Yes                | Yes                | No                 | -                  | No                 | No                 | ?                  | Yes                | No                 | No                         |
+| Current support | Yes            | No                       | Yes                    | Yes                  | WIP              | No             | No             | No             | Yes                | No                 | No                 | Yes                | No                 | No                 | No                 | Partial            | No                 | No                         |
+| Planned support | -              | No                       | -                      | -                    | Yes              | Yes            | Yes            | Yes            | -                  | Yes                | No                 | -                  | No                 | No                 | ?                  | Yes                | No                 | No                         |
 
 
 ## API features

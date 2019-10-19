@@ -79,6 +79,6 @@ the regex engine is currently very limited in what it supports, however here is 
 - [X] insane quantifiers (??)
 - [ ] rule actions (design a DSL for it...?)
 - [ ] backreferences
-- [ ] recursive matching
+- [X] recursive matching
 
 read [regex_flavour](regex_flavour.md) for further details on the specific flavour of regular expressions used in tandem with the generator

@@ -24,6 +24,7 @@ enum RegexpType {
   Escape,
   CharacterClass,
   Assertion,
+  SubExprCall,
 };
 
 struct RepeatQuantifier {
@@ -45,7 +46,8 @@ public:
   std::string str;
 
   bool plus, star, lazy, store = false;
-  int index = 0; // applies for nested and backref (escape)
+  int index = 0;        // applies for nested and backref (escape)
+  int subexprcall = -1; // applies for SubExprCall
   std::optional<RepeatQuantifier> repeat;
 
   bool operator==(const Regexp &other) const;

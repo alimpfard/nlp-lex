@@ -54,6 +54,8 @@ public:
                // nullptr :- fail match and revert back to last final state
 
   std::vector<RegexpAssertion> assertions = {};
+  int subexpr_idx = -1;
+  int subexpr_call = -1;
 
   std::optional<std::string> named_rule;
   DFANode(StateInfoT s) : state_info(s) {}
@@ -122,6 +124,9 @@ public:
                // nullptr :- fail match and revert back to last final state
   std::optional<std::string> named_rule;
   std::vector<RegexpAssertion> assertions = {};
+  int subexpr_idx = -1;
+  int subexpr_call = -1;
+
   NFANode(StateInfoT s) : state_info(s) {}
   NFANode()
       : state_info(), final(false), start(false), outgoing_transitions(),
@@ -235,7 +240,8 @@ template <typename K> struct NFANodePointerComparer {
         dynamic_cast<const PseudoNFANode<K> *>(b))
       return false;
     if (a->start == b->start && a->final == b->final &&
-        a->assertions == b->assertions && /*
+        a->assertions == b->assertions && a->subexpr_idx == b->subexpr_idx &&
+        a->subexpr_call == b->subexpr_call && /*
 a->state_info == b->state_info && a->named_rule == b->named_rule*/
         1) {
       return a->default_transition == b->default_transition &&

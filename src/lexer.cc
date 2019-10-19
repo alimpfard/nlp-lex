@@ -575,7 +575,7 @@ std::optional<Regexp> NLexer::regexp_expression() {
       reg.index = backrefnum;
       return reg;
     }
-    if (strchr("?+*{}()[]\\|.", c) != NULL)
+    if (strchr("?+*{}()[]\\|.^$", c) != NULL)
       // switch to literal
       return Regexp{std::string{source_p - 2, 2}, RegexpType::Literal, c};
 
@@ -672,6 +672,39 @@ std::optional<Regexp> NLexer::regexp_expression() {
       return Regexp{std::string{source_p - 2, 2},
                     RegexpType::Assertion,
                     {RegexpAssertion::MatchBeginning}};
+    case 'g': {
+      c = *source_p;
+      advance(1);
+      // advance(1);
+      if (isdigit(c)) {
+        // subexpr call
+        static char buf[40];
+        int len = 0;
+        while (isdigit(c)) {
+          buf[len++] = c;
+          advance(1);
+          c = *source_p;
+        }
+        buf[len] = 0;
+        int backrefnum = atoi(buf);
+        advance(-1);
+        if (backrefnum > nested_index) {
+          lexer_error(*this, Errors::InvalidRegexpSyntax, error_token(),
+                      ErrorPosition::On,
+                      "Subexpr call references future or current match (%d>%d)",
+                      backrefnum, nested_index);
+          backrefnum = -1;
+        }
+        auto reg = Regexp{std::string{source_p - len - 1, len + 1},
+                          RegexpType::SubExprCall, (char)backrefnum};
+        reg.subexprcall = backrefnum;
+        return reg;
+      }
+      lexer_error(*this, Errors::InvalidRegexpSyntax, error_token(),
+                  ErrorPosition::On,
+                  "Subexpr call (\\g) expects a number (\\g<n>) not '%c'", c);
+      return Regexp{std::string{source_p - 2, 2}, RegexpType::Literal, 'g'};
+    }
     case 'x': // hex and unicode: TODO
     case 'u':
       lexer_error(*this, Errors::RegexpUnsupported, error_token(),
@@ -712,10 +745,21 @@ std::optional<Regexp> NLexer::regexp_expression() {
     if (inverted) {
       buffer[length++] = ']'; // TODO: get a decent way of specifying inversion
     }
+    bool escaped = false;
     do {
       advance(1);
       c = *source_p;
-      if (c == ']') {
+      if (c == '\\') {
+        if (escaped) {
+          escaped = false;
+          buffer[length++] = c;
+          continue;
+        } else {
+          escaped = true;
+          continue;
+        }
+      }
+      if (!escaped && c == ']') {
         advance(1);
         break;
       }
@@ -765,6 +809,7 @@ std::optional<Regexp> NLexer::regexp_expression() {
         return reg_;
       }
     }
+    auto my_index = nested_index;
     auto reg = regexp();
     if (!reg.has_value())
       return reg;
@@ -779,7 +824,7 @@ std::optional<Regexp> NLexer::regexp_expression() {
     advance(1); // )
     auto reg_ = Regexp{std::string{"("} + rv.str + ")", RegexpType::Nested,
                        new Regexp{rv}};
-    reg_.index = nested_index;
+    reg_.index = my_index;
     return reg_;
   }
   if (c == ')') {
@@ -1172,6 +1217,13 @@ Regexp::compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
                    mangle();
   NFANode<std::string> *result;
   switch (type) {
+  case RegexpType::SubExprCall: {
+    NFANode<std::string> *tl = new NFANode<std::string>{"R<>" + mangle()};
+    parent->epsilon_transition_to(tl);
+    tl->subexpr_call = subexprcall;
+    result = tl;
+    break;
+  }
   case RegexpType::Assertion: {
     // wat do?
     auto assert = std::get<std::vector<RegexpAssertion>>(inner);
@@ -1252,10 +1304,20 @@ Regexp::compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
     break;
   }
   case RegexpType::Nested: {
-    auto *exp = transform_by_quantifiers(
-        std::get<Regexp *>(inner)->compile(cache, parent, path, leading, true));
-    exp->named_rule = namef;
-    result = exp;
+    NFANode<std::string> *tl = new NFANode<std::string>{"Bg" + mangle()};
+    NFANode<std::string> *te = new NFANode<std::string>{"Eg" + mangle()};
+
+    auto ex = std::get<Regexp *>(inner);
+    auto nfa = ex->compile(cache, tl, cpath + "{::}" + ex->mangle(), leading);
+
+    tl->subexpr_idx = index;
+    tl = new PseudoNFANode<std::string>{"S" + mangle(), tl, te};
+
+    tl = transform_by_quantifiers(tl);
+    parent->epsilon_transition_to(tl);
+    tl->named_rule = namef;
+    deep_output_end(tl)->named_rule = namef;
+    result = tl;
     break;
   }
   case RegexpType::Alternative: {
@@ -1279,6 +1341,7 @@ Regexp::compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
     // std::printf("\n");
     // cache[cpath] = tl->deep_copy();
     tl->named_rule = namef;
+    deep_output_end(tl)->named_rule = namef;
     // if (was_reference)
     // cache[referenced_symbol.value()] = tl->deep_copy();
     result = tl;
@@ -1308,6 +1371,7 @@ Regexp::compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
         new PseudoNFANode<std::string>{"S" + mangle(), root, endp});
     parent->epsilon_transition_to(root);
     root->named_rule = namef;
+    deep_output_end(root)->named_rule = namef;
     result = root;
     break;
   }

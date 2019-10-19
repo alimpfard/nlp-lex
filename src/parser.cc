@@ -326,7 +326,7 @@ NFANode<std::string> *NParser::compile() {
           for (auto iter = node_cache.find(end); iter != node_cache.end();
                ++iter) {
             auto node = deep_output_end(iter->second);
-            if (toplevels.count(iter->second))
+            if (toplevels.count(iter->second) || end->is_leaf)
               goto yep;
             continue; // no need for this to be final
           yep:;
@@ -443,6 +443,29 @@ std::string sanitised(char c) {
     return std::string{c};
 }
 
+auto print_asserts(std::vector<RegexpAssertion> asserts) {
+  std::ostringstream oss;
+  for (auto a : asserts)
+    switch (a) {
+    case RegexpAssertion::SetPosition:
+      oss << " SetPosition";
+      break;
+    case RegexpAssertion::LineBeginning:
+      oss << " LineBeginning";
+      break;
+    case RegexpAssertion::LineEnd:
+      oss << " LineEnd";
+      break;
+    case RegexpAssertion::TrueBeginning:
+      oss << " TrueBeginning";
+      break;
+    case RegexpAssertion::MatchBeginning:
+      oss << " MatchBeginning";
+      break;
+    }
+  return oss.str().substr(1);
+}
+
 template <typename T>
 std::string NFANode<T>::gen_dot(
     std::set<NFANode<T> *> nodes,
@@ -462,8 +485,18 @@ std::string NFANode<T>::gen_dot(
     oss << "node [shape = "
         << (node->start ? "square" : node->final ? "doublecircle" : "circle")
         << (", label = \"" + get_name(node, true) + "\\nat " +
-            string_format("%p", node) + "\"")
-        << "] LR_" << nodeids[node] << ";" << ss_end;
+            string_format("%p", node))
+        << (node->assertions.size() > 0
+                ? string_format(" [asserts %s]",
+                                print_asserts(node->assertions).c_str())
+                : "")
+        << (node->subexpr_idx > -1
+                ? string_format(" [index %d]", node->subexpr_idx)
+                : "")
+        << (node->subexpr_call > -1
+                ? string_format(" [calls %d]", node->subexpr_call)
+                : "")
+        << '"' << "] LR_" << nodeids[node] << ";" << ss_end;
   }
   for (auto tr : transitions) {
     int fid, tid;
@@ -537,29 +570,6 @@ template <typename T> void DFANode<T>::print_dot() {
   std::printf("%s\n", gen_dot(anodes, transitions).c_str());
 }
 
-auto print_asserts(std::vector<RegexpAssertion> asserts) {
-  std::ostringstream oss;
-  for (auto a : asserts)
-    switch (a) {
-    case RegexpAssertion::SetPosition:
-      oss << " SetPosition";
-      break;
-    case RegexpAssertion::LineBeginning:
-      oss << " LineBeginning";
-      break;
-    case RegexpAssertion::LineEnd:
-      oss << " LineEnd";
-      break;
-    case RegexpAssertion::TrueBeginning:
-      oss << " TrueBeginning";
-      break;
-    case RegexpAssertion::MatchBeginning:
-      oss << " MatchBeginning";
-      break;
-    }
-  return oss.str().substr(1);
-}
-
 template <typename T>
 std::string DFANode<T>::gen_dot(
     std::set<DFANode<T> *> nodes,
@@ -578,8 +588,14 @@ std::string DFANode<T>::gen_dot(
         << (", label = \"" + get_name(node->state_info.value(), false, true) +
             "\\nat " + string_format("%p", node))
         << (node->assertions.size() > 0
-                ? string_format("[asserts %s]",
+                ? string_format(" [asserts %s]",
                                 print_asserts(node->assertions).c_str())
+                : "")
+        << (node->subexpr_idx > -1
+                ? string_format(" [index %d]", node->subexpr_idx)
+                : "")
+        << (node->subexpr_call > -1
+                ? string_format(" [calls %d]", node->subexpr_call)
                 : "")
         << '"' << "] LR_" << nodeids[node] << ";" << ss_end;
   }
@@ -782,6 +798,26 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
       dfanode = dfa_map[currentname] =
           new DFANode<std::set<NFANode<T> *>>{current};
     for (auto s : current) {
+      if (s->subexpr_idx > -1) {
+        if (dfanode->subexpr_idx > -1 &&
+            dfanode->subexpr_idx != s->subexpr_idx) {
+          std::printf(
+              "expression conflict, two subexpressions clash: %s (index %d)\n",
+              get_name(current).c_str(), dfanode->subexpr_idx);
+          abort();
+        }
+        dfanode->subexpr_idx = s->subexpr_idx;
+      }
+      if (s->subexpr_call > -1) {
+        if (dfanode->subexpr_call > -1 &&
+            dfanode->subexpr_call != s->subexpr_call) {
+          std::printf("expression conflict, two subexpression calls clash: %s "
+                      "(index %d)\n",
+                      get_name(current).c_str(), dfanode->subexpr_call);
+          abort();
+        }
+        dfanode->subexpr_call = s->subexpr_call;
+      }
       if (s->final) {
         // std::printf("state %s was final, so marking %s as such\n",
         //             get_name(s).c_str(), get_name(current).c_str());
@@ -945,6 +981,24 @@ void DFANLVMCodeGenerator<T>::generate(
     std::set<DFANode<std::set<NFANode<T> *>> *> visited) {
   std::map<DFANode<std::set<NFANode<T> *>> *, llvm::BasicBlock *> blk{};
   generate(node, visited, blk);
+  for (auto [node, _] : blk)
+    if (node->subexpr_idx > -1 && subexprFunc.count(node->subexpr_idx)) {
+      decltype(visited) _visited;
+      typename std::remove_reference<decltype(blk)>::type _blocks;
+
+      auto cmain = builder.module._cmain;
+      builder.module._cmain = subexprFunc[node->subexpr_idx];
+
+      builder.begin(builder.module.current_main(), true);
+      generate(node, _visited, _blocks);
+
+      auto mroot = _blocks[node];
+
+      llvm::IRBuilder<> dbuilder(builder.module.TheContext);
+      dbuilder.SetInsertPoint(&builder.module.current_main()->getEntryBlock());
+      dbuilder.CreateBr(mroot);
+      builder.module._cmain = cmain;
+    }
 }
 
 using namespace llvm;
@@ -953,24 +1007,31 @@ void DFANLVMCodeGenerator<T>::generate(
     DFANode<std::set<NFANode<T> *>> *node,
     std::set<DFANode<std::set<NFANode<T> *>> *> visited,
     std::map<DFANode<std::set<NFANode<T> *>> *, BasicBlock *> &blocks) {
-  if (visited.count(node))
+  if (visited.count(node)) {
     return;
+  }
   visited.insert(node);
+  if (node->subexpr_idx > -1)
+    subexprs[node->subexpr_idx] = node;
+
   slts.show("[{<red>}NodeGen{<clean>}] Generating for node set "
             "{<green>}'%s'{<clean>}",
             get_name(node->state_info.value()).c_str());
   // generate any choice and add to output_cases
   BasicBlock *BB = BasicBlock::Create(builder.module.TheContext,
                                       get_name(node->state_info.value()),
-                                      builder.module.main());
+                                      builder.module.current_main());
   llvm::BasicBlock *BBnode = BB;
   BasicBlock *BBend = BasicBlock::Create(
       builder.module.TheContext, get_name(node->state_info.value()) + "{::}E",
-      builder.module.main());
+      builder.module.current_main());
   builder.module.Builder.SetInsertPoint(BBend);
   // restore string position and return with tag
+  auto finalm = node->final ||
+                (builder.issubexp && node->outgoing_transitions.size() == 0 &&
+                 node->default_transition == nullptr);
 
-  if (!node->final) {
+  if (!finalm) {
     builder.module.Builder.CreateCall(
         builder.module.nlex_restore,
         {builder.module.Builder.CreateLoad(
@@ -1005,7 +1066,7 @@ void DFANLVMCodeGenerator<T>::generate(
       BBnode = BasicBlock::Create(builder.module.TheContext,
                                   "assertPass(^)::" +
                                       get_name(node->state_info.value()),
-                                  builder.module.main());
+                                  builder.module.current_main());
       // check if we're at the beginning of the string (fed_string==true_start)
       // or last character (fed_string-1) is \n
       builder.module.Builder.CreateCondBr(
@@ -1030,7 +1091,7 @@ void DFANLVMCodeGenerator<T>::generate(
       BBnode = BasicBlock::Create(builder.module.TheContext,
                                   "assertPass($)::" +
                                       get_name(node->state_info.value()),
-                                  builder.module.main());
+                                  builder.module.current_main());
       // check if we're at the end of the string (next char is zero or \n)
       auto nextc = builder.module.Builder.CreateLoad(tnext);
       builder.module.Builder.CreateCondBr(
@@ -1057,7 +1118,7 @@ void DFANLVMCodeGenerator<T>::generate(
       BBnode = BasicBlock::Create(builder.module.TheContext,
                                   "assertPass(A)::" +
                                       get_name(node->state_info.value()),
-                                  builder.module.main());
+                                  builder.module.current_main());
       // check if we're at the beginning of the string (fed_string==true_start)
       builder.module.Builder.CreateCondBr(
           builder.module.Builder.CreateICmpEQ(tprev, tstart)
@@ -1079,7 +1140,7 @@ void DFANLVMCodeGenerator<T>::generate(
     }
     }
   }
-  if (node->final) {
+  if (finalm) {
     // store the tag and string position upon getting here
     auto em = false;
     std::set<std::string> emitted;
@@ -1105,6 +1166,30 @@ void DFANLVMCodeGenerator<T>::generate(
                                (int)!em),
         builder.module.nlex_errc);
   }
+  // if there is a subexpr call, create it now
+  if (node->subexpr_call > -1) {
+    llvm::Function *fn;
+    auto val = builder.module.current_main()->arg_begin();
+    if (subexprFunc.count(node->subexpr_call))
+      fn = subexprFunc[node->subexpr_call];
+    else
+      subexprFunc[node->subexpr_call] = fn = builder.module.mkfunc(false);
+    builder.module.Builder.CreateCall(fn, {val});
+    // TODO
+    // if the subexpr is lazy, just go on
+    // otherwise check return error code
+    // if (!node->subexpr_lazy) {
+    //   // set lerrc = val.errc
+    //   builder.module.Builder.CreateCondBr(
+    //     builder.module.Builder.CreateICmpEQ(
+    //         val.errc,
+    //         0
+    //     ),
+    //     // go on somewhere,
+    //     // jump to _escape, we failed
+    //   );
+    // }
+  }
   builder.module.Builder.CreateCall(builder.module.nlex_next, {});
   auto readv = builder.module.Builder.CreateCall(builder.module.nlex_current_f,
                                                  {}, "readv");
@@ -1120,23 +1205,23 @@ void DFANLVMCodeGenerator<T>::generate(
       generate(node->default_transition, visited, blocks);
     deflBB = blocks[node->default_transition];
     auto bb_ = BasicBlock::Create(builder.module.TheContext, "",
-                                  builder.module.main());
+                                  builder.module.current_main());
     builder.module.Builder.SetInsertPoint(bb_);
     // consume as many chars as needed for a complete unicode codepoint
     {
       auto bb0 = BasicBlock::Create(builder.module.TheContext, "",
-                                    builder.module.main());
+                                    builder.module.current_main());
       auto bb1 = BasicBlock::Create(builder.module.TheContext, "",
-                                    builder.module.main());
+                                    builder.module.current_main());
       auto bb2 = BasicBlock::Create(builder.module.TheContext, "",
-                                    builder.module.main());
+                                    builder.module.current_main());
       decltype(bb0) bbs[] = {bb0, bb1, bb2};
       auto bbsel1 = BasicBlock::Create(builder.module.TheContext, "",
-                                       builder.module.main());
+                                       builder.module.current_main());
       auto bbsel2 = BasicBlock::Create(builder.module.TheContext, "",
-                                       builder.module.main());
+                                       builder.module.current_main());
       auto bbphi = BasicBlock::Create(builder.module.TheContext, "",
-                                      builder.module.main());
+                                      builder.module.current_main());
       auto valskip = builder.module.Builder.CreateCall(
           builder.module.nlex_get_utf8_length, {readv});
       auto lt2 = builder.module.Builder.CreateICmpSLT(
@@ -1149,8 +1234,8 @@ void DFANLVMCodeGenerator<T>::generate(
               valskip,
               llvm::ConstantInt::get(
                   llvm::Type::getInt32Ty(builder.module.TheContext), 0)),
-          llvm::BlockAddress::get(builder.module.main(), deflBB),
-          llvm::BlockAddress::get(builder.module.main(), bb2));
+          llvm::BlockAddress::get(builder.module.current_main(), deflBB),
+          llvm::BlockAddress::get(builder.module.current_main(), bb2));
       builder.module.Builder.CreateBr(bbphi);
       builder.module.Builder.SetInsertPoint(bbsel2);
       auto s2 = builder.module.Builder.CreateSelect(
@@ -1158,8 +1243,8 @@ void DFANLVMCodeGenerator<T>::generate(
               valskip,
               llvm::ConstantInt::get(
                   llvm::Type::getInt32Ty(builder.module.TheContext), 2)),
-          llvm::BlockAddress::get(builder.module.main(), bb1),
-          llvm::BlockAddress::get(builder.module.main(), bb0));
+          llvm::BlockAddress::get(builder.module.current_main(), bb1),
+          llvm::BlockAddress::get(builder.module.current_main(), bb0));
       builder.module.Builder.CreateBr(bbphi);
       builder.module.Builder.SetInsertPoint(bbphi);
       auto phi = builder.module.Builder.CreatePHI(
@@ -1208,7 +1293,7 @@ void DFANLVMCodeGenerator<T>::generate(
 
       auto jdst = blocks[tr->target];
       auto dst = BasicBlock::Create(builder.module.TheContext, "casejmp",
-                                    builder.module.main());
+                                    builder.module.current_main());
       builder.module.Builder.SetInsertPoint(dst);
       if (!deflBB)
         builder.module.add_char_to_token(tr->input);
@@ -1280,7 +1365,8 @@ int main() {
   NFANode<std::string> *root;
   DFACCodeGenerator<std::string> cg;
   DFANLVMCodeGenerator<std::string> nlvmg;
-  nlvmg.builder.begin();
+  nlvmg.builder.begin(nlvmg.builder.module.main());
+  nlvmg.builder.module._cmain = nlvmg.builder.module._main;
   while (1) {
     std::string line;
     std::cout << "> ";

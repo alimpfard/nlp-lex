@@ -53,9 +53,10 @@ public:
   llvm::GlobalVariable *nlex_match_start;
   llvm::GlobalVariable *token_value;
   llvm::GlobalVariable *token_length;
+  llvm::GlobalVariable *nlex_fed_string;
 
   llvm::Function *_main = nullptr;
-  llvm::BasicBlock *main_entry, *BBfinalise;
+  llvm::BasicBlock *main_entry, *BBfinalise = nullptr;
 
   llvm::AllocaInst *last_tag;
   llvm::AllocaInst *last_final_state_position;
@@ -86,6 +87,43 @@ public:
     Builder.CreateStore(c, tvalp);
   }
 
+  llvm::Function *mkfunc(bool clear = true) {
+    llvm::Function *_main;
+    llvm::Type *args[] = {llvm::PointerType::get(input_struct_type, 0)};
+    llvm::FunctionType *ncf =
+        llvm::FunctionType::get(llvm::Type::getVoidTy(TheContext), args, false);
+
+    _main = llvm::Function::Create(ncf, llvm::Function::ExternalLinkage,
+                                   "__nlex_root", TheModule.get());
+    auto main_entry = llvm::BasicBlock::Create(TheContext, "", _main);
+
+    last_tag = createEntryBlockAlloca(
+        _main, "ltag",
+        llvm::PointerType::get(llvm::Type::getInt8Ty(TheContext), 0));
+    last_final_state_position = createEntryBlockAlloca(
+        _main, "lfinals_p",
+        llvm::PointerType::get(llvm::Type::getInt8Ty(TheContext), 0));
+    nlex_errc = createEntryBlockAlloca(_main, "lerrc",
+                                       llvm::Type::getInt8Ty(TheContext));
+    llvm::IRBuilder<> builder(TheContext);
+    builder.SetInsertPoint(main_entry);
+    builder.CreateStore(builder.CreateCall(nlex_current_p, {}),
+                        last_final_state_position);
+    if (clear) {
+      builder.CreateStore(
+          llvm::ConstantInt::get(llvm::Type::getInt32Ty(TheContext), 0),
+          token_length);
+      builder.CreateStore(
+          llvm::ConstantInt::get(llvm::Type::getInt8Ty(TheContext), 0),
+          nlex_errc);
+      builder.CreateStore(builder.CreateCall(nlex_current_p, {}),
+                          nlex_match_start);
+    }
+    return _main;
+  }
+
+  llvm::Function *_cmain;
+  llvm::Function *current_main() const { return _cmain; }
   llvm::Function *main() {
     if (_main)
       return _main;
@@ -98,32 +136,8 @@ public:
         llvm::Type::getInt8Ty(TheContext), // error code (0 = ok)
     };
     input_struct_type = llvm::StructType::create(members);
-    llvm::Type *args[] = {llvm::PointerType::get(input_struct_type, 0)};
-    llvm::FunctionType *ncf =
-        llvm::FunctionType::get(llvm::Type::getVoidTy(TheContext), args, false);
-
-    _main = llvm::Function::Create(ncf, llvm::Function::ExternalLinkage,
-                                   "__nlex_root", TheModule.get());
-    main_entry = llvm::BasicBlock::Create(TheContext, "", _main);
-
-    last_tag = createEntryBlockAlloca(
-        _main, "ltag",
-        llvm::PointerType::get(llvm::Type::getInt8Ty(TheContext), 0));
-    last_final_state_position = createEntryBlockAlloca(
-        _main, "lfinals_p",
-        llvm::PointerType::get(llvm::Type::getInt8Ty(TheContext), 0));
-    nlex_errc = createEntryBlockAlloca(_main, "lerrc",
-                                       llvm::Type::getInt8Ty(TheContext));
-    llvm::IRBuilder<> builder(TheContext);
-    builder.SetInsertPoint(main_entry);
-    builder.CreateStore(
-        llvm::ConstantInt::get(llvm::Type::getInt32Ty(TheContext), 0),
-        token_length);
-    builder.CreateStore(
-        llvm::ConstantInt::get(llvm::Type::getInt8Ty(TheContext), 0),
-        nlex_errc);
-    builder.CreateStore(builder.CreateCall(nlex_current_p, {}),
-                        nlex_match_start);
+    _main = mkfunc();
+    main_entry = &_main->getEntryBlock();
     return _main;
   }
 
@@ -196,15 +210,18 @@ class Builder {
 public:
   Module module;
   llvm::BasicBlock *first_root = nullptr;
+  bool issubexp = false;
 
   Builder(std::string mname) : module(mname) {}
 
-  void begin() {
-
-    module.BBfinalise =
-        llvm::BasicBlock::Create(module.TheContext, "_escape", module.main());
-    module.Builder.SetInsertPoint(module.BBfinalise);
-    auto istruct = module.main()->arg_begin();
+  void begin(llvm::Function *fn, bool cleanup_if_fail = false) {
+    issubexp = cleanup_if_fail;
+    auto BBfinalise =
+        llvm::BasicBlock::Create(module.TheContext, "_escape", fn);
+    module.Builder.SetInsertPoint(BBfinalise);
+    if (!module.BBfinalise)
+      module.BBfinalise = BBfinalise;
+    auto istruct = fn->arg_begin();
     auto stgep = module.Builder.CreateInBoundsGEP(
         istruct,
         {llvm::ConstantInt::get(llvm::Type::getInt32Ty(module.TheContext), 0),
@@ -236,17 +253,36 @@ public:
                     llvm::Type::getInt32Ty(module.TheContext), 2),
             },
             "tag"));
+    auto errc = module.Builder.CreateLoad(module.nlex_errc);
     module.Builder.CreateStore(
-        module.Builder.CreateLoad(module.nlex_errc),
-        module.Builder.CreateInBoundsGEP(
-            istruct,
-            {
-                llvm::ConstantInt::get(
-                    llvm::Type::getInt32Ty(module.TheContext), 0),
-                llvm::ConstantInt::get(
-                    llvm::Type::getInt32Ty(module.TheContext), 3),
-            },
-            "errc"));
+        errc, module.Builder.CreateInBoundsGEP(
+                  istruct,
+                  {
+                      llvm::ConstantInt::get(
+                          llvm::Type::getInt32Ty(module.TheContext), 0),
+                      llvm::ConstantInt::get(
+                          llvm::Type::getInt32Ty(module.TheContext), 3),
+                  },
+                  "errc"));
+    if (cleanup_if_fail) {
+      auto mbb = llvm::BasicBlock::Create(module.TheContext, "_cleanup", fn);
+      auto ebb = llvm::BasicBlock::Create(module.TheContext, "_exit", fn);
+      module.Builder.CreateCondBr(
+          module.Builder.CreateICmpEQ(
+              errc, llvm::ConstantInt::get(
+                        llvm::Type::getInt8Ty(module.TheContext), 0)),
+          ebb, mbb);
+      module.Builder.SetInsertPoint(mbb);
+      auto nfs = module.nlex_fed_string;
+      module.Builder.CreateStore(
+          module.Builder.CreateInBoundsGEP(
+              module.Builder.CreateLoad(nfs),
+              {llvm::ConstantInt::get(llvm::Type::getInt32Ty(module.TheContext),
+                                      -1)}),
+          nfs);
+      module.Builder.CreateBr(ebb);
+      module.Builder.SetInsertPoint(ebb);
+    }
     module.Builder.CreateRetVoid();
   }
   void prepare(std::map<std::string, std::string> normalisations,
@@ -260,6 +296,7 @@ public:
               llvm::Type::getInt8Ty(module.TheContext), 0)),
           "nlex_fed_string");
       module.TheModule->getGlobalList().push_back(nlex_fed_string);
+      module.nlex_fed_string = nlex_fed_string;
       auto nlex_true_start = new llvm::GlobalVariable(
           llvm::PointerType::get(llvm::Type::getInt8Ty(module.TheContext), 0),
           false, llvm::GlobalValue::InternalLinkage,
