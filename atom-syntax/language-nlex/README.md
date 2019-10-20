@@ -1,3 +1,3 @@
 # Nlex language package
 
-A short description of your language package.
+syntax defs for [NLex](github.com/alimpfard/nlp-lex)
