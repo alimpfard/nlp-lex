@@ -306,10 +306,60 @@
         }
       }
       {
-        'begin' : '(\\||\\\\.)'
+        'begin' : '(\\||\\\\[^pg])'
         'beginCaptures' : {
           '1' : {
             'name' : 'string.other.link.NLex'
+          }
+        }
+        'patterns' : [
+          {
+            'include' : '#regularExpression'
+          }
+        ]
+        'end' : '(^|\\)|\\])'
+        'endCaptures' : {
+          '1' : {
+            'name' : 'string.regexp.NLex'
+          }
+        }
+      }
+      {
+        'begin' : '(\\\\g)(\\d+)'
+        'beginCaptures' : {
+          '1' : {
+            'name' : 'string.other.link.NLex'
+          }
+          '2' : {
+            'name' : 'string.regexp.NLex'
+          }
+        }
+        'patterns' : [
+          {
+            'include' : '#regularExpression'
+          }
+        ]
+        'end' : '(^|\\)|\\])'
+        'endCaptures' : {
+          '1' : {
+            'name' : 'string.regexp.NLex'
+          }
+        }
+      }
+      {
+        'begin' : '(\\\\p)(\\{)(\\w+)(\\})'
+        'beginCaptures' : {
+          '1' : {
+            'name' : 'string.other.link.NLex'
+          }
+          '2' : {
+            'name' : 'constant.character.escape.NLex'
+          }
+          '3' : {
+            'name' : 'string.regexp.NLex'
+          }
+          '4' : {
+            'name' : 'constant.character.escape.NLex'
           }
         }
         'patterns' : [
@@ -347,10 +397,10 @@
         }
         'patterns' : [
           {
-            'include' : '#regularExpression'
+            'include' : '#regularExpression__1'
           }
         ]
-        'end' : '(^|\\)|\\])'
+        'end' : '(\\])'
         'endCaptures' : {
           '1' : {
             'name' : 'string.regexp.NLex'
@@ -360,6 +410,25 @@
       {
         'match' : '(\\+|\\*|\\?)'
         'name' : 'string.regexp.NLex'
+      }
+    ]
+  }
+  'regularExpression__1' : {
+    'patterns' : [
+      {
+        'match' : '([^\\x{005c}\\]])'
+        'name' : 'string.regexp.NLex'
+      }
+      {
+        'match' : '(\\\\)(.)'
+        'captures' : {
+          '1' : {
+            'name' : 'string.other.link.NLex'
+          }
+          '2' : {
+            'name' : 'string.other.link.NLex'
+          }
+        }
       }
     ]
   }
