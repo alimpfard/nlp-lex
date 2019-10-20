@@ -80,12 +80,12 @@
     + Explanation: Backreferencing a group means to re-match its actual matched value    
     + `\<n>`    backreference group number `n`
 
-9. Subexpr calls (not yet implemented)
+9. Subexpr calls (in testing)
 
     + Explanation: Subexpr calling attempts to match a given group *again*, and then continuing from the ending position (if the match was a success) or terminating and reverting to the closest valid match
     + `\g<n>`   attemt to call the `n`th group (leftmost calls are undefined)
 
-10. Capture groups (not yet implemented)
+10. Capture groups (indexing only)
 
     + `(...)` is a capture group and its index is the number of open-parens since the beginning of the regexp (unique)
 
