@@ -83,7 +83,7 @@
 9. Subexpr calls (in testing)
 
     + Explanation: Subexpr calling attempts to match a given group *again*, and then continuing from the ending position (if the match was a success) or terminating and reverting to the closest valid match
-    + `\g<n>`   attemt to call the `n`th group (leftmost calls are undefined)
+    + `\g<n>`   attempt to call the `n`th group (leftmost calls are undefined)
 
 10. Capture groups (indexing only)
 
