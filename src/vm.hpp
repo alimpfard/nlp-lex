@@ -215,7 +215,6 @@ public:
   Builder(std::string mname) : module(mname) {}
 
   void begin(llvm::Function *fn, bool cleanup_if_fail = false) {
-    issubexp = cleanup_if_fail;
     auto BBfinalise =
         llvm::BasicBlock::Create(module.TheContext, "_escape", fn);
     module.Builder.SetInsertPoint(BBfinalise);
@@ -664,12 +663,6 @@ public:
   }
   void end() {
     // finish the function
-    if (first_root) {
-      llvm::IRBuilder<> builder(module.TheContext);
-      builder.SetInsertPoint(module.main_entry);
-      builder.CreateBr(first_root);
-    }
-
     llvm::verifyFunction(*module.main());
     module.TheModule->print(llvm::errs(), nullptr);
   }

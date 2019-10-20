@@ -570,6 +570,13 @@ template <typename T> void DFANode<T>::print_dot() {
   std::printf("%s\n", gen_dot(anodes, transitions).c_str());
 }
 
+auto print_idxs(std::set<int> idxs) {
+  std::ostringstream oss;
+  for (auto idx : idxs)
+    oss << ", " << idx;
+  return oss.str().substr(2);
+}
+
 template <typename T>
 std::string DFANode<T>::gen_dot(
     std::set<DFANode<T> *> nodes,
@@ -591,8 +598,10 @@ std::string DFANode<T>::gen_dot(
                 ? string_format(" [asserts %s]",
                                 print_asserts(node->assertions).c_str())
                 : "")
-        << (node->subexpr_idx > -1
-                ? string_format(" [index %d]", node->subexpr_idx)
+        << (node->subexpr_idxs.size() > 0
+                ? string_format(" [ind%s %s]",
+                                (node->subexpr_idxs.size() > 1 ? "ices" : "ex"),
+                                print_idxs(node->subexpr_idxs).c_str())
                 : "")
         << (node->subexpr_call > -1
                 ? string_format(" [calls %d]", node->subexpr_call)
@@ -799,14 +808,7 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
           new DFANode<std::set<NFANode<T> *>>{current};
     for (auto s : current) {
       if (s->subexpr_idx > -1) {
-        if (dfanode->subexpr_idx > -1 &&
-            dfanode->subexpr_idx != s->subexpr_idx) {
-          std::printf(
-              "expression conflict, two subexpressions clash: %s (index %d)\n",
-              get_name(current).c_str(), dfanode->subexpr_idx);
-          abort();
-        }
-        dfanode->subexpr_idx = s->subexpr_idx;
+        dfanode->subexpr_idxs.insert(s->subexpr_idx);
       }
       if (s->subexpr_call > -1) {
         if (dfanode->subexpr_call > -1 &&
@@ -980,25 +982,46 @@ void DFANLVMCodeGenerator<T>::generate(
     DFANode<std::set<NFANode<T> *>> *node,
     std::set<DFANode<std::set<NFANode<T> *>> *> visited) {
   std::map<DFANode<std::set<NFANode<T> *>> *, llvm::BasicBlock *> blk{};
+  auto wasub = builder.issubexp;
   generate(node, visited, blk);
+  {
+    auto mroot = blk[node];
+
+    llvm::IRBuilder<> dbuilder(builder.module.TheContext);
+    dbuilder.SetInsertPoint(&builder.module.current_main()->getEntryBlock());
+    dbuilder.CreateBr(mroot);
+  }
+  builder.issubexp = true;
+  std::set<llvm::Function *> visitedFuncs{};
+
   for (auto [node, _] : blk)
-    if (node->subexpr_idx > -1 && subexprFunc.count(node->subexpr_idx)) {
-      decltype(visited) _visited;
-      typename std::remove_reference<decltype(blk)>::type _blocks;
+    if (node->subexpr_idxs.size() > 0) {
+      for (auto subexpr_idx : node->subexpr_idxs) {
+        if (!subexprFunc.count(subexpr_idx))
+          continue;
+        decltype(visited) _visited;
+        typename std::remove_reference<decltype(blk)>::type _blocks;
+        auto fn = subexprFunc[subexpr_idx];
+        if (visitedFuncs.count(fn))
+          continue;
+        visitedFuncs.insert(fn);
 
-      auto cmain = builder.module._cmain;
-      builder.module._cmain = subexprFunc[node->subexpr_idx];
+        auto cmain = builder.module._cmain;
+        builder.module._cmain = fn;
 
-      builder.begin(builder.module.current_main(), true);
-      generate(node, _visited, _blocks);
+        builder.begin(builder.module.current_main(), true);
+        generate(node, _visited, _blocks);
 
-      auto mroot = _blocks[node];
+        auto mroot = _blocks[node];
 
-      llvm::IRBuilder<> dbuilder(builder.module.TheContext);
-      dbuilder.SetInsertPoint(&builder.module.current_main()->getEntryBlock());
-      dbuilder.CreateBr(mroot);
-      builder.module._cmain = cmain;
+        llvm::IRBuilder<> dbuilder(builder.module.TheContext);
+        dbuilder.SetInsertPoint(
+            &builder.module.current_main()->getEntryBlock());
+        dbuilder.CreateBr(mroot);
+        builder.module._cmain = cmain;
+      }
     }
+  builder.issubexp = wasub;
 }
 
 using namespace llvm;
@@ -1011,8 +1034,9 @@ void DFANLVMCodeGenerator<T>::generate(
     return;
   }
   visited.insert(node);
-  if (node->subexpr_idx > -1)
-    subexprs[node->subexpr_idx] = node;
+  if (node->subexpr_idxs.size() > 0)
+    for (auto idx : node->subexpr_idxs)
+      subexprs[idx] = node;
 
   slts.show("[{<red>}NodeGen{<clean>}] Generating for node set "
             "{<green>}'%s'{<clean>}",

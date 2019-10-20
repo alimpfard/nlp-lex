@@ -1309,6 +1309,7 @@ Regexp::compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
 
     auto ex = std::get<Regexp *>(inner);
     auto nfa = ex->compile(cache, tl, cpath + "{::}" + ex->mangle(), leading);
+    nfa->epsilon_transition_to(te);
 
     tl->subexpr_idx = index;
     tl = new PseudoNFANode<std::string>{"S" + mangle(), tl, te};

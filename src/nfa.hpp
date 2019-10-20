@@ -54,7 +54,7 @@ public:
                // nullptr :- fail match and revert back to last final state
 
   std::vector<RegexpAssertion> assertions = {};
-  int subexpr_idx = -1;
+  std::set<int> subexpr_idxs = {};
   int subexpr_call = -1;
 
   std::optional<std::string> named_rule;
