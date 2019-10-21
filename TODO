@@ -27,11 +27,15 @@ stopword "test", "shit", "blah", -"stopwords.list"
 # - optimise regexp itself
 #   - if all branches of an Alternative are literals, transform to character class { 1|2|3|4|5|6... -> [123456] }
 #
-# - subpatterns should be preserved and tagged (for later referencing)
-#   - consequently, allow `(?:)' expressions
 #
-# - Codegen
-#   store start position upon first call
-#   implement library functions __nlex_*
-#
-# - testing the lexer live?
+# - Figure out how to handle:
+#   - rule-based token operations (for common mistakes)
+#       - word:a word:b -> word:ab
+#       - word:a number:b -> wordnum:ba
+#   - sentence boundary detection and optional impl of Viterbi with comptime generated model
+#       - provide an implementation (https://github.com/alimpfard/citron-tp-test/tree/master/part-6) of HMM and Viterbi
+#   - how to handle lemmatisation on different languages
+#       - provide a DSL for writing lemmatisers?
+#       - provide a few well-known implementations for specific languages?
+#     - allow the user to provide her own implementation that generates llvm bytecode?
+#         - calling convention?
