@@ -128,7 +128,7 @@ public:
 
   int lineno;
   int offset;
-  char buffer[1024];
+  char buffer[10240];
   int nested_index = 0;
 
   std::vector<Token> injected;

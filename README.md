@@ -66,7 +66,8 @@ the regex engine is currently very limited in what it supports, however here is 
 - [X] rule substitution (`a :: {{b}}x` -> a = match b, then match 'x')
 - [X] semi-optimised alternative matching
 - [X] basic character classes
-- [ ] character classes with extensions
+- [X] ranges in character classes
+- [ ] character classe extensions
 - [ ] valid escapes in character classes (`[\p{Ll}\p{Lm}]`)
 - [X] unicode character classes (`\p{...}`)
 - [ ] optimised alternative matching

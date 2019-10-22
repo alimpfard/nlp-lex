@@ -531,6 +531,38 @@ std::optional<Regexp> NLexer::regexp_tl() {
   return regexp_quantifier(exp.value());
 }
 
+static const int utf8_encode(char *out, uint32_t utf) {
+  if (utf <= 0x7F) {
+    out[0] = (char)utf;
+    out[1] = 0;
+    return 1;
+  } else if (utf <= 0x07FF) {
+    out[0] = (char)(((utf >> 6) & 0x1F) | 0xC0);
+    out[1] = (char)(((utf >> 0) & 0x3F) | 0x80);
+    out[2] = 0;
+    return 2;
+  } else if (utf <= 0xFFFF) {
+    out[0] = (char)(((utf >> 12) & 0x0F) | 0xE0);
+    out[1] = (char)(((utf >> 6) & 0x3F) | 0x80);
+    out[2] = (char)(((utf >> 0) & 0x3F) | 0x80);
+    out[3] = 0;
+    return 3;
+  } else if (utf <= 0x10FFFF) {
+    out[0] = (char)(((utf >> 18) & 0x07) | 0xF0);
+    out[1] = (char)(((utf >> 12) & 0x3F) | 0x80);
+    out[2] = (char)(((utf >> 6) & 0x3F) | 0x80);
+    out[3] = (char)(((utf >> 0) & 0x3F) | 0x80);
+    out[4] = 0;
+    return 4;
+  } else {
+    out[0] = (char)0xEF;
+    out[1] = (char)0xBF;
+    out[2] = (char)0xBD;
+    out[3] = 0;
+    return 0;
+  }
+}
+
 std::optional<Regexp> NLexer::regexp_expression() {
   char c = *source_p;
   if (c == '\0')
@@ -736,18 +768,26 @@ std::optional<Regexp> NLexer::regexp_expression() {
       \]                               # ]]]
     */
     int length = 0;
+    int rlength = 0;
     bool inverted = false;
     advance(1);
+    rlength++;
     if (*source_p == '^')
       inverted = true;
-    else
+    else {
       advance(-1);
+      rlength--;
+    }
     if (inverted) {
       buffer[length++] = ']'; // TODO: get a decent way of specifying inversion
     }
     bool escaped = false;
+    char lc = 0;
+    c = 0;
     do {
       advance(1);
+      rlength++;
+      lc = c;
       c = *source_p;
       if (c == '\\') {
         if (escaped) {
@@ -759,13 +799,82 @@ std::optional<Regexp> NLexer::regexp_expression() {
           continue;
         }
       }
+      if (!escaped && c == '-') {
+        if (lc != 0) {
+          // specify range (a[buf]-.Z -> a-[buf+(a+1)...Z]Z.)
+          advance(1);
+          rlength++;
+          c = *source_p;
+          int range_end_len = Codepoints::getlength(source_p);
+          int range_start_len = 1;
+          unsigned char *pp = (unsigned char *)&buffer[length - 1];
+          while ((*pp-- & 0b11000000) == 0b10000000)
+            range_start_len++;
+          pp++;
+          uint32_t start, end;
+          switch (range_start_len) {
+          case 1: // 0xxxxxxx
+            start = pp[0] & 0b01111111;
+            break;
+          case 2: // 110xxxxx 	10xxxxxx
+            start = ((pp[0] & 0b00011111) << 6) | (pp[1] & 0b00111111);
+            break;
+          case 3: // 1110xxxx 	10xxxxxx 	10xxxxxx
+            start = ((pp[0] & 0b00001111) << 12) | ((pp[1] & 0b00111111) << 6) |
+                    (pp[2] & 0b00111111);
+            break;
+          case 4: // 11110xxx 	10xxxxxx 	10xxxxxx 	10xxxxxx
+            start = ((pp[0] & 0b00000111) << 18) |
+                    ((pp[1] & 0b00111111) << 12) | ((pp[2] & 0b00111111) << 6) |
+                    (pp[3] & 0b00111111);
+            break;
+          default:
+            lexer_error(*this, Errors::InvalidRegexpSyntax, error_token(),
+                        ErrorPosition::On,
+                        "Charclass range start not expressible in unicode...?");
+          }
+          pp = (unsigned char *)source_p;
+          switch (range_end_len) {
+          case 1: // 0xxxxxxx
+            end = pp[0] & 0b01111111;
+            break;
+          case 2: // 110xxxxx 	10xxxxxx
+            end = ((pp[0] & 0b00011111) << 6) | (pp[1] & 0b00111111);
+            break;
+          case 3: // 1110xxxx 	10xxxxxx 	10xxxxxx
+            end = ((pp[0] & 0b00001111) << 12) | ((pp[1] & 0b00111111) << 6) |
+                  (pp[2] & 0b00111111);
+            break;
+          case 4: // 11110xxx 	10xxxxxx 	10xxxxxx 	10xxxxxx
+            end = ((pp[0] & 0b00000111) << 18) | ((pp[1] & 0b00111111) << 12) |
+                  ((pp[2] & 0b00111111) << 6) | (pp[3] & 0b00111111);
+            break;
+          default:
+            lexer_error(*this, Errors::InvalidRegexpSyntax, error_token(),
+                        ErrorPosition::On,
+                        "Charclass range start not expressible in unicode...?");
+          }
+          if (start >= end) {
+            lexer_error(*this, Errors::InvalidRegexpSyntax, error_token(),
+                        ErrorPosition::On,
+                        "Charclass range out of order (start >= end : U+%08X "
+                        ">= U+%08X)",
+                        start, end);
+          }
+          for (uint32_t x = start + 1; x < end + 1; x++)
+            length += utf8_encode(buffer + length, x);
+          advance(range_end_len - 1);
+          rlength += range_end_len - 1;
+          continue;
+        }
+      }
       if (!escaped && c == ']') {
         advance(1);
         break;
       }
       buffer[length++] = c;
     } while (1);
-    return Regexp{std::string{source_p - length - 2, length + 2},
+    return Regexp{std::string{source_p - rlength - 2, rlength + 2},
                   RegexpType::CharacterClass, std::string{buffer, length}};
   }
   // parenthesised expression
