@@ -1,4 +1,4 @@
-all: lexer
+all: lexer rts
 
 
 lexer:
@@ -6,3 +6,7 @@ lexer:
 
 format:
 	clang-format -i *.{hpp,cc,tcc}
+
+rts:
+	clang++ -O3 -S -emit-llvm wordtree_link.cc
+	mv wordtree_link.ll playground
