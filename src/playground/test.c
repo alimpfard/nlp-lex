@@ -5,6 +5,7 @@ struct sresult {
     int length;
     char const *tag;
     char errc;
+    unsigned char metadata; // bit 0: stopword
 };
 extern void __nlex_root(struct sresult*);
 extern void __nlex_feed(char const *p);
@@ -23,7 +24,7 @@ int main() {
       __nlex_feed(s);
       while (1) {
         __nlex_root(&res);
-        printf("%smatch {'%.*s' %d %s}\n", (res.errc?"no ":""), res.length, res.start, res.length, res.tag);
+        printf("%smatch {'%.*s' %d %s} is%sa stopword\n", (res.errc?"no ":""), res.length, res.start, res.length, res.tag, (res.metadata&1?" ":" not "));
         if (res.errc || res.length == 0)
           break;
         last = res.start;

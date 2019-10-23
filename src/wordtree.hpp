@@ -61,7 +61,7 @@ public:
         _root = _root->elements[c];
       }
     }
-    WordTreeNode *end;
+    std::shared_ptr<struct WordTreeNode> end;
     if (!_root->elements.count(EOW))
       _root->elements[EOW] = {};
     end = _root->elements[EOW];

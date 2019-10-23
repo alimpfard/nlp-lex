@@ -118,6 +118,14 @@ public:
           nlex_errc);
       builder.CreateStore(builder.CreateCall(nlex_current_p, {}),
                           nlex_match_start);
+      auto isstopwordv = builder.CreateInBoundsGEP(
+          _main->arg_begin(),
+          {llvm::ConstantInt::get(llvm::Type::getInt32Ty(TheContext), 0),
+           // metadata
+           llvm::ConstantInt::get(llvm::Type::getInt32Ty(TheContext), 4)});
+      builder.CreateStore(
+          llvm::ConstantInt::get(llvm::Type::getInt8Ty(TheContext), 0),
+          isstopwordv);
     }
     return _main;
   }
@@ -134,6 +142,7 @@ public:
         llvm::PointerType::get(llvm::Type::getInt8Ty(TheContext),
                                0),         // token tag
         llvm::Type::getInt8Ty(TheContext), // error code (0 = ok)
+        llvm::Type::getInt8Ty(TheContext), // metadata (1 = stopword, )
     };
     input_struct_type = llvm::StructType::create(members);
     _main = mkfunc();
@@ -285,7 +294,8 @@ public:
     module.Builder.CreateRetVoid();
   }
   void prepare(std::map<std::string, std::string> normalisations,
-               std::set<std::string> stopwords, std::set<std::string> ignores) {
+               std::set<std::string> stopwords, std::set<std::string> ignores,
+               std::map<std::string, bool> options) {
     // create global values
     {
       auto nlex_fed_string = new llvm::GlobalVariable(
@@ -563,13 +573,31 @@ public:
       WordTree<std::string> wtree{stopwords};
       llvm::IRBuilder<> builder{module.TheContext};
 
-      auto tcabb = llvm::BasicBlock::Create(module.TheContext, "_tailcall_self",
+      auto tcabb = llvm::BasicBlock::Create(module.TheContext, "_exit_stopword",
                                             module.main());
       builder.SetInsertPoint(tcabb);
-      builder.CreateCall(module.main(), {module.main()->arg_begin()})
-          ->setTailCall(true);
-      builder.CreateRetVoid();
-
+      if (options["ignore_stopwords"]) {
+        builder.CreateCall(module.main(), {module.main()->arg_begin()})
+            ->setTailCall(true);
+        builder.CreateRetVoid();
+      } else {
+        // just set a tag and return with it
+        auto isstopwordv = builder.CreateInBoundsGEP(
+            module.main()->arg_begin(),
+            {
+                llvm::ConstantInt::get(
+                    llvm::Type::getInt32Ty(module.TheContext), 0),
+                llvm::ConstantInt::get(
+                    llvm::Type::getInt32Ty(module.TheContext),
+                    4) // metadata
+            });
+        builder.CreateStore(
+            builder.CreateOr(llvm::ConstantInt::get(
+                                 llvm::Type::getInt8Ty(module.TheContext), 1),
+                             builder.CreateLoad(isstopwordv)),
+            isstopwordv);
+        builder.CreateBr(prev_fbb);
+      }
       builder.SetInsertPoint(fbb);
       builder.CreateStore(
           llvm::ConstantInt::get(llvm::Type::getInt8Ty(module.TheContext), 0),

@@ -1442,9 +1442,9 @@ int main() {
         bool run = true;
 
         std::thread render{[&]() {
-          nlvmg.builder.prepare(parser.gen_lexer_normalisations,
-                                parser.gen_lexer_stopwords,
-                                parser.gen_lexer_ignores);
+          nlvmg.builder.prepare(
+              parser.gen_lexer_normalisations, parser.gen_lexer_stopwords,
+              parser.gen_lexer_ignores, parser.gen_lexer_options);
 
           nlvmg.generate(rootdfa);
           nlvmg.output();
@@ -1453,9 +1453,9 @@ int main() {
         exec(("../tools/wm '" + name + "'").c_str(), run);
         render.join();
       } else {
-        nlvmg.builder.prepare(parser.gen_lexer_normalisations,
-                              parser.gen_lexer_stopwords,
-                              parser.gen_lexer_ignores);
+        nlvmg.builder.prepare(
+            parser.gen_lexer_normalisations, parser.gen_lexer_stopwords,
+            parser.gen_lexer_ignores, parser.gen_lexer_options);
 
         nlvmg.generate(rootdfa);
         nlvmg.output();

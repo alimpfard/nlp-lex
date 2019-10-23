@@ -8,8 +8,12 @@ extern "C" int wordtree_contains(WordTree<std::string> *tree, char const *str) {
   return tree->contains({str});
 }
 extern "C" int wordtree_get(WordTree<std::string> *tree, char const *str) {
-    return tree->get({str});
+  int val;
+  if (tree->get({str}, &val))
+    return val;
+  return 0;
 }
-extern "C" void wordtree_set(WordTree<std::string> *tree, char const *str, int val) {
-    tree->insert({str}, val);
+extern "C" void wordtree_set(WordTree<std::string> *tree, char const *str,
+                             int val) {
+  tree->insert({str}, val);
 }
