@@ -39,3 +39,7 @@ stopword "test", "shit", "blah", -"stopwords.list"
 #       - provide a few well-known implementations for specific languages?
 #     - allow the user to provide her own implementation that generates llvm bytecode?
 #         - calling convention?
+#   - json in-out
+#   - normalise stmt: add unicode codepoint
+#   - create python wrapper with compile-on-need
+#   - 'option farsi on' to appease the gods
