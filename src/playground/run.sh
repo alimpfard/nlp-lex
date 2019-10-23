@@ -7,13 +7,13 @@ gen() {
 }
 
 paste() {
-  cat ll.ll test.ll > all.ll
+  llvm-link ll.ll test.ll > all.bc
 }
 
 compile() {
-  opt all.ll -o all.bc -da -constmerge -gvn -globaldce -instcombine -lcssa -licm -adce -constprop -inline -tailcallelim -instcombine -adce -dce -sink -simplifycfg
-  llc -filetype=obj -relocation-model=pic all.bc
-  gcc all.o
+  opt all.bc -o all-opt.bc -da -constmerge -gvn -globaldce -instcombine -lcssa -licm -adce -constprop -inline -tailcallelim -instcombine -adce -dce -sink -simplifycfg
+  llc -filetype=obj -relocation-model=pic all-opt.bc
+  gcc all-opt.o
 }
 
 all() {
