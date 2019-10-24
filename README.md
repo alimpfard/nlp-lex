@@ -50,6 +50,18 @@ to completely omit the result of a rule (discard its match), use the `ignore` st
 
 for example `ignore [space punct]` will omit all the tokens that would've matched either of the rules `space` or `punct`
 
+### Options
+
+an option is of the form `option <name> <value>"` where \<value\> is either `on` or `off`
+
+currently significant options:
+
+| Option         | effect         | default        |
+| :------------- | :------------- | :------------- |
+| `ignore_stopwords` | entirely removes stopwords from the output stream       | `off`       |
+| `pure_normaliser`   | creates a function `__nlex_pure_normalise` that returns the next normalised character in the stream | `off` |
+
+### Regular Expressions
 
 the regex engine is currently very limited in what it supports, however here is a road map:
 
