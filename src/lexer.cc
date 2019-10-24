@@ -24,6 +24,38 @@ void lexer_error(const NLexer &lexer, int errn, const Token &tok,
   va_end(arg);
 }
 
+static const int utf8_encode(char *out, uint32_t utf) {
+  if (utf <= 0x7F) {
+    out[0] = (char)utf;
+    out[1] = 0;
+    return 1;
+  } else if (utf <= 0x07FF) {
+    out[0] = (char)(((utf >> 6) & 0x1F) | 0xC0);
+    out[1] = (char)(((utf >> 0) & 0x3F) | 0x80);
+    out[2] = 0;
+    return 2;
+  } else if (utf <= 0xFFFF) {
+    out[0] = (char)(((utf >> 12) & 0x0F) | 0xE0);
+    out[1] = (char)(((utf >> 6) & 0x3F) | 0x80);
+    out[2] = (char)(((utf >> 0) & 0x3F) | 0x80);
+    out[3] = 0;
+    return 3;
+  } else if (utf <= 0x10FFFF) {
+    out[0] = (char)(((utf >> 18) & 0x07) | 0xF0);
+    out[1] = (char)(((utf >> 12) & 0x3F) | 0x80);
+    out[2] = (char)(((utf >> 6) & 0x3F) | 0x80);
+    out[3] = (char)(((utf >> 0) & 0x3F) | 0x80);
+    out[4] = 0;
+    return 4;
+  } else {
+    out[0] = (char)0xEF;
+    out[1] = (char)0xBF;
+    out[2] = (char)0xBD;
+    out[3] = 0;
+    return 0;
+  }
+}
+
 char const *NLexer::errors[Errors::LAST] = {
     [Errors::Unexpected] = "Unexpected Token",
     [Errors::ExpectedValue] = "Expected a value",
@@ -35,6 +67,7 @@ char const *NLexer::errors[Errors::LAST] = {
     [Errors::RegexpQuantifierRepeatInvalidSyntax] =
         "Invalid Repeat quantifier syntax",
     [Errors::InvalidRegexpSyntax] = "Invalid regex syntax",
+    [InvalidCodepointSpecification] = "Invalid Codepoint value",
 };
 
 void Token::print() {
@@ -357,12 +390,50 @@ inline Token NLexer::_next() {
   }
   case LexerState::Normal: {
     length = 0;
-    buffer[length++] = c;
+    bool escape = false;
     while (1) {
-      c = *source_p;
+      if (c == '\\') {
+        if (!escape) {
+          escape = true;
+          if ((c = *source_p) == '+') {
+            // \+HHHH(HH)?
+            // 4-chars seem to be the common format for smaller ones too
+            int len = 0;
+            uint32_t codepoint = 0;
+            advance(1);
+            c = *source_p;
+            while ((c <= '9' && c >= '0') || (c <= 'F' && c >= 'A') ||
+                   (c <= 'f' && c >= 'a')) {
+              if (len++ == 6)
+                break;
+              if (c <= '9')
+                codepoint = codepoint * 16 + (c - '0');
+              else if (c <= 'F')
+                codepoint = codepoint * 16 + (c - 'A' + 10);
+              else
+                codepoint = codepoint * 16 + (c - 'a' + 10);
+              advance(1);
+              c = *source_p;
+            }
+            if (len < 4 && len > 6) {
+              const Token &mtoken = error_token();
+              lexer_error(*this, Errors::InvalidCodepointSpecification, mtoken,
+                          ErrorPosition::On,
+                          "Expected between 4 and 6 hexadecimal characters to "
+                          "follow \\+, not %d",
+                          len);
+            }
+            length += utf8_encode(buffer + length, codepoint);
+            escape = false;
+            c = *source_p;
+            continue;
+          }
+        }
+      }
       if (c == '\0' || c == '\n')
         break;
       buffer[length++] = c;
+      c = *source_p;
       advance(1);
     }
     buffer[length] = 0;
@@ -529,38 +600,6 @@ std::optional<Regexp> NLexer::regexp_tl() {
   if (!exp.has_value())
     return exp;
   return regexp_quantifier(exp.value());
-}
-
-static const int utf8_encode(char *out, uint32_t utf) {
-  if (utf <= 0x7F) {
-    out[0] = (char)utf;
-    out[1] = 0;
-    return 1;
-  } else if (utf <= 0x07FF) {
-    out[0] = (char)(((utf >> 6) & 0x1F) | 0xC0);
-    out[1] = (char)(((utf >> 0) & 0x3F) | 0x80);
-    out[2] = 0;
-    return 2;
-  } else if (utf <= 0xFFFF) {
-    out[0] = (char)(((utf >> 12) & 0x0F) | 0xE0);
-    out[1] = (char)(((utf >> 6) & 0x3F) | 0x80);
-    out[2] = (char)(((utf >> 0) & 0x3F) | 0x80);
-    out[3] = 0;
-    return 3;
-  } else if (utf <= 0x10FFFF) {
-    out[0] = (char)(((utf >> 18) & 0x07) | 0xF0);
-    out[1] = (char)(((utf >> 12) & 0x3F) | 0x80);
-    out[2] = (char)(((utf >> 6) & 0x3F) | 0x80);
-    out[3] = (char)(((utf >> 0) & 0x3F) | 0x80);
-    out[4] = 0;
-    return 4;
-  } else {
-    out[0] = (char)0xEF;
-    out[1] = (char)0xBF;
-    out[2] = (char)0xBD;
-    out[3] = 0;
-    return 0;
-  }
 }
 
 std::optional<Regexp> NLexer::regexp_expression() {

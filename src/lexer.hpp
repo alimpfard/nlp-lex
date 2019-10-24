@@ -112,6 +112,7 @@ enum Errors {
   RegexpUnknown,
   RegexpQuantifierRepeatInvalidSyntax,
   InvalidRegexpSyntax,
+  InvalidCodepointSpecification,
   LAST
 };
 

@@ -259,7 +259,18 @@
         'name' : 'message.error.NLex'
       }
       {
-        'match' : '(.)'
+        'match' : '(\\\\\\+)([a-fA-F0-9]{4,6})'
+        'captures' : {
+          '1' : {
+            'name' : 'string.regexp.NLex'
+          }
+          '2' : {
+            'name' : 'constant.character.escape.NLex'
+          }
+        }
+      }
+      {
+        'match' : '([^\\x{005c}]|\\\\\\\\)'
         'name' : 'string.other.link.NLex'
       }
     ]
