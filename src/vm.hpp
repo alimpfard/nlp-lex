@@ -525,7 +525,7 @@ public:
           }
         }
       }
-      
+
       // nlex_start - return the true start of the fed string
       BB = llvm::BasicBlock::Create(module.TheContext, "", module.nlex_start);
       builder.SetInsertPoint(BB);

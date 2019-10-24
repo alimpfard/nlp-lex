@@ -1,8 +1,23 @@
-word   :: (\p{Ll}|\p{Lu}|\p{Lt}|\p{Lo}|\p{Lm}|\p{Mn})+
-number :: \d+(\.\d*(e-?\d+)?)?
-punc   :: [.,:;'"()*%!~]+
-space  :: [   ]+
+word    :: [A-zا-ی]+
+number  :: [0-9]+(\.[0-9]*(e-?[0-9]+)?)?
+punc    :: [.,:;'"()*%!~]+
+space   :: [ 	]+
+unknown :: [^A-zا-ی0-9۰-۹.,:;'"()*%!~ ]
+
+x <= \+200c
 
 ignore [space]
 
-stopword "64" "hello"
+stopword "i" "me" "my" "myself" "we" "our" "ours" "ourselves" "you" "your"
+stopword "yours" "yourself" "yourselves" "he" "him" "his" "himself" "she" "her"
+stopword "hers" "herself" "it" "its" "itself" "they" "them" "their" "theirs"
+stopword "themselves" "what" "which" "who" "whom" "this" "that" "these" "those"
+stopword "am" "is" "are" "was" "were" "be" "been" "being" "have" "has" "had"
+stopword "having" "do" "does" "did" "doing" "a" "an" "the" "and" "but" "if" "or"
+stopword "because" "as" "until" "while" "of" "at" "by" "for" "with" "about"
+stopword "against" "between" "into" "through" "during" "before" "after" "above"
+stopword "below" "to" "from" "up" "down" "in" "out" "on" "off" "over" "under"
+stopword "again" "further" "then" "once" "here" "there" "when" "where" "why"
+stopword "how" "all" "any" "both" "each" "few" "more" "most" "other" "some"
+stopword "such" "no" "nor" "not" "only" "own" "same" "so" "than" "too" "very"
+stopword "s" "t" "can" "will" "just" "don" "should" "now"
