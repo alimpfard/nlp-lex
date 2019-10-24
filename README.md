@@ -52,7 +52,7 @@ for example `ignore [space punct]` will omit all the tokens that would've matche
 
 ### Options
 
-an option is of the form `option <name> <value>"` where \<value\> is either `on` or `off`
+an option is of the form `option <name> <value>` where \<value\> is either `on` or `off`
 
 currently significant options:
 
