@@ -688,6 +688,23 @@ public:
       builder.CreateBr(prev_fbb);
       module.BBfinalise = fbb;
     }
+    // add a function that just reads the input and writes the normalised form
+    // out
+    if (options["pure_normaliser"]) {
+      llvm::Function *pure_normalise;
+      llvm::FunctionType *ncf = llvm::FunctionType::get(
+          llvm::Type::getInt8Ty(module.TheContext), {}, false);
+
+      pure_normalise = llvm::Function::Create(
+          ncf, llvm::Function::ExternalLinkage, "__nlex_pure_normalise",
+          module.TheModule.get());
+      auto entry =
+          llvm::BasicBlock::Create(module.TheContext, "", pure_normalise);
+      llvm::IRBuilder<> fbuilder{module.TheContext};
+      fbuilder.SetInsertPoint(entry);
+      fbuilder.CreateCall(module.nlex_next);
+      fbuilder.CreateRet(fbuilder.CreateCall(module.nlex_current_f));
+    }
   }
   void end() {
     // finish the function
