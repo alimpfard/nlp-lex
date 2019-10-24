@@ -1,0 +1,6 @@
+option pure_normaliser on
+
+x <= ا
+
+test :: [A-zا-ی]+
+space :: [  ]+

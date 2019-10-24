@@ -44,6 +44,7 @@ public:
 
   llvm::Function *nlex_current_f;
   llvm::Function *nlex_current_p;
+  llvm::Function *nlex_distance;
   llvm::Function *nlex_restore;
   llvm::Function *nlex_feed;
   llvm::Function *nlex_next;
@@ -190,6 +191,11 @@ public:
     nlex_start = llvm::Function::Create(ncp, llvm::Function::InternalLinkage,
                                         "__nlex_true_start", TheModule.get());
 
+    llvm::FunctionType *nc =
+        llvm::FunctionType::get(llvm::Type::getInt64Ty(TheContext), {}, false);
+
+    nlex_distance = llvm::Function::Create(nc, llvm::Function::ExternalLinkage,
+                                           "__nlex_distance", TheModule.get());
     nlex_match_start = new llvm::GlobalVariable(
         llvm::PointerType::get(llvm::Type::getInt8Ty(TheContext), 0), false,
         llvm::GlobalValue::InternalLinkage,
@@ -359,6 +365,15 @@ public:
           builder.CreateGEP(builder.CreateLoad(nlex_fed_string),
                             {builder.CreateLoad(nlex_injected_length_diff)}));
 
+      // nlex_distance - get current position in string (as int)
+      BB =
+          llvm::BasicBlock::Create(module.TheContext, "", module.nlex_distance);
+      builder.SetInsertPoint(BB);
+      builder.CreateRet(builder.CreatePtrDiff(
+          builder.CreateGEP(builder.CreateLoad(nlex_fed_string),
+                            {builder.CreateLoad(nlex_injected_length_diff)}),
+          builder.CreateLoad(nlex_true_start)));
+
       // nlex_restore - restore position from passed in pointer
       BB = llvm::BasicBlock::Create(module.TheContext, "", module.nlex_restore);
       builder.SetInsertPoint(BB);
@@ -370,6 +385,7 @@ public:
           llvm::ConstantInt::get(llvm::Type::getInt32Ty(module.TheContext), 0),
           nlex_injected_length_diff);
       builder.CreateRetVoid();
+
       // nlex_feed - feed string to lexer
       BB = llvm::BasicBlock::Create(module.TheContext, "", module.nlex_feed);
       builder.SetInsertPoint(BB);
@@ -382,6 +398,7 @@ public:
           llvm::ConstantInt::get(llvm::Type::getInt32Ty(module.TheContext), 0),
           nlex_injected_length_diff);
       builder.CreateRetVoid();
+
       // nlex_next - advance character position
       BB = llvm::BasicBlock::Create(module.TheContext, "", module.nlex_next);
       auto *uBB = llvm::BasicBlock::Create(module.TheContext, "has_inject",
@@ -508,6 +525,7 @@ public:
           }
         }
       }
+      
       // nlex_start - return the true start of the fed string
       BB = llvm::BasicBlock::Create(module.TheContext, "", module.nlex_start);
       builder.SetInsertPoint(BB);
