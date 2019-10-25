@@ -9,7 +9,7 @@ class Token(object):
     def desanitify(self, nlex):
         return {
             'id': nlex.next_id,
-            'raw_token': self.raw.decode('utf-8', 'ignore'),
+            'raw_token': repr(self.raw),
             'token': self.raw.decode('utf-8', 'ignore'),
             'type': self.tag.decode('utf-8', 'ignore'),
             'delete_ref': [], # we don't support this

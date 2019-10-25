@@ -5,6 +5,7 @@ from .token import Token
 import json
 from datetime import datetime
 from .nextfloat import next_up
+import sys
 
 class NLexWrappedObject(object):
     class ValueStruct(ctypes.Structure):
@@ -27,6 +28,7 @@ class NLexWrappedObject(object):
         self._nlex_root = getattr(self.__lib, '__nlex_root')
         self._nlex_root.argtypes = (ctypes.POINTER(NLexWrappedObject.ValueStruct),)
         self._nlex_distance = getattr(self.__lib, '__nlex_distance')
+        self.__nlex_skip = getattr(self.__lib, '__nlex_skip')
         self.__has_normaliser = True
         self.__last_offset = -1
         try:
@@ -36,12 +38,13 @@ class NLexWrappedObject(object):
             self.__has_normaliser = False
 
     def __feed(self, string):
-        self._fed = ctypes.create_string_buffer(bytes(string, 'utf-8'))
+        self._fed = ctypes.create_string_buffer(bytes(string, 'utf-8') if isinstance(string, str) else string)
         self._fed_ptr = ctypes.cast(self._fed, ctypes.POINTER(ctypes.c_char))
         self._nlex_feed(self._fed)
 
     def feed(self, string):
         self.__feed(string)
+        self.fedlen = len(string.encode('utf-8'))
 
     def __next_token(self, cleanup):
         if not self._fed:
@@ -54,11 +57,15 @@ class NLexWrappedObject(object):
                 self._fed = None
                 return None
 
-        if self._m_value.length == self.__last_offset:
-            self._fed = None
-            return None
+        if offset == self.__last_offset or offset >= self.fedlen:
+            if offset >= self.fedlen:
+                self._fed = None
+                return None
+            print('early terminate at', offset, 'out of', self.fedlen, file=sys.stderr)
+            self.__nlex_skip()
 
         self.__last_offset = offset
+        print('offset', offset, 'out of', self.fedlen, file=sys.stderr)
         return Token(
             value=(ctypes.c_char * self._m_value.length).from_address(ctypes.addressof(self._m_value.start.contents)),
             length=self._m_value.length,
@@ -84,8 +91,8 @@ class NLexWrappedObject(object):
     def tokens(self, clean=True):
         i = 0
         while True:
-            if i > 1000:
-                return
+            # if i > 1000:
+            #     return
             x = self.__next_token(clean)
             if x is None:
                 return
@@ -127,7 +134,7 @@ class NLexWrappedObject(object):
 
         def fget(self):
             x = self._next_id
-            self._next_id = next_up(self._next_id, 10)
+            self._next_id += 1 # next_up(self._next_id, 10)
             return x
 
         def fset(self, value):

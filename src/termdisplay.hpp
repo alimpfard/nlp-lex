@@ -60,6 +60,7 @@ public:
   }
 
   void display(std::string str) {
+    return;
     refresh_size();
 
     findAndReplaceAll(str, "{<clean>}", "\033[0m");

@@ -50,6 +50,7 @@ public:
   llvm::Function *nlex_next;
   llvm::Function *nlex_start;
   llvm::Function *nlex_get_utf8_length;
+  llvm::Function *nlex_skip;
 
   llvm::GlobalVariable *nlex_match_start;
   llvm::GlobalVariable *token_value;
@@ -61,6 +62,7 @@ public:
 
   llvm::AllocaInst *last_tag;
   llvm::AllocaInst *last_final_state_position;
+  llvm::AllocaInst *anything_matched;
   llvm::AllocaInst *nlex_errc;
 
   llvm::Type *input_struct_type;
@@ -101,6 +103,8 @@ public:
     last_tag = createEntryBlockAlloca(
         _main, "ltag",
         llvm::PointerType::get(llvm::Type::getInt8Ty(TheContext), 0));
+    anything_matched = createEntryBlockAlloca(
+        _main, "lanything", llvm::Type::getInt1Ty(TheContext));
     last_final_state_position = createEntryBlockAlloca(
         _main, "lfinals_p",
         llvm::PointerType::get(llvm::Type::getInt8Ty(TheContext), 0));
@@ -110,6 +114,9 @@ public:
     builder.SetInsertPoint(main_entry);
     builder.CreateStore(builder.CreateCall(nlex_current_p, {}),
                         last_final_state_position);
+    builder.CreateStore(
+        llvm::ConstantInt::getFalse(llvm::Type::getInt1Ty(TheContext)),
+        anything_matched);
     if (clear) {
       builder.CreateStore(
           llvm::ConstantInt::get(llvm::Type::getInt32Ty(TheContext), 0),
@@ -191,6 +198,10 @@ public:
     nlex_start = llvm::Function::Create(ncp, llvm::Function::InternalLinkage,
                                         "__nlex_true_start", TheModule.get());
 
+    nlex_skip = llvm::Function::Create(
+        llvm::FunctionType::get(llvm::Type::getVoidTy(TheContext), {}, false),
+        llvm::Function::ExternalLinkage, "__nlex_skip", TheModule.get());
+
     llvm::FunctionType *nc =
         llvm::FunctionType::get(llvm::Type::getInt64Ty(TheContext), {}, false);
 
@@ -205,10 +216,10 @@ public:
     TheModule->getGlobalList().push_back(nlex_match_start);
 
     token_value = new llvm::GlobalVariable(
-        llvm::ArrayType::get(llvm::Type::getInt8Ty(TheContext), 1024), false,
+        llvm::ArrayType::get(llvm::Type::getInt8Ty(TheContext), 1024000), false,
         llvm::GlobalValue::InternalLinkage,
         llvm::Constant::getNullValue(
-            llvm::ArrayType::get(llvm::Type::getInt8Ty(TheContext), 1024)),
+            llvm::ArrayType::get(llvm::Type::getInt8Ty(TheContext), 1024000)),
         "ltoken_value");
     TheModule->getGlobalList().push_back(token_value);
 
@@ -231,10 +242,22 @@ public:
 
   void begin(llvm::Function *fn, bool cleanup_if_fail = false) {
     auto BBfinalise =
-        llvm::BasicBlock::Create(module.TheContext, "_escape", fn);
+        llvm::BasicBlock::Create(module.TheContext, "_escape_top", fn);
     module.Builder.SetInsertPoint(BBfinalise);
     if (!module.BBfinalise)
       module.BBfinalise = BBfinalise;
+    auto bbF = llvm::BasicBlock::Create(module.TheContext, "_escape", fn);
+    auto advance_and_callFbb =
+        llvm::BasicBlock::Create(module.TheContext, "_escape_redo", fn);
+
+    module.Builder.CreateCondBr(
+        module.Builder.CreateLoad(module.anything_matched), bbF,
+        advance_and_callFbb);
+    module.Builder.SetInsertPoint(advance_and_callFbb);
+    module.Builder.CreateCall(module.nlex_next);
+    module.Builder.CreateCall(fn, {fn->arg_begin()})->setTailCall(true);
+    module.Builder.CreateRetVoid();
+    module.Builder.SetInsertPoint(bbF);
     auto istruct = fn->arg_begin();
     auto stgep = module.Builder.CreateInBoundsGEP(
         istruct,
@@ -530,6 +553,12 @@ public:
       BB = llvm::BasicBlock::Create(module.TheContext, "", module.nlex_start);
       builder.SetInsertPoint(BB);
       builder.CreateRet(builder.CreateLoad(nlex_true_start));
+
+      // nlex_skip - skip a char
+      BB = llvm::BasicBlock::Create(module.TheContext, "", module.nlex_skip);
+      builder.SetInsertPoint(BB);
+      builder.CreateCall(module.nlex_next);
+      builder.CreateRetVoid();
 
       // nlex_get_utf8_length - return the number of expected extra chars to
       // consume for the given starting byte in a utf8 sequence

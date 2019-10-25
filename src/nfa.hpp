@@ -27,7 +27,7 @@ enum class RegexpAssertion {
 
 template <typename StateInfoT> class DFANode {
 public:
-  std::optional<StateInfoT> state_info;
+  std::optional<StateInfoT> state_info = {};
 
   std::string
   gen_dot(std::set<DFANode<StateInfoT> *> nodes,
@@ -40,14 +40,15 @@ public:
       std::unordered_set<CanonicalTransition<DFANode<StateInfoT>, char>>
           &transitions);
 
-  bool final, start, dirty = false, subexpr = false, reference_node = false;
+  bool final = false, start = false, dirty = false, subexpr = false,
+       reference_node = false;
   int max_opt_steps = 50;
   int opt_step = max_opt_steps;
 
   std::set<Transition<DFANode, char> *, TransitionPointerComparer<StateInfoT>>
-      outgoing_transitions;
+      outgoing_transitions = {};
   std::set<Transition<DFANode, char> *, TransitionPointerComparer<StateInfoT>>
-      /* reconstructed before optimisation */ incoming_transitions;
+      /* reconstructed before optimisation */ incoming_transitions = {};
 
   DFANode<StateInfoT> *default_transition =
       nullptr; // where to go if nothing else matches
@@ -59,9 +60,7 @@ public:
 
   std::optional<std::string> named_rule;
   DFANode(StateInfoT s) : state_info(s) {}
-  DFANode()
-      : state_info(), final(false), start(false), outgoing_transitions(),
-        incoming_transitions(), named_rule() {}
+  DFANode() {}
 
   // virtual std::set<Transition<DFANode<StateInfoT>, char> *,
   //                  TransitionPointerComparer<StateInfoT>>
@@ -90,7 +89,7 @@ template <typename StateInfoT> class NFANode {
   static constexpr EpsilonTransitionT EpsilonTransition{};
 
 public:
-  std::optional<StateInfoT> state_info;
+  std::optional<StateInfoT> state_info = {};
 
   std::string
   gen_dot(std::set<NFANode<StateInfoT> *> nodes,
@@ -107,30 +106,29 @@ public:
           std::variant<char, EpsilonTransitionT, AnythingTransitionT>>>
           &transitions);
 
-  bool final, start, dirty = false, subexpr = false, reference_node = false;
+  bool final = false, start = false, dirty = false, subexpr = false,
+       reference_node = false;
   int max_opt_steps = 50;
   int opt_step = max_opt_steps;
   std::set<Transition<NFANode, std::variant<char, EpsilonTransitionT,
                                             AnythingTransitionT>> *,
            TransitionPointerComparer<StateInfoT>>
-      outgoing_transitions;
+      outgoing_transitions = {};
   std::set<Transition<NFANode, std::variant<char, EpsilonTransitionT,
                                             AnythingTransitionT>> *,
            TransitionPointerComparer<StateInfoT>>
-      /* reconstructed before optimisation */ incoming_transitions;
+      /* reconstructed before optimisation */ incoming_transitions = {};
 
   NFANode<StateInfoT> *default_transition =
       nullptr; // where to go if nothing else matches
                // nullptr :- fail match and revert back to last final state
-  std::optional<std::string> named_rule;
+  std::optional<std::string> named_rule = {};
   std::vector<RegexpAssertion> assertions = {};
   int subexpr_idx = -1;
   int subexpr_call = -1;
 
   NFANode(StateInfoT s) : state_info(s) {}
-  NFANode()
-      : state_info(), final(false), start(false), outgoing_transitions(),
-        incoming_transitions(), named_rule() {}
+  NFANode() {}
   virtual std::vector<NFANode<StateInfoT> *> get_input_end() {
     std::vector<NFANode<StateInfoT> *> pv;
     pv.push_back(this);
@@ -185,13 +183,12 @@ public:
 template <typename StateInfoT>
 class PseudoNFANode : public NFANode<StateInfoT> {
 public:
-  NFANode<StateInfoT> *input_end, *output_end;
+  NFANode<StateInfoT> *input_end = nullptr, *output_end = nullptr;
 
   PseudoNFANode(StateInfoT s, NFANode<StateInfoT> *in, NFANode<StateInfoT> *out)
       : NFANode<StateInfoT>(s), input_end(deep_input_end(in)),
         output_end(deep_output_end(out)) {}
-  PseudoNFANode()
-      : NFANode<StateInfoT>(), input_end(nullptr), output_end(nullptr) {}
+  PseudoNFANode() : NFANode<StateInfoT>() {}
   virtual std::vector<NFANode<StateInfoT> *> get_input_end() {
     auto *p = dynamic_cast<PseudoNFANode *>(input_end);
     if (p == nullptr) {

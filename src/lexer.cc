@@ -776,10 +776,35 @@ std::optional<Regexp> NLexer::regexp_expression() {
                   "Subexpr call (\\g) expects a number (\\g<n>) not '%c'", c);
       return Regexp{std::string{source_p - 2, 2}, RegexpType::Literal, 'g'};
     }
-    case 'x': // hex and unicode: TODO
-    case 'u':
+    case 'u': {
+      static char buf[7] = {0};
+      int len = 0;
+      c = *source_p;
+      advance(1);
+      c = tolower(c);
+      while (isxdigit(c)) {
+        if (len == 6)
+          break;
+        buf[len++] = c;
+        advance(1);
+        c = *source_p;
+        c = tolower(c);
+      }
+      if (len < 3) {
+        lexer_error(*this, Errors::InvalidRegexpSyntax, error_token(),
+                    ErrorPosition::On,
+                    "Expected 4 to 6 hex digits after \\u, not %d", len);
+      }
+      uint32_t cp = strtol(buf, NULL, 16);
+      char bufv[5];
+      int ll = utf8_encode(bufv, cp);
+      return Regexp{
+          std::string{source_p - len - 4, len + 4}, // single-char charclass
+          RegexpType::CharacterClass, std::string{bufv, ll}};
+    }
+    case 'x': // hex: TODO
       lexer_error(*this, Errors::RegexpUnsupported, error_token(),
-                  ErrorPosition::On, "Unicode/Hex escapes not yet supported");
+                  ErrorPosition::On, "Hex escapes not yet supported");
     default:
       lexer_error(*this, Errors::RegexpUnknown, error_token(),
                   ErrorPosition::On, "Unknown escape '%c'", c);
@@ -840,11 +865,49 @@ std::optional<Regexp> NLexer::regexp_expression() {
       }
       if (!escaped && c == '-') {
         if (lc != 0) {
+          int range_end_skip = 0;
           // specify range (a[buf]-.Z -> a-[buf+(a+1)...Z]Z.)
           advance(1);
           rlength++;
           c = *source_p;
-          int range_end_len = Codepoints::getlength(source_p);
+          auto end_s = source_p;
+          static char buf[6];
+          if (c == '\\') {
+            advance(1);
+            rlength++;
+            c = *source_p;
+            if (c == 'u') {
+              int len = 0;
+              advance(1);
+              rlength++;
+              c = *source_p;
+              c = tolower(c);
+              while (isxdigit(c)) {
+                if (len == 6)
+                  break;
+                buf[len++] = c;
+                advance(1);
+                rlength++;
+                c = *source_p;
+                c = tolower(c);
+              }
+              advance(-1);
+              rlength--;
+              if (len < 3) {
+                lexer_error(*this, Errors::InvalidRegexpSyntax, error_token(),
+                            ErrorPosition::On,
+                            "Expected 4 to 6 hex digits after \\u, not %d",
+                            len);
+              }
+              uint32_t cp = strtol(buf, NULL, 16);
+              utf8_encode(buf, cp);
+              end_s = buf;
+              range_end_skip = 1;
+            }
+          }
+
+          int range_end_len = Codepoints::getlength(end_s);
+          range_end_skip = range_end_skip ?: range_end_len;
           int range_start_len = 1;
           unsigned char *pp = (unsigned char *)&buffer[length - 1];
           while ((*pp-- & 0b11000000) == 0b10000000)
@@ -872,7 +935,7 @@ std::optional<Regexp> NLexer::regexp_expression() {
                         ErrorPosition::On,
                         "Charclass range start not expressible in unicode...?");
           }
-          pp = (unsigned char *)source_p;
+          pp = (unsigned char *)end_s;
           switch (range_end_len) {
           case 1: // 0xxxxxxx
             end = pp[0] & 0b01111111;
@@ -902,10 +965,35 @@ std::optional<Regexp> NLexer::regexp_expression() {
           }
           for (uint32_t x = start + 1; x < end + 1; x++)
             length += utf8_encode(buffer + length, x);
-          advance(range_end_len - 1);
-          rlength += range_end_len - 1;
+          advance(range_end_skip - 1);
+          rlength += range_end_skip - 1;
           continue;
         }
+      }
+      if (escaped && c == 'u') {
+        escaped = false;
+        static char buf[6];
+        int len = 0;
+        advance(1);
+        c = *source_p;
+        c = tolower(c);
+        while (isxdigit(c)) {
+          if (len == 6)
+            break;
+          buf[len++] = c;
+          advance(1);
+          c = *source_p;
+          c = tolower(c);
+        }
+        advance(-1);
+        if (len < 3) {
+          lexer_error(*this, Errors::InvalidRegexpSyntax, error_token(),
+                      ErrorPosition::On,
+                      "Expected 4 to 6 hex digits after \\u, not %d", len);
+        }
+        uint32_t cp = strtol(buf, NULL, 16);
+        length += utf8_encode(buffer + length, cp);
+        continue;
       }
       if (!escaped && c == ']') {
         advance(1);
@@ -913,7 +1001,7 @@ std::optional<Regexp> NLexer::regexp_expression() {
       }
       buffer[length++] = c;
     } while (1);
-    return Regexp{std::string{source_p - rlength - 2, rlength + 2},
+    return Regexp{"[" + std::string{source_p - rlength - 4, rlength + 3} + "]",
                   RegexpType::CharacterClass, std::string{buffer, length}};
   }
   // parenthesised expression
@@ -1240,6 +1328,10 @@ bool Regexp::operator==(const Regexp &other) const {
   }
 
   switch (type) {
+  case Dot:
+    return true;
+  case SubExprCall:
+    return false; // TODO
   case CharacterClass:
     /* fallthrough */
   case Symbol:
@@ -1365,10 +1457,15 @@ Regexp::compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
                    mangle();
   NFANode<std::string> *result;
   switch (type) {
+  case RegexpType::Symbol: {
+    std::printf("[ICE] unresolved symbol left in regular expression\n");
+    abort();
+  }
   case RegexpType::SubExprCall: {
     NFANode<std::string> *tl = new NFANode<std::string>{"R<>" + mangle()};
     parent->epsilon_transition_to(tl);
     tl->subexpr_call = subexprcall;
+    tl->named_rule = namef;
     result = tl;
     break;
   }
@@ -1378,6 +1475,7 @@ Regexp::compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
     NFANode<std::string> *tl = new NFANode<std::string>{"A" + mangle()};
     parent->epsilon_transition_to(tl);
     tl->assertions = assert;
+    tl->named_rule = namef;
     result = tl;
     break;
   }
@@ -1412,16 +1510,26 @@ Regexp::compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
       s.erase(s.begin());
       inv = true;
     }
-    NFANode<std::string> *tl = new NFANode<std::string>{"B" + mangle()};
-    NFANode<std::string> *tl2 = new NFANode<std::string>{"E" + mangle()};
-    NFANode<std::string> *tl_1 = new NFANode<std::string>{"B_C1" + mangle()};
-    NFANode<std::string> *tl_2 = new NFANode<std::string>{"B_C2" + mangle()};
-    NFANode<std::string> *tl_3 = new NFANode<std::string>{"B_C3" + mangle()};
+    NFANode<std::string> *tl =
+        new NFANode<std::string>{cpath + "{::}" + "B" + mangle()};
+    NFANode<std::string> *tl2 =
+        new NFANode<std::string>{cpath + "{::}" + "E" + mangle()};
+    NFANode<std::string> *tl_1 =
+        new NFANode<std::string>{cpath + "{::}" + "B_C1" + mangle()};
+    NFANode<std::string> *tl_2 =
+        new NFANode<std::string>{cpath + "{::}" + "B_C2" + mangle()};
+    NFANode<std::string> *tl_3 =
+        new NFANode<std::string>{cpath + "{::}" + "B_C3" + mangle()};
     NFANode<std::string> *tl_end = tl2;
+    tl->named_rule = namef;
+    tl_1->named_rule = namef;
+    tl_2->named_rule = namef;
+    tl_3->named_rule = namef;
+
     if (!inv) {
       // we can transform this to many transitions instead
     } else {
-      tl_end = new NFANode<std::string>{"Moot:E" + mangle()};
+      tl_end = new NFANode<std::string>{cpath + "{::}" + "Moot:E" + mangle()};
       tl->default_transition_to(tl2);
     }
 
@@ -1460,12 +1568,13 @@ Regexp::compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
     nfa->epsilon_transition_to(te);
 
     tl->subexpr_idx = index;
+    tl->named_rule = namef;
+    te->named_rule = namef;
     tl = new PseudoNFANode<std::string>{"S" + mangle(), tl, te};
 
     tl = transform_by_quantifiers(tl);
     parent->epsilon_transition_to(tl);
     tl->named_rule = namef;
-    deep_output_end(tl)->named_rule = namef;
     result = tl;
     break;
   }
@@ -1482,6 +1591,7 @@ Regexp::compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
       p->epsilon_transition_to(te);
       // cache[alt->mangle()] = p;
     }
+    te->named_rule = namef;
     tl = new PseudoNFANode<std::string>{"S" + mangle(), tl, te};
     tl = transform_by_quantifiers(tl);
     parent->epsilon_transition_to(tl);
@@ -1490,7 +1600,6 @@ Regexp::compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
     // std::printf("\n");
     // cache[cpath] = tl->deep_copy();
     tl->named_rule = namef;
-    deep_output_end(tl)->named_rule = namef;
     // if (was_reference)
     // cache[referenced_symbol.value()] = tl->deep_copy();
     result = tl;
@@ -1520,7 +1629,7 @@ Regexp::compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
         new PseudoNFANode<std::string>{"S" + mangle(), root, endp});
     parent->epsilon_transition_to(root);
     root->named_rule = namef;
-    deep_output_end(root)->named_rule = namef;
+    endp->named_rule = namef;
     result = root;
     break;
   }
@@ -1619,7 +1728,6 @@ Regexp::transform_by_quantifiers(NFANode<std::string> *node) const {
   }
 
   if (lazy) {
-  lazy_:;
     // t -e-> A -e-> e, t -e-> e
     auto tl = new NFANode<std::string>{"B?" + mangle()};
     auto tp = new NFANode<std::string>{"E?" + mangle()};

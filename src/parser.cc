@@ -268,8 +268,7 @@ std::vector<Regexp *> get_all_finals(Regexp *exp) {
       ends.push_back(q);
     break;
   case RegexpType::Dot:
-    ends.push_back(exp);
-    break;
+  case RegexpType::SubExprCall:
   case RegexpType::Literal:
     ends.push_back(exp);
     break;
@@ -337,7 +336,8 @@ NFANode<std::string> *NParser::compile() {
                     .value_or(node->state_info.value_or("<unknown>"))
                     .c_str());
             node->final = true;
-            node->named_rule = it.first;
+            if (!node->named_rule.has_value())
+              node->named_rule = it.first;
           }
         } else {
           std::printf("Regexp %p has no corresponding node\n", end);
@@ -438,7 +438,7 @@ std::string get_name(NFANode<T> *node, bool simple = false, bool ptr = false) {
 
 std::string sanitised(char c) {
   if (c < 10)
-    return "<" + std::to_string((int)c) + ">";
+    return "<" + std::bitset<8>(c).to_string() + ">";
   else
     return std::string{c};
 }
@@ -590,10 +590,10 @@ std::string DFANode<T>::gen_dot(
   std::map<DFANode<T> *, int> nodeids;
   for (auto node : nodes) {
     nodeids[node] = node_id++;
-    oss << "node [shape = "
-        << (node->start ? "square" : node->final ? "doublecircle" : "circle")
-        << (", label = \"" + get_name(node->state_info.value(), false, true) +
-            "\\nat " + string_format("%p", node))
+    oss << "node [shape = " << (node->final ? "doublecircle" : "circle")
+        << (", label = \"" + std::string(node->start ? "Initial State:" : "") +
+            get_name(node->state_info.value(), false, true) + "\\nat " +
+            string_format("%p", node))
         << (node->assertions.size() > 0
                 ? string_format(" [asserts %s]",
                                 print_asserts(node->assertions).c_str())
@@ -821,19 +821,20 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
         dfanode->subexpr_call = s->subexpr_call;
       }
       if (s->final) {
-        // std::printf("state %s was final, so marking %s as such\n",
-        //             get_name(s).c_str(), get_name(current).c_str());
+        std::printf("state %s was final, so marking %s as such\n",
+                    get_name(s).c_str(), get_name(current).c_str());
         dfanode->final = true;
       }
-      if (s->start) {
-        // std::printf("state %s was start, so marking %s as such\n",
-        //             get_name(s).c_str(), get_name(current).c_str());
-        dfanode->start = true;
-      }
+      // if (s->start) {
+      //   // std::printf("state %s was start, so marking %s as such\n",
+      //   //             get_name(s).c_str(), get_name(current).c_str());
+      //   dfanode->start = true;
+      // }
     }
 
-    if (dfa_root == nullptr)
+    if (dfa_root == nullptr) {
       dfa_root = dfanode;
+    }
 
     auto salphabets = all_alphabet(current);
     std::vector<char> alphabets{salphabets.begin(), salphabets.end()};
@@ -1077,7 +1078,6 @@ void DFANLVMCodeGenerator<T>::generate(
   auto tprev = builder.module.Builder.CreateGEP(
       tnext, {llvm::ConstantInt::get(
                  llvm::Type::getInt32Ty(builder.module.TheContext), -1)});
-  auto assert = false;
   for (auto assertion : node->assertions) {
     switch (assertion) {
     case RegexpAssertion::SetPosition: {
@@ -1171,14 +1171,25 @@ void DFANLVMCodeGenerator<T>::generate(
     std::string emit;
     for (auto state : node->state_info.value()) {
       if (state->named_rule.has_value()) {
-        auto val = state->named_rule.value();
+        std::string val = state->named_rule.value();
+        val = val.substr(0, val.find("{::}"));
         if (emitted.count(val))
           continue;
         emitted.insert(val);
-        emit = val;
+        if (em) {
+          std::printf(
+              "[ICE] State %s can emit multiple tags (at least %s and %s)\n",
+              get_name(node->state_info.value()).c_str(), emit.c_str(),
+              val.c_str());
+        } else
+          emit = val;
         em = true;
       }
     }
+    builder.module.Builder.CreateStore(
+        llvm::ConstantInt::getTrue(
+            llvm::Type::getInt1Ty(builder.module.TheContext)),
+        builder.module.anything_matched);
     builder.module.Builder.CreateStore(
         builder.get_or_create_tag(em ? emit : "<Unknown State>"),
         builder.module.last_tag);
@@ -1423,6 +1434,7 @@ int main() {
     } else if (line == ".nlvm") {
       root = parser.compile();
       auto rootdfa = root->to_dfa();
+      rootdfa->start = true;
       if (parser.generate_graph) {
         std::set<DFANode<std::set<NFANode<std::string> *>> *,
                  DFANodePointerComparer<std::set<NFANode<std::string> *>>>
