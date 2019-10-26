@@ -66,6 +66,8 @@ class NLexWrappedObject(object):
 
         self.__last_offset = offset
         print('offset', offset, 'out of', self.fedlen, file=sys.stderr)
+        if self._m_value.length == 0:
+            return self.__next_token(cleanup)
         return Token(
             value=(ctypes.c_char * self._m_value.length).from_address(ctypes.addressof(self._m_value.start.contents)),
             length=self._m_value.length,
