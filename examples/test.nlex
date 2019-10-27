@@ -1,13 +1,14 @@
 word    :: [آائبپتثجچحخدذرزژسشصضطظعغفقکلمنوهی\u200c]+
 enword  :: [A-z]+ 
 number  :: [0-9]+
-punc    :: [.،,:;'()*%!~.:؟؛«»]+
-space   :: [ 	]+
+Punc     ::[.،,:;'()*%!~.:؟؛«»]+
+Space   :: [ 	\u000a]+
+Mention :: @[A-z][A-z_0-9]{4,}
 emoji   :: ([\u2000-\u3300]|[\ud83c-\ud83e][\ud000-\udfff])+
 
 link    :: ([A-z]+://)?[A-z]+\.[A-z]{2,}(:[0-9]{2,5})?/?([A-z0-9._~:/?#@!$&'*+,;=\u002d]+)?
 
-ignore [space]
+ignore [Space]
 
 stopword "i" "me" "my" "myself" "we" "our" "ours" "ourselves" "you" "your"
 stopword "yours" "yourself" "yourselves" "he" "him" "his" "himself" "she" "her"

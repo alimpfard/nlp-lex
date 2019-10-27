@@ -31,6 +31,7 @@ class NLexWrappedObject(object):
         self.__nlex_skip = getattr(self.__lib, '__nlex_skip')
         self.__has_normaliser = True
         self.__last_offset = -1
+        self.total = 0
         try:
             self._nlex_pure_normalise = getattr(self.__lib, '__nlex_pure_normalise')
             self._nlex_pure_normalise.restype = ctypes.c_char
@@ -137,6 +138,7 @@ class NLexWrappedObject(object):
         def fget(self):
             x = self._next_id
             self._next_id += 1 # next_up(self._next_id, 10)
+            self.total += 1
             return x
 
         def fset(self, value):
