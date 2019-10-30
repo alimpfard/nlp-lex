@@ -439,6 +439,8 @@ std::string get_name(NFANode<T> *node, bool simple = false, bool ptr = false) {
 std::string sanitised(char c) {
   if (c < 10)
     return "<" + std::bitset<8>(c).to_string() + ">";
+  else if (c == '"')
+    return "\\\"";
   else
     return std::string{c};
 }
@@ -464,6 +466,13 @@ auto print_asserts(std::vector<RegexpAssertion> asserts) {
       break;
     }
   return oss.str().substr(1);
+}
+
+std::string join(std::set<std::string> s) {
+  std::ostringstream oss;
+  for (auto q : s)
+    oss << ", " << q;
+  return oss.str().substr(2);
 }
 
 template <typename T>
@@ -498,6 +507,8 @@ std::string NFANode<T>::gen_dot(
                 : "")
         << '"' << "] LR_" << nodeids[node] << ";" << ss_end;
   }
+  std::map<std::pair<int, int>, std::pair<std::set<std::string>, NFANode<T> *>>
+      target_labels{};
   for (auto tr : transitions) {
     int fid, tid;
     if (nodeids.count(tr.source) < 1) {
@@ -512,22 +523,27 @@ std::string NFANode<T>::gen_dot(
     } else
       tid = nodeids[tr.target];
 
-    oss << "LR_" << fid << " -> LR_" << tid << " [ label = \""
-        << (std::holds_alternative<EpsilonTransitionT>(tr.input)
-                ? "<Epsilon>"
-                : std::holds_alternative<AnythingTransitionT>(tr.input)
-                      ? (std::string{"<"} +
-                         (std::get<AnythingTransitionT>(tr.input).inverted
-                              ? "None"
-                              : "Any") +
-                         " of '" +
-                         (std::get<AnythingTransitionT>(tr.input).values) +
-                         "'>")
-                            .c_str()
-                      : sanitised(std::get<char>(tr.input)).c_str())
-        << " -> " << get_name(tr.target, true) << "\\n@"
-        << string_format("%p", tr.target) << "\" ];" << ss_end;
+    auto &tl = target_labels[std::make_pair(fid, tid)];
+    tl.first.insert(
+        std::holds_alternative<EpsilonTransitionT>(tr.input)
+            ? "<Epsilon>"
+            : std::holds_alternative<AnythingTransitionT>(tr.input)
+                  ? (std::string{"<"} +
+                     (std::get<AnythingTransitionT>(tr.input).inverted
+                          ? "None"
+                          : "Any") +
+                     " of '" +
+                     (std::get<AnythingTransitionT>(tr.input).values) + "'>")
+                        .c_str()
+                  : sanitised(std::get<char>(tr.input)).c_str());
+    tl.second = tr.target;
   }
+  for (auto kv : target_labels)
+    oss << "LR_" << kv.first.first << " -> LR_" << kv.first.second
+        << " [ label = \""
+        << "{" << join(kv.second.first) << "}"
+        << " -> " << get_name(kv.second.second, false, true) << "\\n@"
+        << string_format("%p", kv.second.second) << "\" ];" << ss_end;
   oss << "}";
   return oss.str();
 }
@@ -608,6 +624,8 @@ std::string DFANode<T>::gen_dot(
                 : "")
         << '"' << "] LR_" << nodeids[node] << ";" << ss_end;
   }
+  std::map<std::pair<int, int>, std::pair<std::set<std::string>, DFANode<T> *>>
+      target_labels{};
   for (auto tr : transitions) {
     int fid, tid;
     if (nodeids.count(tr.source) < 1) {
@@ -622,11 +640,16 @@ std::string DFANode<T>::gen_dot(
     } else
       tid = nodeids[tr.target];
 
-    oss << "LR_" << fid << " -> LR_" << tid << " [ label = \""
-        << sanitised(tr.input) << " -> "
-        << get_name(tr.target->state_info.value(), false, true) << "\\n@"
-        << string_format("%p", tr.target) << "\" ];" << ss_end;
+    auto &tl = target_labels[std::make_pair(fid, tid)];
+    tl.first.insert(sanitised(tr.input));
+    tl.second = tr.target;
   }
+  for (auto kv : target_labels)
+    oss << "LR_" << kv.first.first << " -> LR_" << kv.first.second
+        << " [ label = \""
+        << "{" << join(kv.second.first) << "}"
+        << " -> " << get_name(kv.second.second->state_info.value(), false, true)
+        << "\\n@" << string_format("%p", kv.second.second) << "\" ];" << ss_end;
   oss << "}";
   return oss.str();
 }
