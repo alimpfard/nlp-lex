@@ -37,4 +37,47 @@ stopword "برخورد" "خارجي" "نظام" "كرد" "حال" "سياست" "
 stopword "توان" "جهت" "داشته" "ولي" "انقلاب" "اساسي" "آموزش" "خواهند" "روز" "امروز"
 stopword  "مختلف" "گذشته" "گفت" "قبل" "گرفتن" "هيچ" "كار" "بازرگاني" "بيني" "سابق" "-"
 
+normalise {٠} to ۰
+normalise {١} to ۱
+normalise {٢} to ۲
+normalise {٣} to ۳
+normalise {٤} to ۴
+normalise {٥} to ۵
+normalise {٦} to ۶
+normalise {٧} to ۷
+normalise {٨} to ۸
+normalise {٩} to ۹
+normalise {٪} to %
+normalise {٫} to .
+normalise {٬} to ٬
+normalise {٭} to *
+normalise {ٯ ڨ ڧ} to ﻕ
+normalise {ٱ ٳ ٵ ٲ} to ﺍ
+normalise {ۊ ۉ ۋ ۆ ۮ ۈ ۅ ۇ ۄ ٶ ۏ ٷ} to ﻭ
+normalise {ٹ ٿ} to ﺙ
+normalise {ټ ٺ ٽ} to ﺕ
+normalise {ڀ ﭖ} to ﭖ
+normalise {ځ} to ﺡ
+normalise {څ ڂ ڿ} to ﺥ
+normalise {۾ ﭺ ڃ} to ﭺ
+normalise {ڄ ڇ} to ﺝ
+normalise {ڈ ډ ڍ ڊ} to ﺩ
+normalise {ڌ ڎ ڋ ڏ ڐ} to ﺫ
+normalise {ڙ ڒ ﮊ ڑ} to ﮊ
+normalise {ږ ڕ ڔ ړ} to ﺭ
+normalise {ۯ ڗ} to ﺯ
+normalise {ښ ڛ} to ﺱ
+normalise {ۺ ڜ} to ﺵ
+normalise {ڝ ۻ} to ﺹ
+normalise {ڞ} to ﺽ
+normalise {ڟ} to ﻁ
+normalise {ڠ ۼ} to ﻍ
+normalise {ڣ ڦ ڡ ڢ ڥ ڤ} to ﻑ
+normalise {ﻙ ػ ګ ؼ ڮ ڭ ڪ ڬ ﮎ} to ﮎ
+normalise {ڴ ڰ ڲ ﮒ ڱ ڳ} to ﮒ
+normalise {ڸ ڷ ڶ ڵ} to ﻝ
+normalise {ڹ ڻ ں ڼ ڽ} to ﻥ
+normalise {ە ۂ ہ ۀ ۃ ھ ۿ} to ﻩ
+normalise {۽} to ﻉ
+normalise {ۜ ۩ ۡ ۖ ۬ ۣ ۢ ۞ ۠ ۚ ۥ ۤ ۛ ۝ ۧ ۘ ۦ ۭ ۗ ۫ ۨ ۟ ۪ ۙ} to _
 normalise {ۍ ې ے ۓ ێ ؽ ﻱ ؠ ۑ ؾ ؿ ٸ ﻯ ﺉ ي ﯼ} to ي
