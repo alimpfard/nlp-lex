@@ -59,8 +59,9 @@ public:
     refresh_size();
   }
 
-  void display(std::string str) {
-    return;
+  void display(std::string str, bool cleanup) {
+    if (cleanup)
+      return;
     refresh_size();
 
     findAndReplaceAll(str, "{<clean>}", "\033[0m");
@@ -68,12 +69,17 @@ public:
     findAndReplaceAll(str, "{<red>}", "\033[31m");
     findAndReplaceAll(str, "{<magenta>}", "\033[35m");
 
-    std::printf("\033[11;1H\033[J%s\n", str.c_str());
+    std::printf(
+        (std::string(cleanup ? "\033[11;1H\033[J" : "") + "%s\n").c_str(),
+        str.c_str());
     dirty = false;
   }
 
   template <typename... Args> void show(std::string fmt, Args... a) {
-    display(Display::string_format(fmt, a...));
+    display(Display::string_format(fmt, a...), true);
+  }
+  template <typename... Args> void show_c(std::string fmt, Args... a) {
+    display(Display::string_format(fmt, a...), false);
   }
 };
 } // namespace Display

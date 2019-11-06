@@ -31,6 +31,7 @@ enum class ParserState {
   Define,
   Const,
   Normal,
+  NormalS,
 };
 
 struct SymbolDebugInformation {

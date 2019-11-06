@@ -67,7 +67,7 @@ public:
   DFANLVMCodeGenerator()
       : CodeGenerator<T>(
             {CodegenStartPhase::DFAPhase, CodegenTarget::TargetNLVM}),
-        builder("my cool module") {}
+        builder("test.nlex") {} // todo: read from file...
 
   virtual void
   generate(DFANode<std::set<NFANode<T> *>> *node,

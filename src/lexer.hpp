@@ -88,10 +88,12 @@ enum LexerState {
               // Name -> IgnoreBrac
               // ] -> Toplevel
 
-  String, // -> String
-  Const,  // String -> Toplevel
-  Normal, // -> Toplevel
-  Define, // -> Toplevel (parses a regex)
+  String,    // -> String
+  Const,     // String -> Toplevel
+  NormalSrc, // -> NormalTo
+  NormalTo,  // -> NormalTgt
+  NormalTgt, // -> Toplevel
+  Define,    // -> Toplevel (parses a regex)
 };
 
 enum ErrorPosition {

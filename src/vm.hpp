@@ -4,8 +4,10 @@
 #include "wordtree.hpp"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/DebugInfo/DIContext.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -42,6 +44,9 @@ public:
   llvm::IRBuilder<> Builder;
   std::unique_ptr<llvm::Module> TheModule;
 
+  llvm::DIBuilder *DBuilder;
+  llvm::DICompileUnit *TheCU;
+
   llvm::Function *nlex_current_f;
   llvm::Function *nlex_current_p;
   llvm::Function *nlex_distance;
@@ -62,6 +67,7 @@ public:
 
   llvm::AllocaInst *last_tag;
   llvm::AllocaInst *last_final_state_position;
+  llvm::AllocaInst *chars_since_last_final;
   llvm::AllocaInst *anything_matched;
   llvm::AllocaInst *nlex_errc;
 
@@ -105,6 +111,8 @@ public:
         llvm::PointerType::get(llvm::Type::getInt8Ty(TheContext), 0));
     anything_matched = createEntryBlockAlloca(
         _main, "lanything", llvm::Type::getInt1Ty(TheContext));
+    chars_since_last_final = createEntryBlockAlloca(
+        _main, "lfinal_cs", llvm::Type::getInt32Ty(TheContext));
     last_final_state_position = createEntryBlockAlloca(
         _main, "lfinals_p",
         llvm::PointerType::get(llvm::Type::getInt8Ty(TheContext), 0));
@@ -112,6 +120,9 @@ public:
                                        llvm::Type::getInt8Ty(TheContext));
     llvm::IRBuilder<> builder(TheContext);
     builder.SetInsertPoint(main_entry);
+    builder.CreateStore(
+        llvm::ConstantInt::get(chars_since_last_final->getAllocatedType(), 0),
+        chars_since_last_final);
     builder.CreateStore(builder.CreateCall(nlex_current_p, {}),
                         last_final_state_position);
     builder.CreateStore(
@@ -160,6 +171,13 @@ public:
 
   Module(std::string name) : TheContext(), Builder(TheContext) {
     TheModule = std::make_unique<llvm::Module>(name, TheContext);
+
+    DBuilder = new llvm::DIBuilder(*TheModule.get());
+    TheCU = DBuilder->createCompileUnit(
+        llvm::dwarf::DW_LANG_C,
+        DBuilder->createFile(name, "/home/Test/Documents/examples"),
+        "NLex Compiler", 0, "", 0);
+
     llvm::FunctionType *ncf =
         llvm::FunctionType::get(llvm::Type::getInt8Ty(TheContext), {}, false);
 
@@ -325,7 +343,7 @@ public:
   void prepare(std::map<std::string, std::string> normalisations,
                std::set<std::string> stopwords, std::set<std::string> ignores,
                std::map<std::string, bool> options) {
-    // create global values
+    // create global values & normalisation logic
     {
       auto nlex_fed_string = new llvm::GlobalVariable(
           llvm::PointerType::get(llvm::Type::getInt8Ty(module.TheContext), 0),
@@ -464,87 +482,91 @@ public:
       llvm::IRBuilder<> mbuilder(module.TheContext);
       auto BBend = llvm::BasicBlock::Create(module.TheContext, "default_escape",
                                             module.nlex_next);
-
-      if (normalisations.size() == 0)
-        builder.CreateBr(BBend);
-      mbuilder.SetInsertPoint(BBend);
-      mbuilder.CreateStore(cvv, nlex_tmp_char);
-      // mbuilder.CreateStore(
-      //     mbuilder.CreateGEP(mbuilder.CreateLoad(nlex_fed_string),
-      //                        {llvm::ConstantInt::get(
-      //                            llvm::Type::getInt32Ty(module.TheContext),
-      //                            1)}),
-      //     nlex_fed_string);
-      mbuilder.CreateRetVoid();
-      for (auto pnorm : normalisations) {
-        mbuilder.SetInsertPoint(BB);
-        auto norm = pnorm.first;
-        for (int i = 0; i <= norm.size(); i++) {
-          if (!levels.count(norm.substr(0, i))) {
-            // we don't have it in the cache
-            // create a toplevel block
-            llvm::SwitchInst *sw;
-            if (i == norm.size()) {
-              if (i > 1)
+      // create normalisation logic
+      {
+        if (normalisations.size() == 0)
+          builder.CreateBr(BBend);
+        mbuilder.SetInsertPoint(BBend);
+        mbuilder.CreateStore(cvv, nlex_tmp_char);
+        // mbuilder.CreateStore(
+        //     mbuilder.CreateGEP(mbuilder.CreateLoad(nlex_fed_string),
+        //                        {llvm::ConstantInt::get(
+        //                            llvm::Type::getInt32Ty(module.TheContext),
+        //                            1)}),
+        //     nlex_fed_string);
+        mbuilder.CreateRetVoid();
+        for (auto pnorm : normalisations) {
+          mbuilder.SetInsertPoint(BB);
+          auto norm = pnorm.first;
+          slts.show_c("[NORMALISE] {<green>}%d (%s) -> %d (%s){<clean>}",
+                      norm.size(), norm, pnorm.second.size(), pnorm.second);
+          for (int i = 0; i <= norm.size(); i++) {
+            if (!levels.count(norm.substr(0, i))) {
+              // we don't have it in the cache
+              // create a toplevel block
+              llvm::SwitchInst *sw;
+              if (i == norm.size()) {
+                if (i > 1)
+                  mbuilder.CreateStore(
+                      mbuilder.CreateGEP(
+                          mbuilder.CreateLoad(nlex_fed_string),
+                          llvm::ConstantInt::get(
+                              llvm::Type::getInt32Ty(module.TheContext),
+                              norm.size() - 1)),
+                      nlex_fed_string);
                 mbuilder.CreateStore(
-                    mbuilder.CreateGEP(
-                        mbuilder.CreateLoad(nlex_fed_string),
-                        {llvm::ConstantInt::get(
-                            llvm::Type::getInt32Ty(module.TheContext),
-                            norm.size() - 1)}),
-                    nlex_fed_string);
-              mbuilder.CreateStore(
-                  get_or_create_tag(pnorm.second.substr(1, pnorm.second.size()),
-                                    false),
-                  nlex_injected); // consume one byte and store the rest
-              mbuilder.CreateStore(
-                  llvm::ConstantInt::get(
-                      llvm::Type::getInt32Ty(module.TheContext),
-                      pnorm.second.size() - 1),
-                  nlex_injected_length);
-              mbuilder.CreateStore(
-                  llvm::ConstantInt::get(
-                      llvm::Type::getInt32Ty(module.TheContext),
-                      pnorm.second.size() - norm.size()),
-                  nlex_injected_length_diff);
+                    get_or_create_tag(
+                        pnorm.second.substr(1, pnorm.second.size()), false),
+                    nlex_injected); // consume one byte and store the rest
+                mbuilder.CreateStore(
+                    llvm::ConstantInt::get(
+                        llvm::Type::getInt32Ty(module.TheContext),
+                        pnorm.second.size() - 1),
+                    nlex_injected_length);
+                mbuilder.CreateStore(
+                    llvm::ConstantInt::get(
+                        llvm::Type::getInt32Ty(module.TheContext),
+                        pnorm.second.size() - norm.size()),
+                    nlex_injected_length_diff);
 
-              mbuilder.CreateStore( // store the first character (literal)
-                  llvm::ConstantInt::get(
-                      llvm::Type::getInt8Ty(module.TheContext),
-                      (int)pnorm.second[0]),
-                  nlex_tmp_char);
-              mbuilder.CreateRetVoid();
-              continue;
-            } else {
+                mbuilder.CreateStore( // store the first character (literal)
+                    llvm::ConstantInt::get(
+                        llvm::Type::getInt8Ty(module.TheContext),
+                        (int)pnorm.second[0]),
+                    nlex_tmp_char);
+                mbuilder.CreateRetVoid();
+                continue;
+              } else {
 
-              auto gep = mbuilder.CreateInBoundsGEP(
-                  fs, {llvm::ConstantInt::get(
-                          llvm::Type::getInt32Ty(module.TheContext), i)});
-              auto cvv = mbuilder.CreateLoad(gep);
-              sw = mbuilder.CreateSwitch(cvv, BBend);
-            }
-            auto cBB = llvm::BasicBlock::Create(
-                module.TheContext, norm.substr(0, i), module.nlex_next);
-            sw->addCase(
-                llvm::ConstantInt::get(llvm::Type::getInt8Ty(module.TheContext),
-                                       (int)norm[i]),
-                cBB);
-            levels[norm.substr(0, i)] = sw;
-            mbuilder.SetInsertPoint(cBB);
-          } else {
-            // that switch already exists, add a case to it
-            auto sw = levels[norm.substr(0, i)];
-            llvm::BasicBlock *cBB;
-            auto val = llvm::ConstantInt::get(
-                llvm::Type::getInt8Ty(module.TheContext), (int)norm[i]);
-            auto ci = sw->findCaseValue(val);
-            if (ci == sw->case_default()) {
-              cBB = llvm::BasicBlock::Create(
+                auto gep = mbuilder.CreateInBoundsGEP(
+                    fs, {llvm::ConstantInt::get(
+                            llvm::Type::getInt32Ty(module.TheContext), i)});
+                auto cvv = mbuilder.CreateLoad(gep);
+                sw = mbuilder.CreateSwitch(cvv, BBend);
+              }
+              auto cBB = llvm::BasicBlock::Create(
                   module.TheContext, norm.substr(0, i), module.nlex_next);
-              sw->addCase(val, cBB);
-            } else
-              cBB = sw->getSuccessor(ci->getSuccessorIndex());
-            mbuilder.SetInsertPoint(cBB);
+              sw->addCase(
+                  llvm::ConstantInt::get(
+                      llvm::Type::getInt8Ty(module.TheContext), (int)norm[i]),
+                  cBB);
+              levels[norm.substr(0, i)] = sw;
+              mbuilder.SetInsertPoint(cBB);
+            } else {
+              // that switch already exists, add a case to it
+              auto sw = levels[norm.substr(0, i)];
+              llvm::BasicBlock *cBB;
+              auto val = llvm::ConstantInt::get(
+                  llvm::Type::getInt8Ty(module.TheContext), (int)norm[i]);
+              auto ci = sw->findCaseValue(val);
+              if (ci == sw->case_default()) {
+                cBB = llvm::BasicBlock::Create(
+                    module.TheContext, norm.substr(0, i), module.nlex_next);
+                sw->addCase(val, cBB);
+              } else
+                cBB = sw->getSuccessor(ci->getSuccessorIndex());
+              mbuilder.SetInsertPoint(cBB);
+            }
           }
         }
       }
@@ -755,6 +777,7 @@ public:
   }
   void end() {
     // finish the function
+    module.DBuilder->finalize();
     llvm::verifyFunction(*module.main());
     module.TheModule->print(llvm::errs(), nullptr);
   }

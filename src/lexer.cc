@@ -188,6 +188,13 @@ inline Token NLexer::_next() {
       return Token{TOK_IGNORE, lineno, offset - strlen("ignore"),
                    strlen("ignore"), empty_string};
     }
+    if (c == 'n' && strncmp("ormalise", source_p, strlen("ormalise")) == 0 &&
+        !isalnum(*(source_p + strlen("ormalise")))) {
+      state = LexerState::NormalSrc;
+      advance(strlen("ormalise"));
+      return Token{TOK_OPNORMAL, lineno, offset - strlen("normalise"),
+                   strlen("normalise"), empty_string};
+    }
     length = 0;
     buffer[length++] = c;
     do {
@@ -218,19 +225,19 @@ inline Token NLexer::_next() {
   }
   case LexerState::Name: {
     const Token &mtoken = error_token();
-    if (codepoints::is_single_code_point(
-            std::get<std::string>(prev_token.value)) &&
-        c == '<') {
-      // norm
-      if (strncmp("=", source_p, 1) != 0) {
-        lexer_error(*this, Errors::Unexpected, mtoken, ErrorPosition::On,
-                    "Expected `<='");
-        return mtoken;
-      }
-      advance(1);
-      state = LexerState::Normal;
-      return Token{TOK_OPNORMAL, lineno, offset, 2, empty_string};
-    }
+    // if (codepoints::is_single_code_point(
+    //         std::get<std::string>(prev_token.value)) &&
+    //     c == '<') {
+    //   // norm
+    //   if (strncmp("=", source_p, 1) != 0) {
+    //     lexer_error(*this, Errors::Unexpected, mtoken, ErrorPosition::On,
+    //                 "Expected `<='");
+    //     return mtoken;
+    //   }
+    //   advance(1);
+    //   state = LexerState::Normal;
+    //   return Token{TOK_OPNORMAL, lineno, offset, 2, empty_string};
+    // }
     if (c != ':') {
       lexer_error(*this, Errors::Unexpected, mtoken, ErrorPosition::On,
                   "Expected either `::' or `:-'");
@@ -388,7 +395,84 @@ inline Token NLexer::_next() {
     return Token{isfile ? TOK_FILESTRING : TOK_LITSTRING, lineno,
                  offset - str.size(), str.size(), str};
   }
-  case LexerState::Normal: {
+  case LexerState::NormalSrc: {
+    length = 0;
+    bool escape = false;
+    if (c != '{') {
+      const Token &mtoken = error_token();
+      lexer_error(*this, Errors::InvalidCodepointSpecification, mtoken,
+                  ErrorPosition::On,
+                  "Expected normalisation source to be in braces (e.g. "
+                  "'normalise {abc} ...')");
+    }
+    c = *source_p;
+    advance(1);
+    while (1) {
+      if (c == '\\') {
+        if (!escape) {
+          escape = true;
+          if ((c = *source_p) == '+') {
+            // \+HHHH(HH)?
+            // 4-chars seem to be the common format for smaller ones too
+            int len = 0;
+            uint32_t codepoint = 0;
+            advance(1);
+            c = *source_p;
+            while ((c <= '9' && c >= '0') || (c <= 'F' && c >= 'A') ||
+                   (c <= 'f' && c >= 'a')) {
+              if (len++ == 6)
+                break;
+              if (c <= '9')
+                codepoint = codepoint * 16 + (c - '0');
+              else if (c <= 'F')
+                codepoint = codepoint * 16 + (c - 'A' + 10);
+              else
+                codepoint = codepoint * 16 + (c - 'a' + 10);
+              advance(1);
+              c = *source_p;
+            }
+            if (len < 4 && len > 6) {
+              const Token &mtoken = error_token();
+              lexer_error(*this, Errors::InvalidCodepointSpecification, mtoken,
+                          ErrorPosition::On,
+                          "Expected between 4 and 6 hexadecimal characters to "
+                          "follow \\+, not %d",
+                          len);
+            }
+            length += utf8_encode(buffer + length, codepoint);
+            escape = false;
+            c = *source_p;
+            continue;
+          }
+        }
+      }
+      if (c == '}') {
+        if (escape)
+          escape = false;
+        else
+          break;
+      }
+      if (c == ' ') {
+        if (escape)
+          escape = false;
+        else {
+          c = *source_p;
+          advance(1);
+          continue;
+        }
+      }
+      if (c == '\0' || c == '\n')
+        break;
+      buffer[length++] = c;
+      c = *source_p;
+      advance(1);
+    }
+    buffer[length] = 0;
+    state = LexerState::NormalTo;
+    return Token{TOK_LITSTRING, lineno, offset - length, length,
+                 std::string{buffer, length}};
+  }
+  case LexerState::NormalTgt: {
     length = 0;
     bool escape = false;
     while (1) {
@@ -436,10 +520,35 @@ inline Token NLexer::_next() {
       c = *source_p;
       advance(1);
     }
+    if (c == 0)
+      advance(-1);
     buffer[length] = 0;
+    if (!codepoints::is_single_code_point(buffer)) {
+      const Token &mtoken = error_token();
+      lexer_error(*this, Errors::ExpectedValue, mtoken, ErrorPosition::On,
+                  "Normalisation target can only be a single unicode codepoint "
+                  "('%s' has %d characters, which should've been %d)",
+                  buffer, length, Codepoints::getlength(buffer));
+      // let it be anyway
+      length = Codepoints::getlength(buffer);
+      buffer[length] = 0; // pick the first codepoint
+    }
     state = LexerState::Toplevel;
     return Token{TOK_LITSTRING, lineno, offset - length, length,
                  std::string{buffer, length}};
+  }
+  case LexerState::NormalTo: {
+    if (c == 't' && strncmp("o", source_p, strlen("o")) == 0 &&
+        !isalnum(*(source_p + strlen("o")))) {
+      state = LexerState::NormalTgt;
+      advance(1);
+      return _next();
+    }
+
+    const Token &mtoken = error_token();
+    lexer_error(*this, Errors::ExpectedValue, mtoken, ErrorPosition::On,
+                "Expected 'to' after the first section of normalise");
+    return mtoken;
   }
   case LexerState::Define: {
     // parse a regexp

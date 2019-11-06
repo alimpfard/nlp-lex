@@ -63,6 +63,9 @@ void NParser::parse() {
         persist = std::get<std::string>(token.value);
         statestack.push(ParserState::Name);
         break;
+      case TokenType::TOK_OPNORMAL:
+        statestack.push(ParserState::Normal);
+        break;
       case TOK_ERROR:
       default:
         std::printf("It's all gone to whack\n");
@@ -122,11 +125,6 @@ void NParser::parse() {
       if (token.type == TokenType::TOK_OPDEFINE) {
         // persist = std::get<std::string>(token.value);
         statestack.push(ParserState::Define);
-        break;
-      }
-      if (token.type == TokenType::TOK_OPNORMAL) {
-        // persist = std::get<std::string>(token.value);
-        statestack.push(ParserState::Normal);
         break;
       }
       failing = true;
@@ -222,16 +220,23 @@ void NParser::parse() {
       break;
     }
     case ParserState::Normal: {
-      if (token.type != TOK_LITSTRING && token.type != TOK_NAME) {
+      if (token.type != TOK_LITSTRING) {
         failing = true;
-        std::printf("expected either a string literal or a bare listing of "
-                    "characters. invalid token %s - %s\n",
+        std::printf("expected a normal statement (normalise {...}). "
+                    "invalid token %s - %s\n",
                     reverse_token_type[token.type],
                     std::get<std::string>(token.value).c_str());
         break;
       }
-      std::string ns = std::get<std::string>(persist);
-      std::string replaced = std::get<std::string>(token.value);
+      persist = std::get<std::string>(token.value);
+
+      statestack.pop(); // Normal
+      statestack.push(ParserState::NormalS);
+      break;
+    }
+    case ParserState::NormalS: {
+      std::string ns = std::get<std::string>(token.value);
+      std::string replaced = std::get<std::string>(persist);
       for (auto cp : codepoints(replaced))
         if (!gen_lexer_normalisations.count(cp)) {
           std::printf("registered normalisation '%s' for '%s'\n", ns.c_str(),
@@ -241,6 +246,8 @@ void NParser::parse() {
           std::printf(
               "a normalisation of '%s' has already been registered for '%s'\n",
               gen_lexer_normalisations[cp].c_str(), cp.c_str());
+
+      statestack.pop(); // normalS
       break;
     }
     }
@@ -1048,6 +1055,13 @@ void DFANLVMCodeGenerator<T>::generate(
   builder.issubexp = wasub;
 }
 
+static const inline void increment_(llvm::Value *v,
+                                    llvm::IRBuilder<> &builder) {
+  auto vv = builder.CreateLoad(v);
+  builder.CreateStore(
+      builder.CreateNSWAdd(vv, llvm::ConstantInt::get(vv->getType(), 1)), v);
+}
+
 using namespace llvm;
 template <typename T>
 void DFANLVMCodeGenerator<T>::generate(
@@ -1084,6 +1098,12 @@ void DFANLVMCodeGenerator<T>::generate(
         builder.module.nlex_restore,
         {builder.module.Builder.CreateLoad(
             builder.module.last_final_state_position)});
+    builder.module.Builder.CreateStore(
+        builder.module.Builder.CreateNSWSub(
+            builder.module.Builder.CreateLoad(builder.module.token_length),
+            builder.module.Builder.CreateLoad(
+                builder.module.chars_since_last_final)),
+        builder.module.token_length);
   } else {
     builder.module.Builder.CreateCall(
         builder.module.nlex_restore,
@@ -1123,12 +1143,10 @@ void DFANLVMCodeGenerator<T>::generate(
                   builder.module.Builder.CreateLoad(tprev),
                   llvm::ConstantInt::get(
                       llvm::Type::getInt8Ty(builder.module.TheContext),
-                      (int)'\n')))
+                      (int)'\n'))),
           /* assert pass */
-          ,
-          BBnode
+          BBnode,
           /* assert fail */
-          ,
           BBend);
       builder.module.Builder.SetInsertPoint(BBnode);
       // BB = BBnode;
@@ -1219,6 +1237,10 @@ void DFANLVMCodeGenerator<T>::generate(
     builder.module.Builder.CreateStore(
         builder.module.Builder.CreateCall(builder.module.nlex_current_p, {}),
         builder.module.last_final_state_position);
+    builder.module.Builder.CreateStore(
+        llvm::ConstantInt::get(
+            llvm::Type::getInt32Ty(builder.module.TheContext), 0),
+        builder.module.chars_since_last_final);
     builder.module.Builder.CreateStore(
         llvm::ConstantInt::get(llvm::Type::getInt8Ty(builder.module.TheContext),
                                (int)!em),
@@ -1353,8 +1375,11 @@ void DFANLVMCodeGenerator<T>::generate(
       auto dst = BasicBlock::Create(builder.module.TheContext, "casejmp",
                                     builder.module.current_main());
       builder.module.Builder.SetInsertPoint(dst);
-      if (!deflBB)
+      if (!deflBB) {
         builder.module.add_char_to_token(tr->input);
+        increment_(builder.module.chars_since_last_final,
+                   builder.module.Builder);
+      }
       builder.module.Builder.CreateBr(jdst);
       builder.module.Builder.SetInsertPoint(BBnode);
       switchinst->addCase(

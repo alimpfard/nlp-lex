@@ -16,13 +16,13 @@ public:
   void fix_length() { length = getlength(p); }
   inline const static int getlength(const char *p) {
     unsigned char sp = *p;
-    if (sp < 0b01111111)
+    if (sp <= 0b01111111)
       return 1;
-    else if (sp < 0b11011111)
+    else if (sp <= 0b11011111)
       return 2;
-    else if (sp < 0b11101111)
+    else if (sp <= 0b11101111)
       return 3;
-    else if (sp < 0b11110111)
+    else if (sp <= 0b11110111)
       return 4;
     else
       return 5; // not utf-8
@@ -46,6 +46,6 @@ public:
 
   static bool is_single_code_point(std::string ss) {
     auto sl = Codepoints::getlength(ss.c_str());
-    return ss.size() == sl;
+    return ss.size() <= sl;
   }
 };
