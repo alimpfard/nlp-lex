@@ -16,11 +16,11 @@ paste() {
 
 compile() {
   # opt all.bc -o all-opt.bc -da -constmerge -gvn -globaldce -instcombine -lcssa -licm -adce -constprop -inline -tailcallelim -instcombine -adce -dce -sink -simplifycfg
-  # opt all.bc -o all-opt.bc -instcombine -dce -constprop -inline -tailcallelim -instcombine -dce -sink -simplifycfg
+  opt all.bc -o all-opt.bc -instcombine -dce -constprop -inline -tailcallelim -instcombine -dce -sink -simplifycfg
   # cp all.bc all-opt.bc
-  llc -filetype=obj -relocation-model=pic all.bc
-  gcc all.o
-  gcc all.o -shared -o all.so
+  llc -filetype=obj -relocation-model=pic all-opt.bc
+  gcc all-opt.o
+  gcc all-opt.o -shared -o all.so
 }
 
 all() {

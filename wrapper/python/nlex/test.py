@@ -5,7 +5,6 @@ import time
 import sys
 
 wo = NLexWrappedObject("../../../src/playground/all.so")
-'''
 ns = time.time_ns()
 ts = wo.process_json(open('input.json', 'r').read(), clean=False)
 ns2 = time.time_ns()
@@ -16,4 +15,3 @@ print("Read", wo.total, "tokens in",
       int(wo.total/dt*1000_000_000),
       'tokens/s',
       file=sys.stderr)
-'''

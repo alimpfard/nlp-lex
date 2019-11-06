@@ -62,7 +62,7 @@ class NLexWrappedObject(object):
             if offset >= self.fedlen:
                 self._fed = None
                 return None
-            print('early terminate at', offset, 'out of', self.fedlen, file=sys.stderr)
+            print('early terminate at', offset, 'out of', self.fedlen, 'on', self._fed[offset:offset+4].decode('utf8', 'ignore'), file=sys.stderr)
             self.__nlex_skip()
 
         self.__last_offset = offset

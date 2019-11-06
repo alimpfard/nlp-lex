@@ -8,6 +8,27 @@
 #include <utility>
 
 namespace Display {
+enum class Type : int {
+  MUST_SHOW = 0,
+  ERROR,
+  INFO,
+  LOG,
+  VERBOSE,
+  WARNING,
+  DEBUG,
+  EVERYTHING,
+};
+static char *Typename[] = {
+    [(int)Type::MUST_SHOW] = "MUST_SHOW",
+    [(int)Type::ERROR] = "ERROR",
+    [(int)Type::INFO] = "INFO",
+    [(int)Type::LOG] = "LOG",
+    [(int)Type::VERBOSE] = "VERBOSE",
+    [(int)Type::WARNING] = "WARNING",
+    [(int)Type::DEBUG] = "DEBUG",
+    [(int)Type::EVERYTHING] = "EVERYTHING",
+};
+
 const static inline std::string string_format(const std::string fmt_str, ...) {
   int final_n,
       n = ((int)fmt_str.size()) *
@@ -43,6 +64,7 @@ class SingleLineTermStatus {
     int x;
     int y;
   } sposition, eposition;
+  Type min_req = Type::INFO;
 
   bool dirty = false;
   void refresh_size() {
@@ -75,11 +97,23 @@ public:
     dirty = false;
   }
 
-  template <typename... Args> void show(std::string fmt, Args... a) {
-    display(Display::string_format(fmt, a...), true);
+  template <typename... Args>
+  void show(const Type type, std::string fmt, Args... a) {
+    if (type > min_req)
+      return;
+    display(Display::string_format("[{<green>}%s{<clean>}] %s",
+                                   Typename[(int)type],
+                                   Display::string_format(fmt, a...).c_str()),
+            true);
   }
-  template <typename... Args> void show_c(std::string fmt, Args... a) {
-    display(Display::string_format(fmt, a...), false);
+  template <typename... Args>
+  void show_c(const Type type, std::string fmt, Args... a) {
+    if (type > min_req)
+      return;
+    display(Display::string_format("[{<green>}%s{<clean>}] %s",
+                                   Typename[(int)type],
+                                   Display::string_format(fmt, a...).c_str()),
+            false);
   }
 };
 } // namespace Display

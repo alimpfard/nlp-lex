@@ -36,6 +36,37 @@ void NParser::repl_feed(std::string code) {
   lexer->offset = 0;
 }
 
+typedef struct {
+  char mask;       /* char data will be bitwise AND with this */
+  char lead;       /* start bytes of current char in utf-8 encoded character */
+  uint32_t beg;    /* beginning of codepoint range */
+  uint32_t end;    /* end of codepoint range */
+  int bits_stored; /* the number of bits from the codepoint that fits in char */
+} utf_t;
+
+static const utf_t utf[] = {
+    /*             mask        lead        beg      end       bits */
+    [0] = {0b00111111, 0b10000000, 0, 0, 6},
+    [1] = {0b01111111, 0b00000000, 0000, 0177, 7},
+    [2] = {0b00011111, 0b11000000, 0200, 03777, 5},
+    [3] = {0b00001111, 0b11100000, 04000, 0177777, 4},
+    [4] = {0b00000111, 0b11110000, 0200000, 04177777, 3},
+    {0},
+};
+
+static uint32_t to_cp(const char *chr) {
+  int bytes = Codepoints::getlength(chr);
+  int shift = utf[0].bits_stored * (bytes - 1);
+  uint32_t codep = (*chr++ & utf[bytes].mask) << shift;
+
+  for (int i = 1; i < bytes; ++i, ++chr) {
+    shift -= utf[0].bits_stored;
+    codep |= ((char)*chr & utf[0].mask) << shift;
+  }
+
+  return codep;
+}
+
 void NParser::parse() {
   statestack = {};
   statestack.push(ParserState::Toplevel);
@@ -68,13 +99,13 @@ void NParser::parse() {
         break;
       case TOK_ERROR:
       default:
-        std::printf("It's all gone to whack\n");
+        slts.show(Display::Type::MUST_SHOW, "It's all gone to whack\n");
         failing = true;
       }
       break;
     case ParserState::Option:
       if (token.type != TokenType::TOK_NAME) {
-        std::printf("invalid token\n");
+        slts.show(Display::Type::MUST_SHOW, "invalid token\n");
         failing = true;
         break;
       }
@@ -83,7 +114,7 @@ void NParser::parse() {
       break;
     case ParserState::OptionName:
       if (token.type != TokenType::TOK_BOOL) {
-        std::printf("invalid token\n");
+        slts.show(Display::Type::MUST_SHOW, "invalid token\n");
         failing = true;
         break;
       }
@@ -111,7 +142,7 @@ void NParser::parse() {
       }
       if (token.type == TokenType::TOK_FILESTRING) {
         failing = true;
-        std::printf("file string not yet supported\n");
+        slts.show(Display::Type::MUST_SHOW, "file string not yet supported\n");
         break;
       }
       gen_lexer_stopwords.insert(std::get<std::string>(token.value));
@@ -128,24 +159,27 @@ void NParser::parse() {
         break;
       }
       failing = true;
-      std::printf("expected normalisation, const, or define, invalid token\n");
+      slts.show(Display::Type::MUST_SHOW,
+                "expected normalisation, const, or define, invalid token\n");
       break;
     case ParserState::Define: {
       if (token.type != TOK_REGEX) {
         failing = true;
-        std::printf("expected regex, invalid token %s - %s\n",
-                    reverse_token_type[token.type],
-                    std::get<std::string>(token.value).c_str());
+        slts.show(Display::Type::MUST_SHOW,
+                  "expected regex, invalid token %s - %s\n",
+                  reverse_token_type[token.type],
+                  std::get<std::string>(token.value).c_str());
         break;
       }
       std::string name = std::get<std::string>(persist);
       if (name.size() == 0) {
-        printf("huh?\n");
+        slts.show(Display::Type::MUST_SHOW, "huh?\n");
       }
       if (values.count(name) != 0) {
         failing = true;
         auto entry = std::get<1>(values[name]);
-        std::printf(
+        slts.show(
+            Display::Type::MUST_SHOW,
             "symbol '%s' has been previously defined at line %d, offset %d\n",
             name.c_str(), entry.lineno, entry.offset);
         break;
@@ -167,12 +201,13 @@ void NParser::parse() {
       if (token.type == TOK_REGEX) {
         std::string name = std::get<std::string>(persist);
         if (name.size() == 0) {
-          printf("huh?\n");
+          slts.show(Display::Type::MUST_SHOW, "huh?\n");
         }
         if (values.count(name) != 0) {
           failing = true;
           auto entry = std::get<1>(values[name]);
-          std::printf(
+          slts.show(
+              Display::Type::MUST_SHOW,
               "symbol '%s' has been previously defined at line %d, offset %d\n",
               name.c_str(), entry.lineno, entry.offset);
           break;
@@ -191,19 +226,21 @@ void NParser::parse() {
         break;
       } else if (token.type != TOK_LITSTRING && token.type != TOK_FILESTRING) {
         failing = true;
-        std::printf("expected a string, invalid token %s - %s\n",
-                    reverse_token_type[token.type],
-                    std::get<std::string>(token.value).c_str());
+        slts.show(Display::Type::MUST_SHOW,
+                  "expected a string, invalid token %s - %s\n",
+                  reverse_token_type[token.type],
+                  std::get<std::string>(token.value).c_str());
         break;
       }
       std::string name = std::get<std::string>(persist);
       if (name.size() == 0) {
-        printf("huh?\n");
+        slts.show(Display::Type::MUST_SHOW, "huh?\n");
       }
       if (values.count(name) != 0) {
         failing = true;
         auto entry = std::get<1>(values[name]);
-        std::printf(
+        slts.show(
+            Display::Type::MUST_SHOW,
             "symbol '%s' has been previously defined at line %d, offset %d\n",
             name.c_str(), entry.lineno, entry.offset);
         break;
@@ -222,10 +259,11 @@ void NParser::parse() {
     case ParserState::Normal: {
       if (token.type != TOK_LITSTRING) {
         failing = true;
-        std::printf("expected a normal statement (normalise {...}). "
-                    "invalid token %s - %s\n",
-                    reverse_token_type[token.type],
-                    std::get<std::string>(token.value).c_str());
+        slts.show(Display::Type::MUST_SHOW,
+                  "expected a normal statement (normalise {...}). "
+                  "invalid token %s - %s\n",
+                  reverse_token_type[token.type],
+                  std::get<std::string>(token.value).c_str());
         break;
       }
       persist = std::get<std::string>(token.value);
@@ -237,16 +275,36 @@ void NParser::parse() {
     case ParserState::NormalS: {
       std::string ns = std::get<std::string>(token.value);
       std::string replaced = std::get<std::string>(persist);
-      for (auto cp : codepoints(replaced))
+      int idx = 0;
+      for (auto cp : codepoints(replaced)) {
+        idx++;
+        if (cp == ns) // no sense in normalising something to itself
+          continue;
+        if (Codepoints::getlength(cp.c_str()) <
+            Codepoints::getlength(ns.c_str())) {
+          slts.show_c(
+              Display::Type::ERROR,
+              "[{<red>}Normalise{<clean>}] normalisation of "
+              "[{<magenta>}U+%08x{<clean>}] to [{<magenta>}U+%08x{<clean>}] is "
+              "not permitted (defined in line %d, at codepoint %d of normalise "
+              "clause) as lengthening "
+              "the input string is not supported at the moment (%d > %d)",
+              to_cp(cp.c_str()), to_cp(ns.c_str()), token.lineno, idx,
+              Codepoints::getlength(cp.c_str()),
+              Codepoints::getlength(ns.c_str()));
+          continue;
+        }
         if (!gen_lexer_normalisations.count(cp)) {
-          std::printf("registered normalisation '%s' for '%s'\n", ns.c_str(),
-                      cp.c_str());
+          slts.show(Display::Type::INFO,
+                    "registered normalisation '%s' for '%s'\n", ns.c_str(),
+                    cp.c_str());
           gen_lexer_normalisations[cp] = ns;
         } else if (gen_lexer_normalisations[cp] != cp)
-          std::printf(
+          slts.show(
+              Display::Type::INFO,
               "a normalisation of '%s' has already been registered for '%s'\n",
               gen_lexer_normalisations[cp].c_str(), cp.c_str());
-
+      }
       statestack.pop(); // normalS
       break;
     }
@@ -258,7 +316,7 @@ std::vector<Regexp *> get_all_finals(Regexp *exp) {
   std::vector<Regexp *> ends;
   switch (exp->type) {
   case RegexpType::Symbol:
-    std::printf("[ICE] unresolved symbol left in tree\n");
+    slts.show(Display::Type::ERROR, "[ICE] unresolved symbol left in tree\n");
     unreachable();
     break;
   case RegexpType::Alternative:
@@ -288,7 +346,7 @@ std::vector<Regexp *> get_all_finals(Regexp *exp) {
     ends.push_back(exp);
     break;
   case RegexpType::Escape: {
-    std::printf("Escapes not yet implemented\n");
+    slts.show(Display::Type::ERROR, "Escapes not yet implemented\n");
     unreachable();
     break;
   }
@@ -299,12 +357,12 @@ std::vector<Regexp *> get_all_finals(Regexp *exp) {
 NFANode<std::string> *NParser::compile() {
   parse();
 #ifdef TEST
-  std::printf("== all defined rules ==\n");
+  slts.show(Display::Type::INFO, "== all defined rules ==\n");
   for (auto &it : values) {
     if (std::get<0>(it.second) == SymbolType::Define) {
       auto rule = std::get<Regexp *>(std::get<2>(it.second));
-      std::printf("rule \"%s\" - <%s>\n", it.first.c_str(),
-                  rule->to_str().c_str());
+      slts.show(Display::Type::INFO, "rule \"%s\" - <%s>\n", it.first.c_str(),
+                rule->to_str().c_str());
     }
   }
 #endif
@@ -336,7 +394,8 @@ NFANode<std::string> *NParser::compile() {
               goto yep;
             continue; // no need for this to be final
           yep:;
-            std::printf(
+            slts.show(
+                Display::Type::DEBUG,
                 "Regexp %p (node %p) has been marked as final: [%s] [%s]\n",
                 end, node, end->mangle().c_str(),
                 node->named_rule
@@ -347,7 +406,8 @@ NFANode<std::string> *NParser::compile() {
               node->named_rule = it.first;
           }
         } else {
-          std::printf("Regexp %p has no corresponding node\n", end);
+          slts.show(Display::Type::WARNING,
+                    "Regexp %p has no corresponding node\n", end);
         }
       }
     }
@@ -380,17 +440,17 @@ std::set<std::string> NParser::find_rules() const {
 }
 
 template <typename T> void NFANode<T>::print() {
-  printf("(%s\"%s\" ", named_rule.has_value() ? "final " : "",
-         state_info->c_str());
+  slts.show(Display::Type::MUST_SHOW, "(%s\"%s\" ",
+            named_rule.has_value() ? "final " : "", state_info->c_str());
   for (auto t : get_outgoing_transitions(/* inner = */ true))
-    std::printf("\"-%s->\" ",
-                std::holds_alternative<EpsilonTransitionT>(t->input)
-                    ? "<e>"
-                    : std::holds_alternative<AnythingTransitionT>(t->input)
-                          ? "<.>"
-                          : std::string{std::get<char>(t->input)}.c_str()),
+    slts.show(Display::Type::MUST_SHOW, "\"-%s->\" ",
+              std::holds_alternative<EpsilonTransitionT>(t->input)
+                  ? "<e>"
+                  : std::holds_alternative<AnythingTransitionT>(t->input)
+                        ? "<.>"
+                        : std::string{std::get<char>(t->input)}.c_str()),
         t->target->print();
-  std::printf(")");
+  slts.show(Display::Type::MUST_SHOW, ")");
 }
 
 template <typename T> void NFANode<T>::print_dot() {
@@ -400,7 +460,8 @@ template <typename T> void NFANode<T>::print_dot() {
       NFANode<T>, std::variant<char, EpsilonTransitionT, AnythingTransitionT>>>
       transitions;
   aggregate_dot(nodes, anodes, transitions);
-  std::printf("%s\n", gen_dot(anodes, transitions).c_str());
+  slts.show(Display::Type::MUST_SHOW, "%s\n",
+            gen_dot(anodes, transitions).c_str());
 }
 
 template <typename T>
@@ -519,13 +580,15 @@ std::string NFANode<T>::gen_dot(
   for (auto tr : transitions) {
     int fid, tid;
     if (nodeids.count(tr.source) < 1) {
-      printf("Cannot find any node corresponding to %p\n", tr.source);
+      slts.show(Display::Type::WARNING,
+                "Cannot find any node corresponding to %p\n", tr.source);
       fid = error++;
     } else
       fid = nodeids[tr.source];
 
     if (nodeids.count(tr.target) < 1) {
-      printf("Cannot find any node corresponding to %p\n", tr.target);
+      slts.show(Display::Type::WARNING,
+                "Cannot find any node corresponding to %p\n", tr.target);
       tid = error++;
     } else
       tid = nodeids[tr.target];
@@ -590,7 +653,8 @@ template <typename T> void DFANode<T>::print_dot() {
   std::set<DFANode<T> *> anodes;
   std::unordered_set<CanonicalTransition<DFANode<T>, char>> transitions;
   aggregate_dot(nodes, anodes, transitions);
-  std::printf("%s\n", gen_dot(anodes, transitions).c_str());
+  slts.show(Display::Type::MUST_SHOW, "%s\n",
+            gen_dot(anodes, transitions).c_str());
 }
 
 auto print_idxs(std::set<int> idxs) {
@@ -636,13 +700,15 @@ std::string DFANode<T>::gen_dot(
   for (auto tr : transitions) {
     int fid, tid;
     if (nodeids.count(tr.source) < 1) {
-      printf("Cannot find any node corresponding to %p\n", tr.source);
+      slts.show(Display::Type::WARNING,
+                "Cannot find any node corresponding to %p\n", tr.source);
       fid = error++;
     } else
       fid = nodeids[tr.source];
 
     if (nodeids.count(tr.target) < 1) {
-      printf("Cannot find any node corresponding to %p\n", tr.target);
+      slts.show(Display::Type::WARNING,
+                "Cannot find any node corresponding to %p\n", tr.target);
       tid = error++;
     } else
       tid = nodeids[tr.target];
@@ -767,7 +833,8 @@ template <typename T> std::set<char> all_alphabet(NFANode<T> *node) {
     if (std::holds_alternative<EpsilonTransitionT>(tr->input))
       continue;
     if (std::holds_alternative<AnythingTransitionT>(tr->input))
-      std::printf("[ICE] All compound transitions haven't been resolved\n");
+      slts.show(Display::Type::ERROR,
+                "[ICE] All compound transitions haven't been resolved\n");
     else
       ss.insert(std::get<char>(tr->input));
   }
@@ -788,7 +855,8 @@ template <typename T>
 void DFANode<T>::add_transition(Transition<DFANode<T>, char> *tr) {
   for (auto vtr : outgoing_transitions) {
     if (vtr->input == tr->input) {
-      std::printf("transition to two states with one input requested\n");
+      slts.show(Display::Type::ERROR,
+                "transition to two states with one input requested\n");
       return;
     }
   }
@@ -822,7 +890,8 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
         assertions.push_back(a);
     }
 
-    slts.show("[{<red>}DFAGen{<clean>}] Generating for node set "
+    slts.show(Display::Type::DEBUG,
+              "[{<red>}DFAGen{<clean>}] Generating for node set "
               "{<green>}'%s'{<clean>}",
               get_name(current).c_str());
 
@@ -843,20 +912,22 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
       if (s->subexpr_call > -1) {
         if (dfanode->subexpr_call > -1 &&
             dfanode->subexpr_call != s->subexpr_call) {
-          std::printf("expression conflict, two subexpression calls clash: %s "
-                      "(index %d)\n",
-                      get_name(current).c_str(), dfanode->subexpr_call);
+          slts.show(Display::Type::WARNING,
+                    "expression conflict, two subexpression calls clash: %s "
+                    "(index %d)\n",
+                    get_name(current).c_str(), dfanode->subexpr_call);
           abort();
         }
         dfanode->subexpr_call = s->subexpr_call;
       }
       if (s->final) {
-        std::printf("state %s was final, so marking %s as such\n",
-                    get_name(s).c_str(), get_name(current).c_str());
+        slts.show(Display::Type::DEBUG,
+                  "state %s was final, so marking %s as such\n",
+                  get_name(s).c_str(), get_name(current).c_str());
         dfanode->final = true;
       }
       // if (s->start) {
-      //   // std::printf("state %s was start, so marking %s as such\n",
+      //   // slts.show("state %s was start, so marking %s as such\n",
       //   //             get_name(s).c_str(), get_name(current).c_str());
       //   dfanode->start = true;
       // }
@@ -872,7 +943,8 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
     std::for_each(
         std::execution::par_unseq, alphabets.begin(), alphabets.end(),
         [&](auto qq) {
-          slts.show("[{<red>}DFAGen{<clean>}] [{<red>}Resolution{<clean>}] "
+          slts.show(Display::Type::DEBUG,
+                    "[{<red>}DFAGen{<clean>}] [{<red>}Resolution{<clean>}] "
                     "{<green>}'%s'{<clean>} :: {<magenta>}%d{<clean>} = ('%c')",
                     get_name(current).c_str(), qq, qq);
 
@@ -905,7 +977,8 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
         break;
       }
     if (defl) {
-      slts.show("[{<red>}DFAGen{<clean>}] [{<red>}Default{<clean>}] "
+      slts.show(Display::Type::DEBUG,
+                "[{<red>}DFAGen{<clean>}] [{<red>}Default{<clean>}] "
                 "{<green>}'%s'{<clean>} :: transition %p\n",
                 get_name(current).c_str(), defl);
 
@@ -1076,7 +1149,8 @@ void DFANLVMCodeGenerator<T>::generate(
     for (auto idx : node->subexpr_idxs)
       subexprs[idx] = node;
 
-  slts.show("[{<red>}NodeGen{<clean>}] Generating for node set "
+  slts.show(Display::Type::DEBUG,
+            "[{<red>}NodeGen{<clean>}] Generating for node set "
             "{<green>}'%s'{<clean>}",
             get_name(node->state_info.value()).c_str());
   // generate any choice and add to output_cases
@@ -1124,7 +1198,8 @@ void DFANLVMCodeGenerator<T>::generate(
   for (auto assertion : node->assertions) {
     switch (assertion) {
     case RegexpAssertion::SetPosition: {
-      slts.show("[{<red>}ERR{<clean>}] Unimplemented assertion "
+      slts.show(Display::Type::ERROR,
+                "[{<red>}ERR{<clean>}] Unimplemented assertion "
                 "{<magenta>}\\K{<clean>}");
       abort();
       break;
@@ -1198,7 +1273,8 @@ void DFANLVMCodeGenerator<T>::generate(
       break;
     }
     case RegexpAssertion::MatchBeginning: {
-      slts.show("[{<red>}ERR{<clean>}] Unimplemented assertion "
+      slts.show(Display::Type::ERROR,
+                "[{<red>}ERR{<clean>}] Unimplemented assertion "
                 "{<magenta>}\\G{<clean>}");
       abort();
       break;
@@ -1218,7 +1294,8 @@ void DFANLVMCodeGenerator<T>::generate(
           continue;
         emitted.insert(val);
         if (em) {
-          std::printf(
+          slts.show(
+              Display::Type::ERROR,
               "[ICE] State %s can emit multiple tags (at least %s and %s)\n",
               get_name(node->state_info.value()).c_str(), emit.c_str(),
               val.c_str());
@@ -1419,7 +1496,7 @@ void CodeGenerator<T>::generate(
 
 template <typename T> void CodeGenerator<T>::run(NFANode<T> *node) {
   if (properties.start_phase == CodegenStartPhase::RegexpPhase) {
-    std::printf("call the proper run function, noob\n");
+    slts.show(Display::Type::ERROR, "call the proper run function, noob\n");
     return;
   }
   // if (properties.start_phase == CodegenStartPhase::NFAPhase)
@@ -1477,7 +1554,8 @@ int main() {
       continue;
     } else if (line == ".gengraph") {
       parser.generate_graph = !parser.generate_graph;
-      printf("will %sgenerate a graph\n", parser.generate_graph ? "" : "not ");
+      slts.show(Display::Type::MUST_SHOW, "will %sgenerate a graph\n",
+                parser.generate_graph ? "" : "not ");
       continue;
     } else if (line == ".nlvm") {
       root = parser.compile();

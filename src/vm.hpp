@@ -498,7 +498,8 @@ public:
         for (auto pnorm : normalisations) {
           mbuilder.SetInsertPoint(BB);
           auto norm = pnorm.first;
-          slts.show_c("[NORMALISE] {<green>}%d (%s) -> %d (%s){<clean>}",
+          slts.show_c(Display::Type::DEBUG,
+                      "[NORMALISE] {<green>}%d (%s) -> %d (%s){<clean>}",
                       norm.size(), norm, pnorm.second.size(), pnorm.second);
           for (int i = 0; i <= norm.size(); i++) {
             if (!levels.count(norm.substr(0, i))) {
@@ -706,7 +707,8 @@ public:
         for (auto [c, node] : *nodes) {
           // oh boy
           // let's hope that char{} is actually 0
-          slts.show("[{<red>}Stopword{<clean>}] [{<red>}Resolution{<clean>}] "
+          slts.show(Display::Type::DEBUG,
+                    "[{<red>}Stopword{<clean>}] [{<red>}Resolution{<clean>}] "
                     "char {<magenta>}%c{<clean>}",
                     c);
           if (c == 0)
