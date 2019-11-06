@@ -114,19 +114,31 @@
         }
       }
       {
-        'begin' : '(.)(\\s*)(<=)(\\s*)'
+        'begin' : '(normalise)(\\s+)(\\{)((?:[^\\x{007d}]|\\\\})*)(\\})(\\s+)(to)(.)'
         'beginCaptures' : {
           '1' : {
-            'name' : 'constant.character.NLex'
+            'name' : 'keyword.NLex'
           }
           '2' : {
             'name' : 'punctuation.NLex'
           }
           '3' : {
-            'name' : 'keyword punctuation.NLex'
+            'name' : 'punctuation.NLex'
           }
           '4' : {
+            'name' : 'entity.name.type.class.NLex'
+          }
+          '5' : {
             'name' : 'punctuation.NLex'
+          }
+          '6' : {
+            'name' : 'punctuation.NLex'
+          }
+          '7' : {
+            'name' : 'keyword.NLex'
+          }
+          '8' : {
+            'name' : 'entity.name.type.class.NLex'
           }
         }
         'patterns' : [
@@ -259,18 +271,7 @@
         'name' : 'message.error.NLex'
       }
       {
-        'match' : '(\\\\\\+)([a-fA-F0-9]{4,6})'
-        'captures' : {
-          '1' : {
-            'name' : 'string.regexp.NLex'
-          }
-          '2' : {
-            'name' : 'constant.character.escape.NLex'
-          }
-        }
-      }
-      {
-        'match' : '([^\\x{005c}]|\\\\\\\\)'
+        'match' : '(.)'
         'name' : 'string.other.link.NLex'
       }
     ]
