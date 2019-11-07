@@ -16,6 +16,7 @@
 #include "llvm/IR/PassManager.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/Support/TargetSelect.h"
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
@@ -46,6 +47,8 @@ public:
 
   llvm::DIBuilder *DBuilder;
   llvm::DICompileUnit *TheCU;
+  llvm::DIFile *DIFile;
+  std::vector<llvm::DIScope *> LexicalDebugBlocks;
 
   llvm::Function *nlex_current_f;
   llvm::Function *nlex_current_p;
@@ -72,6 +75,111 @@ public:
   llvm::AllocaInst *nlex_errc;
 
   llvm::Type *input_struct_type;
+
+  template <typename T> void emitLocation(T *node, llvm::IRBuilder<> &builder) {
+    llvm::DIScope *Scope;
+    if (LexicalDebugBlocks.empty())
+      Scope = TheCU;
+    else
+      Scope = LexicalDebugBlocks.back();
+    builder.SetCurrentDebugLocation(
+        llvm::DebugLoc::get(node ? node->debug_info.lineno : 0,
+                            node ? node->debug_info.offset : 0, Scope));
+  }
+  template <typename T> void emitLocation(T *node) {
+    emitLocation(node, Builder);
+  }
+
+  template <typename T> void enterScope(T *node) {
+    llvm::DIScope *Scope = TheCU;
+    if (!LexicalDebugBlocks.empty())
+      Scope = LexicalDebugBlocks.back();
+    Scope = llvm::DILexicalBlock::get(TheContext, Scope, DIFile,
+                                      node->debug_info.lineno,
+                                      node->debug_info.offset);
+    LexicalDebugBlocks.push_back(Scope);
+  }
+
+  void exitScope() {
+    assert(!LexicalDebugBlocks.empty() && "Extra block pop");
+    LexicalDebugBlocks.pop_back();
+  }
+
+  llvm::DIType *input_struct_ditype = nullptr;
+  llvm::DIType *getInputStructDiType() {
+    if (input_struct_ditype)
+      return input_struct_ditype;
+
+    llvm::SmallVector<llvm::Metadata *, 5> diinputtype;
+    int offset = 0;
+    char *names[] = {"token_value", "token_length", "tag", "error_code",
+                     "metadata"};
+    llvm::DIType *i8p = DBuilder->createBasicType(
+        "char*", TheModule->getDataLayout().getPointerSizeInBits(),
+        llvm::dwarf::DW_ATE_address);
+    llvm::DIType *i8 =
+        DBuilder->createBasicType("char", 8, llvm::dwarf::DW_ATE_signed_char);
+    llvm::DIType *i32 =
+        DBuilder->createBasicType("int", 32, llvm::dwarf::DW_ATE_signed);
+
+    llvm::DIType *baseTypes[] = {i8p, i32, i8p, i8, i8};
+    for (auto i = 0; i < 5; i++) {
+      auto align = TheModule->getDataLayout().getABITypeAlignment(
+          input_struct_type->getStructElementType(i));
+      diinputtype.push_back(DBuilder->createMemberType(
+          TheCU,
+          names[i], // name
+          DIFile,   // file
+          0,        // line number
+          TheModule->getDataLayout().getTypeAllocSize(
+              input_struct_type->getStructElementType(i)) *
+              8,                           // size (bits)
+          align * 8,                       // align (bits)
+          offset * 8,                      // offset (bits)
+          llvm::DINode::DIFlags::FlagZero, // flags
+          baseTypes[i]));                  // derived from
+      offset += align;
+    }
+    input_struct_ditype = DBuilder->createStructType(
+        TheCU, "sreturn_t", DIFile, 0,
+        TheModule->getDataLayout().getTypeAllocSizeInBits(input_struct_type),
+        TheModule->getDataLayout().getTypeAllocSizeInBits(input_struct_type),
+        (llvm::DINode::DIFlags)0, nullptr,
+        DBuilder->getOrCreateArray(diinputtype));
+    return input_struct_ditype;
+  }
+  llvm::DISubroutineType *createFunctionType() {
+    llvm::SmallVector<llvm::Metadata *, 2> EltTys;
+
+    // Add the result type.
+    EltTys.push_back(nullptr);
+    EltTys.push_back(getInputStructDiType());
+
+    return DBuilder->createSubroutineType(
+        DBuilder->getOrCreateTypeArray(EltTys));
+  }
+
+  llvm::DISubprogram *enterSubprogram(llvm::Function *fn) {
+    llvm::DIScope *FContext = TheCU;
+    unsigned LineNo = 0;
+    unsigned ScopeLine = 0;
+    llvm::DISubprogram *SP = DBuilder->createFunction(
+        FContext, fn->getName(), "", DIFile, LineNo, createFunctionType(),
+        ScopeLine, llvm::DINode::DIFlags::FlagZero,
+        llvm::DISubprogram::toSPFlags(true, true, true, 0, fn == _main));
+    for (llvm::Argument &arg : fn->args()) {
+      llvm::DILocalVariable *D = DBuilder->createParameterVariable(
+          SP, arg.getName(), arg.getArgNo(), DIFile, LineNo,
+          getInputStructDiType(), true);
+
+      DBuilder->insertDeclare(&arg, D, DBuilder->createExpression(),
+                              llvm::DebugLoc::get(LineNo, 0, SP),
+                              &fn->getEntryBlock());
+    }
+    DBuilder->finalizeSubprogram(SP);
+    LexicalDebugBlocks.push_back(SP);
+    return SP;
+  }
 
   void add_char_to_token(char c) {
     auto llen = Builder.CreateLoad(token_length);
@@ -166,17 +274,20 @@ public:
     input_struct_type = llvm::StructType::create(members);
     _main = mkfunc();
     main_entry = &_main->getEntryBlock();
+    _main->setSubprogram(enterSubprogram(_main));
     return _main;
   }
-
   Module(std::string name) : TheContext(), Builder(TheContext) {
     TheModule = std::make_unique<llvm::Module>(name, TheContext);
+    TheModule->addModuleFlag(llvm::Module::Warning, "Dwarf Version",
+                             llvm::dwarf::DWARF_VERSION);
+    TheModule->addModuleFlag(llvm::Module::Warning, "Debug Info Version",
+                             llvm::DEBUG_METADATA_VERSION);
 
     DBuilder = new llvm::DIBuilder(*TheModule.get());
-    TheCU = DBuilder->createCompileUnit(
-        llvm::dwarf::DW_LANG_C,
-        DBuilder->createFile(name, "/home/Test/Documents/examples"),
-        "NLex Compiler", 0, "", 0);
+    DIFile = DBuilder->createFile(name, "/home/Test/Documents/examples");
+    TheCU = DBuilder->createCompileUnit(llvm::dwarf::DW_LANG_C, DIFile,
+                                        "NLex Compiler", false, "", 0);
 
     llvm::FunctionType *ncf =
         llvm::FunctionType::get(llvm::Type::getInt8Ty(TheContext), {}, false);
@@ -258,23 +369,27 @@ public:
 
   Builder(std::string mname) : module(mname) {}
 
-  void begin(llvm::Function *fn, bool cleanup_if_fail = false) {
+  void begin(llvm::Function *fn, bool cleanup_if_fail = false,
+             bool skip_on_error = true) {
+    module.emitLocation((DFANode<NFANode<std::nullptr_t> *> *)NULL);
     auto BBfinalise =
         llvm::BasicBlock::Create(module.TheContext, "_escape_top", fn);
     module.Builder.SetInsertPoint(BBfinalise);
     if (!module.BBfinalise)
       module.BBfinalise = BBfinalise;
     auto bbF = llvm::BasicBlock::Create(module.TheContext, "_escape", fn);
-    auto advance_and_callFbb =
-        llvm::BasicBlock::Create(module.TheContext, "_escape_redo", fn);
-
-    module.Builder.CreateCondBr(
-        module.Builder.CreateLoad(module.anything_matched), bbF,
-        advance_and_callFbb);
-    module.Builder.SetInsertPoint(advance_and_callFbb);
-    module.Builder.CreateCall(module.nlex_next);
-    module.Builder.CreateCall(fn, {fn->arg_begin()})->setTailCall(true);
-    module.Builder.CreateRetVoid();
+    if (skip_on_error) {
+      auto advance_and_callFbb =
+          llvm::BasicBlock::Create(module.TheContext, "_escape_redo", fn);
+      module.Builder.CreateCondBr(
+          module.Builder.CreateLoad(module.anything_matched), bbF,
+          advance_and_callFbb);
+      module.Builder.SetInsertPoint(advance_and_callFbb);
+      module.Builder.CreateCall(module.nlex_next);
+      module.Builder.CreateCall(fn, {fn->arg_begin()})->setTailCall(true);
+      module.Builder.CreateRetVoid();
+    } else
+      module.Builder.CreateBr(bbF);
     module.Builder.SetInsertPoint(bbF);
     auto istruct = fn->arg_begin();
     auto stgep = module.Builder.CreateInBoundsGEP(
@@ -344,6 +459,7 @@ public:
                std::set<std::string> stopwords, std::set<std::string> ignores,
                std::map<std::string, bool> options) {
     // create global values & normalisation logic
+    module.emitLocation((DFANode<NFANode<std::nullptr_t> *> *)NULL);
     {
       auto nlex_fed_string = new llvm::GlobalVariable(
           llvm::PointerType::get(llvm::Type::getInt8Ty(module.TheContext), 0),
@@ -456,15 +572,15 @@ public:
       // inject
       builder.SetInsertPoint(uBB);
       builder.CreateStore(
-          builder.CreateNSWAdd(
+          builder.CreateNSWSub(
               len, llvm::ConstantInt::get(
-                       llvm::Type::getInt32Ty(module.TheContext), -1)),
+                       llvm::Type::getInt32Ty(module.TheContext), 1)),
           nlex_injected_length);
       auto ld = builder.CreateLoad(nlex_injected);
       builder.CreateStore(
           builder.CreateGEP(ld,
-                            {llvm::ConstantInt::get(
-                                llvm::Type::getInt32Ty(module.TheContext), 1)}),
+                            llvm::ConstantInt::get(
+                                llvm::Type::getInt32Ty(module.TheContext), 1)),
           nlex_injected);
       builder.CreateStore(builder.CreateLoad(ld), nlex_tmp_char);
       builder.CreateRetVoid();
@@ -642,6 +758,7 @@ public:
       auto *prev_fbb = module.BBfinalise;
       WordTree<std::string> wtree{stopwords};
       llvm::IRBuilder<> builder{module.TheContext};
+      module.emitLocation((DFANode<NFANode<std::nullptr_t> *> *)NULL, builder);
 
       auto tcabb = llvm::BasicBlock::Create(module.TheContext, "_exit_stopword",
                                             module.main());
@@ -735,6 +852,7 @@ public:
       auto *prev_fbb = module.BBfinalise;
       WordTree<std::string> wtree{stopwords};
       llvm::IRBuilder<> builder{module.TheContext};
+      module.emitLocation((DFANode<NFANode<std::nullptr_t> *> *)NULL, builder);
 
       auto tcabb = llvm::BasicBlock::Create(module.TheContext, "_tailcall_self",
                                             module.main());

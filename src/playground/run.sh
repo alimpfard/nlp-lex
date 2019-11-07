@@ -9,7 +9,7 @@ gen() {
 }
 
 paste() {
-  llvm-link test.ll ll.ll > all.bc
+  llvm-link ll.ll test.ll > all.bc
   # cat ll.ll test.ll > all.ll
   # opt all.ll -o all.bc
 }
@@ -19,7 +19,7 @@ compile() {
   opt all.bc -o all-opt.bc -instcombine -dce -constprop -inline -tailcallelim -instcombine -dce -sink -simplifycfg
   # cp all.bc all-opt.bc
   llc -filetype=obj -relocation-model=pic all-opt.bc
-  gcc all-opt.o
+  gcc -g all-opt.o
   gcc all-opt.o -shared -o all.so
 }
 
@@ -30,4 +30,5 @@ all() {
 }
 
 gen "$@"
-paste; compile
+paste
+compile

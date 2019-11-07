@@ -5,6 +5,7 @@
 #include <variant>
 #include <vector>
 
+#include "debug.hpp"
 #include "transition.hpp"
 
 template <typename StateInfoT> class NFANode;
@@ -44,6 +45,8 @@ public:
        reference_node = false;
   int max_opt_steps = 50;
   int opt_step = max_opt_steps;
+
+  CUDebugInformation debug_info = {0, 0, 0, "<Unknown>"};
 
   std::set<Transition<DFANode, char> *, TransitionPointerComparer<StateInfoT>>
       outgoing_transitions = {};
@@ -90,6 +93,7 @@ template <typename StateInfoT> class NFANode {
 
 public:
   std::optional<StateInfoT> state_info = {};
+  CUDebugInformation debug_info = {0, 0, 0, "<Unknown>"};
 
   std::string
   gen_dot(std::set<NFANode<StateInfoT> *> nodes,

@@ -24,7 +24,7 @@ void lexer_error(const NLexer &lexer, int errn, const Token &tok,
   va_end(arg);
 }
 
-static const int utf8_encode(char *out, uint32_t utf) {
+inline static const int utf8_encode(char *out, uint32_t utf) {
   if (utf <= 0x7F) {
     out[0] = (char)utf;
     out[1] = 0;
@@ -54,6 +54,11 @@ static const int utf8_encode(char *out, uint32_t utf) {
     out[3] = 0;
     return 0;
   }
+}
+
+inline static CUDebugInformation
+regexp_debug_info(NLexer *lexer, std::string name, int length) {
+  return {lexer->lineno, lexer->offset - length, length, name};
 }
 
 char const *NLexer::errors[Errors::LAST] = {
@@ -691,8 +696,10 @@ std::optional<Regexp> NLexer::regexp_tl() {
       return {};
     }
     advance(2);
+    auto value = std::string{buffer, length};
     return Regexp{std::string{source_p - length - 4, length + 4},
-                  RegexpType::Symbol, std::string{buffer, length}};
+                  RegexpType::Symbol, value,
+                  regexp_debug_info(this, value, length)};
   }
   if (c == '|') {
     // is pipe, generate alternative
@@ -702,7 +709,8 @@ std::optional<Regexp> NLexer::regexp_tl() {
       return alt;
     std::vector<Regexp *> vec;
     vec.push_back(new Regexp{alt.value()});
-    return Regexp{alt.value().str, RegexpType::Alternative, vec};
+    return Regexp{alt.value().str, RegexpType::Alternative, vec,
+                  regexp_debug_info(this, "|", alt.value().str.size() + 1)};
   }
   // otherwise parse an expression
   auto exp = regexp_expression();
@@ -718,13 +726,14 @@ std::optional<Regexp> NLexer::regexp_expression() {
   // character literal
   if (strchr("?+*{}()[]\\|.^$", c) == NULL) {
     advance(1);
-    return Regexp{std::string{source_p - 1, 1}, RegexpType::Literal, c};
+    return Regexp{std::string{source_p - 2, 1}, RegexpType::Literal, c,
+                  regexp_debug_info(this, std::string{c}, 1)};
   }
   if (c == '.') {
     // match anything
     advance(1);
     return Regexp{std::string{source_p - 1, 1}, RegexpType::CharacterClass,
-                  "]\n"};
+                  "]\n", regexp_debug_info(this, std::string{'.'}, 1)};
   }
   // escaped character
   if (c == '\\') {
@@ -750,51 +759,64 @@ std::optional<Regexp> NLexer::regexp_expression() {
                     backrefnum, nested_index);
         backrefnum = nested_index - 2;
       }
-      auto reg =
-          Regexp{std::string{source_p - len, len}, RegexpType::Escape, '\\'};
+      auto reg = Regexp{std::string{source_p - len, len}, RegexpType::Escape,
+                        '\\', regexp_debug_info(this, std::string{'\\'}, 1)};
       reg.index = backrefnum;
       return reg;
     }
     if (strchr("?+*{}()[]\\|.^$", c) != NULL)
       // switch to literal
-      return Regexp{std::string{source_p - 2, 2}, RegexpType::Literal, c};
+      return Regexp{std::string{source_p - 2, 2}, RegexpType::Literal, c,
+                    regexp_debug_info(this, std::string{c}, 1)};
 
     // magic escapes
     switch (c) {
     case 's': // whitespace
       return Regexp{std::string{source_p - 2, 2}, RegexpType::CharacterClass,
                     (std::string)UnicodeClasses::all_of_class(
-                        UnicodeClasses::Whitespaces)};
+                        UnicodeClasses::Whitespaces),
+                    regexp_debug_info(this, "\\s", 2)};
     case 'S': // whitespace
       return Regexp{std::string{source_p - 2, 2}, RegexpType::CharacterClass,
                     "]" + (std::string)UnicodeClasses::all_of_class(
-                              UnicodeClasses::Whitespaces)};
+                              UnicodeClasses::Whitespaces),
+                    regexp_debug_info(this, "\\S", 2)};
     case 'w':
       return Regexp{std::string{source_p - 2, 2}, RegexpType::CharacterClass,
-                    (std::string)UnicodeClasses::Words};
+                    (std::string)UnicodeClasses::Words,
+                    regexp_debug_info(this, "\\w", 2)};
     case 'W':
       return Regexp{std::string{source_p - 2, 2}, RegexpType::CharacterClass,
                     "]" + (std::string)UnicodeClasses::all_of_class(
-                              UnicodeClasses::Words)};
+                              UnicodeClasses::Words),
+                    regexp_debug_info(this, "\\W", 2)};
     case 'd':
       return Regexp{std::string{source_p - 2, 2}, RegexpType::CharacterClass,
-                    (std::string)UnicodeClasses::Digits};
+                    (std::string)UnicodeClasses::Digits,
+                    regexp_debug_info(this, "\\d", 2)};
     case 'D':
       return Regexp{std::string{source_p - 2, 2}, RegexpType::CharacterClass,
                     "]" + (std::string)UnicodeClasses::all_of_class(
-                              UnicodeClasses::Digits)};
+                              UnicodeClasses::Digits),
+                    regexp_debug_info(this, "\\D", 2)};
     case '0':
-      return Regexp{std::string{source_p - 2, 2}, RegexpType::Literal, '\0'};
+      return Regexp{std::string{source_p - 2, 2}, RegexpType::Literal, '\0',
+                    regexp_debug_info(this, "\\0", 2)};
     case 'n':
-      return Regexp{std::string{source_p - 2, 2}, RegexpType::Literal, '\n'};
+      return Regexp{std::string{source_p - 2, 2}, RegexpType::Literal, '\n',
+                    regexp_debug_info(this, "\\n", 2)};
     case 'f':
-      return Regexp{std::string{source_p - 2, 2}, RegexpType::Literal, '\f'};
+      return Regexp{std::string{source_p - 2, 2}, RegexpType::Literal, '\f',
+                    regexp_debug_info(this, "\\f", 2)};
     case 'r':
-      return Regexp{std::string{source_p - 2, 2}, RegexpType::Literal, '\r'};
+      return Regexp{std::string{source_p - 2, 2}, RegexpType::Literal, '\r',
+                    regexp_debug_info(this, "\\r", 2)};
     case 't':
-      return Regexp{std::string{source_p - 2, 2}, RegexpType::Literal, '\t'};
+      return Regexp{std::string{source_p - 2, 2}, RegexpType::Literal, '\t',
+                    regexp_debug_info(this, "\\t", 2)};
     case 'v':
-      return Regexp{std::string{source_p - 2, 2}, RegexpType::Literal, '\v'};
+      return Regexp{std::string{source_p - 2, 2}, RegexpType::Literal, '\v',
+                    regexp_debug_info(this, "\\v", 2)};
     case 'p':
     case 'P': {
       char pc = *source_p;
@@ -820,7 +842,8 @@ std::optional<Regexp> NLexer::regexp_expression() {
         advance(1);
         return Regexp{std::string{source_p - 5, 5}, RegexpType::CharacterClass,
                       (c == 'P' ? "]" : "") +
-                          (std::string)UnicodeClasses::all_of_class(bf)};
+                          (std::string)UnicodeClasses::all_of_class(bf),
+                      regexp_debug_info(this, std::string{source_p - 5, 5}, 5)};
       }
       *(bufv++) = pc;
       advance(1);
@@ -829,7 +852,8 @@ std::optional<Regexp> NLexer::regexp_expression() {
         advance(1);
         return Regexp{std::string{source_p - 6, 6}, RegexpType::CharacterClass,
                       (c == 'P' ? "]" : "") +
-                          (std::string)UnicodeClasses::all_of_class(bf)};
+                          (std::string)UnicodeClasses::all_of_class(bf),
+                      regexp_debug_info(this, std::string{source_p - 6, 6}, 6)};
       } else {
         lexer_error(
             *this, Errors::InvalidRegexpSyntax, error_token(),
@@ -837,21 +861,25 @@ std::optional<Regexp> NLexer::regexp_expression() {
             "Expected a close-brace '}' to follow \\p or \\P expression");
         return Regexp{std::string{source_p - 6, 6}, RegexpType::CharacterClass,
                       (c == 'P' ? "]" : "") +
-                          (std::string)UnicodeClasses::all_of_class(bf)};
+                          (std::string)UnicodeClasses::all_of_class(bf),
+                      regexp_debug_info(this, std::string{source_p - 6, 6}, 6)};
       }
     }
     case 'K':
       return Regexp{std::string{source_p - 2, 2},
                     RegexpType::Assertion,
-                    {RegexpAssertion::SetPosition}};
+                    {RegexpAssertion::SetPosition},
+                    regexp_debug_info(this, "\\K", 2)};
     case 'A':
       return Regexp{std::string{source_p - 2, 2},
                     RegexpType::Assertion,
-                    {RegexpAssertion::TrueBeginning}};
+                    {RegexpAssertion::TrueBeginning},
+                    regexp_debug_info(this, "\\A", 2)};
     case 'G':
       return Regexp{std::string{source_p - 2, 2},
                     RegexpType::Assertion,
-                    {RegexpAssertion::MatchBeginning}};
+                    {RegexpAssertion::MatchBeginning},
+                    regexp_debug_info(this, "\\G", 2)};
     case 'g': {
       c = *source_p;
       advance(1);
@@ -876,14 +904,16 @@ std::optional<Regexp> NLexer::regexp_expression() {
           backrefnum = -1;
         }
         auto reg = Regexp{std::string{source_p - len - 1, len + 1},
-                          RegexpType::SubExprCall, (char)backrefnum};
+                          RegexpType::SubExprCall, (char)backrefnum,
+                          regexp_debug_info(this, "\\g", 2)};
         reg.subexprcall = backrefnum;
         return reg;
       }
       lexer_error(*this, Errors::InvalidRegexpSyntax, error_token(),
                   ErrorPosition::On,
                   "Subexpr call (\\g) expects a number (\\g<n>) not '%c'", c);
-      return Regexp{std::string{source_p - 2, 2}, RegexpType::Literal, 'g'};
+      return Regexp{std::string{source_p - 2, 2}, RegexpType::Literal, 'g',
+                    regexp_debug_info(this, "\\g", 2)};
     }
     case 'u': {
       static char buf[7] = {0};
@@ -909,7 +939,8 @@ std::optional<Regexp> NLexer::regexp_expression() {
       int ll = utf8_encode(bufv, cp);
       return Regexp{
           std::string{source_p - len - 4, len + 4}, // single-char charclass
-          RegexpType::CharacterClass, std::string{bufv, ll}};
+          RegexpType::CharacterClass, std::string{bufv, ll},
+          regexp_debug_info(this, "\\u", 2)};
     }
     case 'x': // hex: TODO
       lexer_error(*this, Errors::RegexpUnsupported, error_token(),
@@ -917,20 +948,23 @@ std::optional<Regexp> NLexer::regexp_expression() {
     default:
       lexer_error(*this, Errors::RegexpUnknown, error_token(),
                   ErrorPosition::On, "Unknown escape '%c'", c);
-      return Regexp{std::string{source_p - 2, 2}, RegexpType::Escape, c};
+      return Regexp{std::string{source_p - 2, 2}, RegexpType::Escape, c,
+                    regexp_debug_info(this, "??", 2)};
     }
   }
   if (c == '^') {
     advance(1);
     return Regexp{std::string{source_p - 2, 2},
                   RegexpType::Assertion,
-                  {RegexpAssertion::LineBeginning}};
+                  {RegexpAssertion::LineBeginning},
+                  regexp_debug_info(this, "^", 1)};
   }
   if (c == '$') {
     advance(1);
     return Regexp{std::string{source_p - 2, 2},
                   RegexpType::Assertion,
-                  {RegexpAssertion::LineEnd}};
+                  {RegexpAssertion::LineEnd},
+                  regexp_debug_info(this, "$", 1)};
   }
   // character class
   if (c == '[') {
@@ -1111,7 +1145,8 @@ std::optional<Regexp> NLexer::regexp_expression() {
       buffer[length++] = c;
     } while (1);
     return Regexp{"[" + std::string{source_p - rlength - 4, rlength + 3} + "]",
-                  RegexpType::CharacterClass, std::string{buffer, length}};
+                  RegexpType::CharacterClass, std::string{buffer, length},
+                  regexp_debug_info(this, "\\u", rlength + 3)};
   }
   // parenthesised expression
   if (c == '(') {
@@ -1149,7 +1184,8 @@ std::optional<Regexp> NLexer::regexp_expression() {
         }
         advance(1);
         auto reg_ = Regexp{std::string{"(?:"} + rv.str + ")",
-                           RegexpType::Nested, new Regexp{rv}};
+                           RegexpType::Nested, new Regexp{rv},
+                           regexp_debug_info(this, "?:", rv.str.size() + 3)};
         reg_.index = -1;
         return reg_;
       }
@@ -1168,7 +1204,8 @@ std::optional<Regexp> NLexer::regexp_expression() {
     }
     advance(1); // )
     auto reg_ = Regexp{std::string{"("} + rv.str + ")", RegexpType::Nested,
-                       new Regexp{rv}};
+                       new Regexp{rv},
+                       regexp_debug_info(this, "()", rv.str.size() + 2)};
     reg_.index = my_index;
     return reg_;
   }
@@ -1280,7 +1317,13 @@ Regexp Regexp::concat(const Regexp &other) {
                                          assertions.cend()};
     for (auto as : std::get<std::vector<RegexpAssertion>>(other.inner))
       asserts.push_back(as);
-    return Regexp{str + other.str, RegexpType::Assertion, asserts};
+    return Regexp{str + other.str,
+                  RegexpType::Assertion,
+                  asserts,
+                  {debug_info.lineno, debug_info.offset,
+                   debug_info.length + other.debug_info.length,
+                   string_format("(cons %s %s)", debug_info.name.c_str(),
+                                 other.debug_info.name.c_str())}};
   }
   if (type == RegexpType::CharacterClass) {
     if (other.type == RegexpType::Alternative) {
@@ -1300,7 +1343,12 @@ Regexp Regexp::concat(const Regexp &other) {
         for (auto ch : other.children)
           ss += std::get<std::string>(ch->inner).substr(0, (int)glinv);
         return Regexp{str + (std::string{"|"} + other.str),
-                      RegexpType::CharacterClass, ss};
+                      RegexpType::CharacterClass,
+                      ss,
+                      {debug_info.lineno, debug_info.offset,
+                       debug_info.length + other.debug_info.length + 1,
+                       string_format("(or %s %s)", debug_info.name.c_str(),
+                                     other.debug_info.name.c_str())}};
       }
     }
   }
@@ -1309,8 +1357,13 @@ Regexp Regexp::concat(const Regexp &other) {
     vec.push_back(new Regexp(*this));
     for (auto child : other.children)
       vec.push_back(child);
-    return Regexp{str + (std::string{"|"} + other.str), RegexpType::Alternative,
-                  vec};
+    return Regexp{str + (std::string{"|"} + other.str),
+                  RegexpType::Alternative,
+                  vec,
+                  {debug_info.lineno, debug_info.offset,
+                   debug_info.length + other.debug_info.length + 1,
+                   string_format("(or %s %s)", debug_info.name.c_str(),
+                                 other.debug_info.name.c_str())}};
   }
   if (type == RegexpType::Concat) {
     children.push_back(new Regexp{other});
@@ -1321,7 +1374,11 @@ Regexp Regexp::concat(const Regexp &other) {
   vec.push_back(new Regexp{*this});
   vec.push_back(new Regexp{other});
 
-  return Regexp(this->str + other.str, RegexpType::Concat, vec);
+  return Regexp(this->str + other.str, RegexpType::Concat, vec,
+                {debug_info.lineno, debug_info.offset,
+                 debug_info.length + other.debug_info.length,
+                 string_format("(cons %s %s)", debug_info.name.c_str(),
+                               other.debug_info.name.c_str())});
 }
 
 std::string Regexp::to_str() const {
@@ -1507,6 +1564,7 @@ void Regexp::resolve(
       str = reg->str;
       inner = reg->inner;
       named_rule = reg->named_rule;
+      debug_info = reg->debug_info;
 
       plus = plus || reg->plus;
       star = star || reg->star;
@@ -1518,8 +1576,8 @@ void Regexp::resolve(
       if (std::holds_alternative<std::string>(vv)) {
         std::string s = std::get<std::string>(vv);
         for (char c : s)
-          children.push_back(
-              new Regexp{std::string{c}, RegexpType::Literal, c});
+          children.push_back(new Regexp{
+              std::string{c}, RegexpType::Literal, c, {0, 0, 0, "<Unknown>"}});
         str = s;
         type = RegexpType::Concat;
       } else {
@@ -1529,6 +1587,7 @@ void Regexp::resolve(
         str = reg->str;
         inner = reg->inner;
         named_rule = "";
+        debug_info = reg->debug_info;
 
         plus = plus || reg->plus;
         star = star || reg->star;
@@ -1576,6 +1635,7 @@ Regexp::compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
     tl->subexpr_call = subexprcall;
     tl->named_rule = namef;
     result = tl;
+    result->debug_info = debug_info;
     break;
   }
   case RegexpType::Assertion: {
@@ -1586,12 +1646,15 @@ Regexp::compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
     tl->assertions = assert;
     tl->named_rule = namef;
     result = tl;
+    result->debug_info = debug_info;
     break;
   }
   case RegexpType::Literal: {
     char t = std::get<char>(inner);
     NFANode<std::string> *tl = new NFANode<std::string>{"B" + mangle()};
     NFANode<std::string> *tl2 = new NFANode<std::string>{"E" + mangle()};
+    tl->debug_info = debug_info;
+    tl2->debug_info = debug_info;
     tl->transition_to(tl2, t);
     tl = transform_by_quantifiers(
         new PseudoNFANode<std::string>{"S" + mangle(), tl, tl2});
@@ -1602,8 +1665,10 @@ Regexp::compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
     break;
   }
   case RegexpType::Dot: {
-    NFANode<std::string> *tl =
-        transform_by_quantifiers(new NFANode<std::string>{mangle()});
+    auto tv = new NFANode<std::string>{mangle()};
+    tv->debug_info = debug_info;
+    NFANode<std::string> *tl = transform_by_quantifiers(tv);
+    tl->debug_info = debug_info;
     parent->anything_transition_to(tl);
     tl->named_rule = namef;
     cache.insert({this, tl});
@@ -1621,14 +1686,19 @@ Regexp::compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
     }
     NFANode<std::string> *tl =
         new NFANode<std::string>{cpath + "{::}" + "B" + mangle()};
+    tl->debug_info = debug_info;
     NFANode<std::string> *tl2 =
         new NFANode<std::string>{cpath + "{::}" + "E" + mangle()};
+    tl2->debug_info = debug_info;
     NFANode<std::string> *tl_1 =
         new NFANode<std::string>{cpath + "{::}" + "B_C1" + mangle()};
+    tl_1->debug_info = debug_info;
     NFANode<std::string> *tl_2 =
         new NFANode<std::string>{cpath + "{::}" + "B_C2" + mangle()};
+    tl_2->debug_info = debug_info;
     NFANode<std::string> *tl_3 =
         new NFANode<std::string>{cpath + "{::}" + "B_C3" + mangle()};
+    tl_3->debug_info = debug_info;
     NFANode<std::string> *tl_end = tl2;
     tl->named_rule = namef;
     tl_1->named_rule = namef;
@@ -1639,6 +1709,7 @@ Regexp::compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
       // we can transform this to many transitions instead
     } else {
       tl_end = new NFANode<std::string>{cpath + "{::}" + "Moot:E" + mangle()};
+      tl_end->debug_info = debug_info;
       tl->default_transition_to(tl2);
     }
 
@@ -1671,6 +1742,8 @@ Regexp::compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
   case RegexpType::Nested: {
     NFANode<std::string> *tl = new NFANode<std::string>{"Bg" + mangle()};
     NFANode<std::string> *te = new NFANode<std::string>{"Eg" + mangle()};
+    tl->debug_info = debug_info;
+    te->debug_info = debug_info;
 
     auto ex = std::get<Regexp *>(inner);
     auto nfa = ex->compile(cache, tl, cpath + "{::}" + ex->mangle(), leading);
@@ -1691,6 +1764,8 @@ Regexp::compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
     // generate all nodes and connect them all to a root node
     NFANode<std::string> *tl = new NFANode<std::string>{"Ba" + mangle()};
     NFANode<std::string> *te = new NFANode<std::string>{"Ea" + mangle()};
+    tl->debug_info = debug_info;
+    te->debug_info = debug_info;
     for (auto *alt : children) {
       bool leading_ = true;
       auto p = alt->compile(cache, tl, cpath, leading_);
@@ -1717,6 +1792,8 @@ Regexp::compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
   case RegexpType::Concat: {
     NFANode<std::string> *root = new NFANode<std::string>{"B" + mangle()};
     NFANode<std::string> *endp = new NFANode<std::string>{"E" + mangle()};
+    root->debug_info = debug_info;
+    endp->debug_info = debug_info;
     root->named_rule = namef;
     // generate all nodes and add transitions between them
     bool leading_ = leading;

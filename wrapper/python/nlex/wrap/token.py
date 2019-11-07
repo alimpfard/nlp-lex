@@ -8,7 +8,7 @@ class Token(object):
 
     def desanitify(self, nlex):
         return {
-            'id': nlex.next_id,
+            'id': nlex.next_id * 10,
             'raw_token': repr(self.raw),
             'token': self.raw.decode('utf-8', 'ignore'),
             'type': self.tag.decode('utf-8', 'ignore'),

@@ -280,8 +280,9 @@ void NParser::parse() {
         idx++;
         if (cp == ns) // no sense in normalising something to itself
           continue;
-        if (Codepoints::getlength(cp.c_str()) <
-            Codepoints::getlength(ns.c_str())) {
+        if (!gen_lexer_options["unsafe_normaliser"] &&
+            Codepoints::getlength(cp.c_str()) <
+                Codepoints::getlength(ns.c_str())) {
           slts.show_c(
               Display::Type::ERROR,
               "[{<red>}Normalise{<clean>}] normalisation of "
@@ -905,7 +906,14 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
     else
       dfanode = dfa_map[currentname] =
           new DFANode<std::set<NFANode<T> *>>{current};
+    bool assigned_di = false;
     for (auto s : current) {
+      if (!assigned_di) {
+        if (s->debug_info.lineno != 0) {
+          assigned_di = true;
+          dfanode->debug_info = s->debug_info;
+        }
+      }
       if (s->subexpr_idx > -1) {
         dfanode->subexpr_idxs.insert(s->subexpr_idx);
       }
@@ -931,6 +939,11 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
       //   //             get_name(s).c_str(), get_name(current).c_str());
       //   dfanode->start = true;
       // }
+    }
+    if (!assigned_di) {
+      slts.show(Display::Type::ERROR,
+                "Could not find any debug information for node %s",
+                get_name(current).c_str());
     }
 
     if (dfa_root == nullptr) {
@@ -1153,14 +1166,19 @@ void DFANLVMCodeGenerator<T>::generate(
             "[{<red>}NodeGen{<clean>}] Generating for node set "
             "{<green>}'%s'{<clean>}",
             get_name(node->state_info.value()).c_str());
+
+  builder.module.enterScope(node);
+
+  builder.module.emitLocation(node);
   // generate any choice and add to output_cases
   BasicBlock *BB = BasicBlock::Create(builder.module.TheContext,
-                                      get_name(node->state_info.value()),
-                                      builder.module.current_main());
+                                      // get_name(node->state_info.value()),
+                                      "", builder.module.current_main());
   llvm::BasicBlock *BBnode = BB;
-  BasicBlock *BBend = BasicBlock::Create(
-      builder.module.TheContext, get_name(node->state_info.value()) + "{::}E",
-      builder.module.current_main());
+  BasicBlock *BBend =
+      BasicBlock::Create(builder.module.TheContext,
+                         /* get_name(node->state_info.value()) + "{::}E" */ "E",
+                         builder.module.current_main());
   builder.module.Builder.SetInsertPoint(BBend);
   // restore string position and return with tag
   auto finalm = node->final ||
@@ -1206,8 +1224,9 @@ void DFANLVMCodeGenerator<T>::generate(
     }
     case RegexpAssertion::LineBeginning: {
       BBnode = BasicBlock::Create(builder.module.TheContext,
-                                  "assertPass(^)::" +
-                                      get_name(node->state_info.value()),
+                                  "assertPass(^)::" /*+
+                                      get_name(node->state_info.value())*/
+                                  ,
                                   builder.module.current_main());
       // check if we're at the beginning of the string (fed_string==true_start)
       // or last character (fed_string-1) is \n
@@ -1229,8 +1248,9 @@ void DFANLVMCodeGenerator<T>::generate(
     }
     case RegexpAssertion::LineEnd: {
       BBnode = BasicBlock::Create(builder.module.TheContext,
-                                  "assertPass($)::" +
-                                      get_name(node->state_info.value()),
+                                  "assertPass($)::" /*+
+                                      get_name(node->state_info.value())*/
+                                  ,
                                   builder.module.current_main());
       // check if we're at the end of the string (next char is zero or \n)
       auto nextc = builder.module.Builder.CreateLoad(tnext);
@@ -1256,8 +1276,9 @@ void DFANLVMCodeGenerator<T>::generate(
     }
     case RegexpAssertion::TrueBeginning: {
       BBnode = BasicBlock::Create(builder.module.TheContext,
-                                  "assertPass(A)::" +
-                                      get_name(node->state_info.value()),
+                                  "assertPass(A)::" /*+
+                                      get_name(node->state_info.value())*/
+                                  ,
                                   builder.module.current_main());
       // check if we're at the beginning of the string (fed_string==true_start)
       builder.module.Builder.CreateCondBr(
@@ -1477,6 +1498,7 @@ void DFANLVMCodeGenerator<T>::generate(
   }
   if (node->start)
     root_bb = BB;
+  builder.module.exitScope();
 }
 
 template <typename T> std::string DFANLVMCodeGenerator<T>::output() {
@@ -1525,7 +1547,8 @@ int main() {
   NFANode<std::string> *root;
   DFACCodeGenerator<std::string> cg;
   DFANLVMCodeGenerator<std::string> nlvmg;
-  nlvmg.builder.begin(nlvmg.builder.module.main());
+  nlvmg.builder.begin(nlvmg.builder.module.main(), false,
+                      parser.gen_lexer_options["skip_on_error"]);
   nlvmg.builder.module._cmain = nlvmg.builder.module._main;
   while (1) {
     std::string line;

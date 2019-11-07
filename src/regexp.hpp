@@ -12,6 +12,7 @@ struct Regexp;
 enum class SymbolType;
 struct SymbolDebugInformation;
 
+#include "debug.hpp"
 #include "parser.hpp"
 
 enum RegexpType {
@@ -35,17 +36,18 @@ struct RepeatQuantifier {
 struct Regexp {
   // here there be dragons
   RegexpType type;
+  CUDebugInformation debug_info;
   std::variant<std::string, char, Regexp *, std::vector<RegexpAssertion>> inner;
   std::vector<Regexp *> children;
 
-  bool is_leaf;
-  bool was_reference;
+  bool is_leaf = true;
+  bool was_reference = false;
   std::optional<std::string> referenced_symbol, named_rule;
 
 public:
   std::string str;
 
-  bool plus, star, lazy, store = false;
+  bool plus = false, star = false, lazy = false, store = false;
   int index = 0;        // applies for nested and backref (escape)
   int subexprcall = -1; // applies for SubExprCall
   std::optional<RepeatQuantifier> repeat;
@@ -59,31 +61,30 @@ public:
                                          std::variant<std::string, Regexp *>>>
                    values);
 
-  Regexp(std::string str, RegexpType type, std::vector<Regexp *> children)
-      : type(type), inner({}), children(children), plus(), star(), lazy(),
-        str(str), repeat(), is_leaf(true), was_reference(false) {}
+  Regexp(std::string str, RegexpType type, std::vector<Regexp *> children,
+         CUDebugInformation dbg)
+      : type(type), inner({}), children(children), str(str), debug_info(dbg) {}
 
-  Regexp(std::string str, RegexpType type, std::string inner)
-      : type(type), inner(inner), plus(), star(), lazy(), str(str), repeat(),
-        is_leaf(true), was_reference(false) {
+  Regexp(std::string str, RegexpType type, std::string inner,
+         CUDebugInformation dbg)
+      : type(type), inner(inner), str(str), debug_info(dbg) {
     children = {};
   }
 
-  Regexp(std::string str, RegexpType type, char inner)
-      : type(type), inner(inner), plus(), star(), lazy(), str(str), repeat(),
-        is_leaf(true), was_reference(false) {
+  Regexp(std::string str, RegexpType type, char inner, CUDebugInformation dbg)
+      : type(type), inner(inner), str(str), debug_info(dbg) {
     children = {};
   }
 
-  Regexp(std::string str, RegexpType type, Regexp *inner)
-      : type(type), inner(inner), plus(), star(), lazy(), str(str), repeat(),
-        is_leaf(true), was_reference(false) {
+  Regexp(std::string str, RegexpType type, Regexp *inner,
+         CUDebugInformation dbg)
+      : type(type), inner(inner), str(str), debug_info(dbg) {
     children = {};
   }
 
-  Regexp(std::string str, RegexpType type, std::vector<RegexpAssertion> inner)
-      : type(type), inner(inner), plus(), star(), lazy(), str(str), repeat(),
-        is_leaf(true), was_reference(false) {
+  Regexp(std::string str, RegexpType type, std::vector<RegexpAssertion> inner,
+         CUDebugInformation dbg)
+      : type(type), inner(inner), str(str), debug_info(dbg) {
     children = {};
   }
 
