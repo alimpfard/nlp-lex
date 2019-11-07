@@ -60,6 +60,8 @@ currently significant options:
 | :------------- | :------------- | :------------- |
 | `ignore_stopwords` | entirely removes stopwords from the output stream       | `off`       |
 | `pure_normaliser`   | creates a function `__nlex_pure_normalise` that returns the next normalised character in the stream | `off` |
+| `unsafe_normaliser`   | disable the length check on normalised values | `off` |
+| `skip_on_error`       | skip unmatchable characters | `off` |
 
 ### Regular Expressions
 
