@@ -24,7 +24,7 @@ non-captured (inlined) literal matches can be defined as such:
 normalisation rules can be defined as such:
 
 ```
-  normalised_codepoint <= codepoints_to_normalise
+  normalise { codepoints to normalise } to codepoint
 ```
 
   for example
