@@ -28,7 +28,7 @@ normalisation rules can be defined as such:
 ```
 
   for example
-    `a <= bcdef`
+    `normalise { b c d e f } to a`
     means "normalise any of 'bcdef' to 'a'"
 
 
