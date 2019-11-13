@@ -5,11 +5,23 @@ Hopefully a lexer-generator that doesn't suck
 
 ## Syntax
 
-token rules can be defined as such
+regex token rules can be defined as such
 
 ```
     rule_name :: regular_expression
 ```
+
+and literal token rules can be defined as:
+
+```
+  rule_name -- "some" "token" "\uc{SomeCategory}"
+```
+
+where `SomeCategory` is a predefined name (internal) for a category of tokens; the currently supported categories are:
+
+| Category name | description |
+| :------------ | :---------- |
+| `RGI`         | the set of RGI emojis as defined in https://unicode.org/Public/emoji/ |
 
 non-captured (inlined) literal matches can be defined as such:
 

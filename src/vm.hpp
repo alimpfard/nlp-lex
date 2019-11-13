@@ -1,5 +1,6 @@
 #pragma once
 
+#include "genlexer.hpp"
 #include "termdisplay.hpp"
 #include "wordtree.hpp"
 #include "llvm/ADT/APFloat.h"
@@ -27,6 +28,14 @@
 #include <string>
 #include <vector>
 
+template <typename T>
+typename T::mapped_type get(T value, typename T::key_type key) {
+  auto v = value.find(key);
+  if (v == value.end())
+    return {};
+  return v->second;
+}
+
 extern Display::SingleLineTermStatus slts;
 
 namespace nlvm {
@@ -44,6 +53,8 @@ public:
   llvm::LLVMContext TheContext;
   llvm::IRBuilder<> Builder;
   std::unique_ptr<llvm::Module> TheModule;
+
+  llvm::BasicBlock *start;
 
   llvm::DIBuilder *DBuilder;
   llvm::DICompileUnit *TheCU;
@@ -180,8 +191,7 @@ public:
     LexicalDebugBlocks.push_back(SP);
     return SP;
   }
-
-  void add_char_to_token(char c) {
+  void add_char_to_token(char c, llvm::IRBuilder<> &Builder) {
     auto llen = Builder.CreateLoad(token_length);
     auto llenp1 = Builder.CreateAdd(
         llen, llvm::ConstantInt::get(llvm::Type::getInt32Ty(TheContext), 1));
@@ -193,6 +203,8 @@ public:
         llvm::ConstantInt::get(llvm::Type::getInt8Ty(TheContext), (int)c),
         tvalp);
   }
+
+  void add_char_to_token(char c) { add_char_to_token(c, Builder); }
   void add_value_to_token(llvm::Value *c) {
     auto llen = Builder.CreateLoad(token_length);
     auto llenp1 = Builder.CreateAdd(
@@ -275,6 +287,7 @@ public:
     _main = mkfunc();
     main_entry = &_main->getEntryBlock();
     _main->setSubprogram(enterSubprogram(_main));
+    start = main_entry;
     return _main;
   }
   Module(std::string name) : TheContext(), Builder(TheContext) {
@@ -455,9 +468,7 @@ public:
     }
     module.Builder.CreateRetVoid();
   }
-  void prepare(std::map<std::string, std::string> normalisations,
-               std::set<std::string> stopwords, std::set<std::string> ignores,
-               std::map<std::string, bool> options) {
+  void prepare(const GenLexer &&lexer_stuff) {
     // create global values & normalisation logic
     module.emitLocation((DFANode<NFANode<std::nullptr_t> *> *)NULL);
     {
@@ -600,7 +611,7 @@ public:
                                             module.nlex_next);
       // create normalisation logic
       {
-        if (normalisations.size() == 0)
+        if (lexer_stuff.normalisations.size() == 0)
           builder.CreateBr(BBend);
         mbuilder.SetInsertPoint(BBend);
         mbuilder.CreateStore(cvv, nlex_tmp_char);
@@ -611,7 +622,7 @@ public:
         //                            1)}),
         //     nlex_fed_string);
         mbuilder.CreateRetVoid();
-        for (auto pnorm : normalisations) {
+        for (auto pnorm : lexer_stuff.normalisations) {
           mbuilder.SetInsertPoint(BB);
           auto norm = pnorm.first;
           slts.show_c(Display::Type::DEBUG,
@@ -752,18 +763,18 @@ public:
       builder.CreateRet(phi);
     }
     // Create a stopword remover if any stopwords are present
-    if (stopwords.size() > 0) {
+    if (lexer_stuff.stopwords.size() > 0) {
       auto fbb = llvm::BasicBlock::Create(module.TheContext, "_stopword_res",
                                           module.main());
       auto *prev_fbb = module.BBfinalise;
-      WordTree<std::string> wtree{stopwords};
+      WordTree<std::string> wtree{lexer_stuff.stopwords};
       llvm::IRBuilder<> builder{module.TheContext};
       module.emitLocation((DFANode<NFANode<std::nullptr_t> *> *)NULL, builder);
 
       auto tcabb = llvm::BasicBlock::Create(module.TheContext, "_exit_stopword",
                                             module.main());
       builder.SetInsertPoint(tcabb);
-      if (options["ignore_stopwords"]) {
+      if (get(lexer_stuff.options, "ignore_stopwords")) {
         builder.CreateCall(module.main(), {module.main()->arg_begin()})
             ->setTailCall(true);
         builder.CreateRetVoid();
@@ -846,11 +857,11 @@ public:
       module.BBfinalise = fbb;
     }
     // skip ignored states if specified
-    if (ignores.size() > 0) {
+    if (lexer_stuff.ignores.size() > 0) {
       auto fbb = llvm::BasicBlock::Create(module.TheContext, "_ignore_res",
                                           module.main());
       auto *prev_fbb = module.BBfinalise;
-      WordTree<std::string> wtree{stopwords};
+      WordTree<std::string> wtree{lexer_stuff.stopwords};
       llvm::IRBuilder<> builder{module.TheContext};
       module.emitLocation((DFANode<NFANode<std::nullptr_t> *> *)NULL, builder);
 
@@ -866,7 +877,7 @@ public:
       auto ptag = builder.CreatePtrToInt(
           tag, llvm::Type::getInt64Ty(module.TheContext));
       llvm::BasicBlock *nextbb;
-      for (auto ign : ignores) {
+      for (auto ign : lexer_stuff.ignores) {
         nextbb = llvm::BasicBlock::Create(module.TheContext,
                                           "__ignore_res_" + ign, module.main());
         builder.CreateCondBr(
@@ -879,7 +890,7 @@ public:
     }
     // add a function that just reads the input and writes the normalised form
     // out
-    if (options["pure_normaliser"]) {
+    if (get(lexer_stuff.options, "pure_normaliser")) {
       llvm::Function *pure_normalise;
       llvm::FunctionType *ncf = llvm::FunctionType::get(
           llvm::Type::getInt8Ty(module.TheContext), {}, false);
@@ -893,6 +904,96 @@ public:
       fbuilder.SetInsertPoint(entry);
       fbuilder.CreateCall(module.nlex_next);
       fbuilder.CreateRet(fbuilder.CreateCall(module.nlex_current_f));
+    }
+    // handle all literally tagged values
+    if (lexer_stuff.literal_tags.size() > 0) {
+      llvm::IRBuilder<> builder(module.TheContext);
+      builder.SetInsertPoint(&module.main()->getEntryBlock());
+      llvm::BasicBlock *start =
+          llvm::BasicBlock::Create(module.TheContext, "start", module.main());
+      module.start = start;
+      llvm::BasicBlock *check = llvm::BasicBlock::Create(
+          module.TheContext, "__literal", module.main());
+      builder.CreateBr(check);
+      builder.SetInsertPoint(check);
+
+      for (auto [tag, values] : lexer_stuff.literal_tags) {
+        WordTree<std::string, std::string, std::vector<std::string>> wt{
+            values, WordTreeActions::store_value_tag{}};
+        std::queue<std::tuple<decltype(wt.root_node), llvm::BasicBlock *, int>>
+            queue;
+        queue.push({wt.root_node, check, 0});
+        auto strv = builder.CreateLoad(module.nlex_fed_string);
+        while (!queue.empty()) {
+          auto [nodes, nodebb, offsetidx] = queue.front();
+          queue.pop();
+          builder.SetInsertPoint(nodebb);
+          auto swinst = builder.CreateSwitch(
+              builder.CreateLoad(builder.CreateInBoundsGEP(
+                  strv,
+                  {llvm::ConstantInt::get(
+                      llvm::Type::getInt32Ty(module.TheContext), offsetidx)})),
+              start, nodes->elements.size());
+          for (auto [c, node] : *nodes) {
+            // EOW - tag matches, emit new tag and return
+            if (c == 0) {
+              builder.SetInsertPoint(swinst);
+              // reset token length (write from the beginning of the token
+              // value)
+              builder.CreateStore(
+                  llvm::ConstantInt::get(
+                      llvm::Type::getInt32Ty(module.TheContext), 0),
+                  module.token_length);
+              // set token value
+              for (auto c : node->metadata)
+                module.add_char_to_token(c, builder);
+
+              // set tag
+              builder.CreateStore(get_or_create_tag(tag), module.last_tag);
+              // set matched flag
+              builder.CreateStore(llvm::ConstantInt::getTrue(
+                                      llvm::Type::getInt1Ty(module.TheContext)),
+                                  module.anything_matched);
+              // increment nlex_fed
+              builder.CreateCall(
+                  module.nlex_restore,
+                  {builder.CreateInBoundsGEP(
+                      builder.CreateCall(module.nlex_current_p),
+                      {llvm::ConstantInt::get(
+                          llvm::Type::getInt32Ty(module.TheContext),
+                          offsetidx)})});
+              builder.CreateStore(builder.CreateCall(module.nlex_current_p, {}),
+                                  module.last_final_state_position);
+              builder.CreateStore(
+                  llvm::ConstantInt::get(
+                      llvm::Type::getInt32Ty(module.TheContext), 0),
+                  module.chars_since_last_final);
+              builder.CreateStore(
+                  llvm::ConstantInt::get(
+                      llvm::Type::getInt8Ty(module.TheContext), 0),
+                  module.nlex_errc);
+              // jump to end
+              swinst->setDefaultDest(module.BBfinalise);
+              continue;
+            }
+
+            // generate case and jump to it
+            llvm::BasicBlock *cbb = llvm::BasicBlock::Create(
+                module.TheContext,
+                (("__literal_" + tag) + "_") + std::string{c}, module.main());
+            swinst->addCase(llvm::ConstantInt::get(
+                                llvm::Type::getInt8Ty(module.TheContext), c),
+                            cbb);
+            queue.push({node, cbb, offsetidx + 1});
+          }
+          // swap empty switch with jump
+          if (swinst->getNumCases() == 0) {
+            builder.SetInsertPoint(swinst);
+            builder.CreateBr(swinst->getDefaultDest());
+            swinst->removeFromParent();
+          }
+        }
+      }
     }
   }
   void end() {
@@ -946,5 +1047,5 @@ public:
     return (llvm::ConstantInt *)llvm::ConstantExpr::getPtrToInt(
         s, llvm::Type::getInt64Ty(module.TheContext));
   }
-};
+}; // namespace nlvm
 } // namespace nlvm

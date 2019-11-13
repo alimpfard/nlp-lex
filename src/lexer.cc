@@ -72,7 +72,8 @@ char const *NLexer::errors[Errors::LAST] = {
     [Errors::RegexpQuantifierRepeatInvalidSyntax] =
         "Invalid Repeat quantifier syntax",
     [Errors::InvalidRegexpSyntax] = "Invalid regex syntax",
-    [InvalidCodepointSpecification] = "Invalid Codepoint value",
+    [Errors::InvalidCodepointSpecification] = "Invalid Codepoint value",
+    [Errors::UnknownUnicodeClassName] = "Unknown Unicode Class name",
 };
 
 void Token::print() {
@@ -127,8 +128,8 @@ Token NLexer::error_token() {
 inline void NLexer::comment(char c) {
   if (c == '#') {
     do {
-      c = *(source_p++);
-      offset++;
+      c = *source_p;
+      advance(1);
       if (c == '\n') {
         lineno++;
         offset = 0;
@@ -243,27 +244,36 @@ inline Token NLexer::_next() {
     //   state = LexerState::Normal;
     //   return Token{TOK_OPNORMAL, lineno, offset, 2, empty_string};
     // }
-    if (c != ':') {
+    if (c != ':' && c != '-') {
       lexer_error(*this, Errors::Unexpected, mtoken, ErrorPosition::On,
-                  "Expected either `::' or `:-'");
+                  "Expected `::', `:-' or `--'");
       return mtoken;
     }
+    if (c == ':') {
+      if (strncmp(":", source_p, 1) == 0) {
+        state = LexerState::Define;
+        advance(1);
+        return Token{TOK_OPDEFINE, lineno, offset, 2, empty_string};
+      }
 
-    if (strncmp(":", source_p, 1) == 0) {
-      state = LexerState::Define;
-      advance(1);
-      return Token{TOK_OPDEFINE, lineno, offset, 2, empty_string};
+      if (strncmp("-", source_p, 1) == 0) {
+        state = LexerState::Const;
+        advance(1);
+        return Token{TOK_OPCONST, lineno, offset, 2, empty_string};
+      }
+      lexer_error(*this, Errors::Unexpected, mtoken, ErrorPosition::After,
+                  "Expected either `::' or `:-'");
+      return mtoken;
+    } else {
+      if (strncmp("-", source_p, 1) == 0) {
+        state = LexerState::Literal;
+        advance(1);
+        return Token{TOK_OPLIT, lineno, offset, 2, empty_string};
+      }
+      lexer_error(*this, Errors::Unexpected, mtoken, ErrorPosition::After,
+                  "Expected `--'");
+      return mtoken;
     }
-
-    if (strncmp("-", source_p, 1) == 0) {
-      state = LexerState::Const;
-      advance(1);
-      return Token{TOK_OPCONST, lineno, offset, 2, empty_string};
-    }
-
-    lexer_error(*this, Errors::Unexpected, mtoken, ErrorPosition::After,
-                "Expected either `::' or `:-'");
-    return mtoken;
     break;
   }
   case LexerState::Option: {
@@ -337,6 +347,26 @@ inline Token NLexer::_next() {
     return Token{TOK_NAME, lineno, offset - length, length,
                  std::string{buffer, length}};
     break;
+  }
+  case LexerState::Literal: {
+    if (c != '-' && c != '"') {
+      advance(-1);
+      state = LexerState::Toplevel;
+      return next();
+    }
+    bool isfile = false;
+    if (c == '-')
+      isfile = true;
+    else if (c == '"')
+      source_p--;
+    std::optional<std::string> vstr = string(false);
+    if (!vstr.has_value()) {
+      state = LexerState::Toplevel;
+      return {TOK_ERROR, lineno, offset, 0, empty_string};
+    }
+    std::string str = vstr.value();
+    return Token{isfile ? TOK_FILESTRING : TOK_LITSTRING, lineno,
+                 offset - str.size(), str.size(), str};
   }
   case LexerState::Stopword: {
     if (c != '-' && c != '"') {
@@ -1403,7 +1433,7 @@ std::string Regexp::to_str() const {
   return str;
 }
 
-std::optional<std::string> NLexer::string() {
+std::optional<std::string> NLexer::string(bool pescapes) {
   char c;
   int length = 0;
   if (!*source_p)
@@ -1436,7 +1466,7 @@ std::optional<std::string> NLexer::string() {
     if (c == '\\') {
       if (escape)
         escape = false;
-      else {
+      else if (pescapes) {
         escape = true;
         continue;
       }
@@ -1570,7 +1600,8 @@ void Regexp::resolve(
       star = star || reg->star;
       lazy = lazy || reg->lazy;
       reg->is_leaf = false;
-    } else /* Const */ {
+    } else /* Const */
+    {
       // construct a literal regexp
       auto vv = std::get<2>(val);
       if (std::holds_alternative<std::string>(vv)) {
@@ -1884,7 +1915,6 @@ Regexp::transform_by_quantifiers(NFANode<std::string> *node) const {
         node = tp0;
         rgc->lazy = lz;
         rgc->repeat = rp;
-
       } else {
         node =
             rgc->compile(node_cache, node,

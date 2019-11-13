@@ -1,0 +1,19 @@
+(var RGIDataF is File new: 'emoji-test.txt') exists ifFalse: {
+    Shell wget: 'https://unicode.org/Public/emoji/12.0/emoji-test.txt'.
+}.
+
+
+var outf is File new: 'emojis.hpp', open: 'w+'.
+outf write: ?>
+#include <string_view>
+
+<?.
+
+var RGI-data is RGIDataF read ~ ?>s/#.*//g<? ~ ?>s/^\s*$\n//g<? reSplit: ?>\s*\n<?, fmap: \:&s s reSplit: ?>\s*;\s*<?, head split: ' ', fmap: \:&x x paddingLeft: 8, replace: ' ' with: '0'.
+outf write: 'namespace UnicodeEmojis {\n'.
+outf write: '\tconstexpr static std::string_view RGI[] = {\n'.
+RGI-data each_v: {:x
+    outf write: '\t\t"\\U%:L",\n' % ['\\U',x].
+}.
+outf write: '\t}; // RGI\n} // namespace UnicodeEmojis\n'.
+outf close.

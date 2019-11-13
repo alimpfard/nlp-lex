@@ -16,6 +16,7 @@ enum TokenType {
   TOK_IGNORE,
   TOK_OPCONST,
   TOK_OPDEFINE,
+  TOK_OPLIT,
   TOK_OPNORMAL,
   TOK_LITSTRING,
   TOK_FILESTRING,
@@ -33,6 +34,7 @@ static char *reverse_token_type[TOK_ERROR + 1] = {
     [TOK_IGNORE] = "Ignore",
     [TOK_OPCONST] = "Const",
     [TOK_OPDEFINE] = "Define",
+    [TOK_OPLIT] = "Literal",
     [TOK_OPNORMAL] = "Normalise",
     [TOK_LITSTRING] = "LiteralString",
     [TOK_FILESTRING] = "FileString",
@@ -62,7 +64,7 @@ static Token EOFToken = {
     0,
 };
 
-enum LexerState {
+enum class LexerState {
   Toplevel = 0, // valid tokens:
                 /* Option   -> Option
                  * Stopword -> Stopword
@@ -94,6 +96,7 @@ enum LexerState {
   NormalTo,  // -> NormalTgt
   NormalTgt, // -> Toplevel
   Define,    // -> Toplevel (parses a regex)
+  Literal,   // -> Toplevel (parses a sequence of strings)
 };
 
 enum ErrorPosition {
@@ -115,6 +118,7 @@ enum Errors {
   RegexpQuantifierRepeatInvalidSyntax,
   InvalidRegexpSyntax,
   InvalidCodepointSpecification,
+  UnknownUnicodeClassName,
   LAST
 };
 
@@ -150,7 +154,7 @@ public:
   }
 
   const Token next();
-  std::optional<std::string> string();
+  std::optional<std::string> string(bool pescapes = true);
   std::optional<Regexp> _regexp();
 
   std::optional<Regexp> regexp();

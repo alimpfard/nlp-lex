@@ -6,9 +6,14 @@
 #include <string>
 #include <utility>
 
+namespace WordTreeActions {
+struct store_value_tag {};
+}; // namespace WordTreeActions
+
 template <typename StringT, typename MetadataT = int,
           typename CollectionT = std::set<StringT>,
           typename _CharT = typename StringT::value_type>
+
 class WordTree {
   using CharT = _CharT;
   using value_type = CharT;
@@ -34,6 +39,11 @@ public:
     for (auto word : words)
       insert(word);
   }
+  WordTree(CollectionT words, WordTreeActions::store_value_tag tag) {
+    root_node = std::make_shared<WordTreeNode>();
+    for (auto word : words)
+      insert(word, word);
+  }
   WordTree() { root_node = std::make_shared<WordTreeNode>(); }
 
   ~WordTree() = default;
@@ -49,7 +59,7 @@ public:
       }
     }
     if (!_root->elements.count(EOW))
-      _root->elements[EOW] = {};
+      _root->elements[EOW] = std::make_shared<struct WordTreeNode>();
   }
   void insert(StringT value, MetadataT val) {
     auto _root = root_node;
@@ -63,7 +73,7 @@ public:
     }
     std::shared_ptr<struct WordTreeNode> end;
     if (!_root->elements.count(EOW))
-      _root->elements[EOW] = {};
+      _root->elements[EOW] = std::make_shared<struct WordTreeNode>();
     end = _root->elements[EOW];
     end->metadata = val;
   }

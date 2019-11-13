@@ -21,6 +21,8 @@
 #include "termdisplay.hpp"
 #include <mutex>
 
+#include "unicode/emojis.hpp"
+
 constexpr EpsilonTransitionT EpsilonTransition{};
 Display::SingleLineTermStatus slts;
 
@@ -65,6 +67,21 @@ static uint32_t to_cp(const char *chr) {
   }
 
   return codep;
+}
+
+std::vector<std::string> handle_unicodes(std::string str) {
+  if (str == "\\uc{RGI}") {
+    std::vector<std::string> sv;
+    for (auto x : UnicodeEmojis::RGI)
+      sv.push_back(std::string{x});
+    return sv;
+  }
+  if (str.find("\\uc{") != std::string::npos) {
+    slts.show(Display::Type::ERROR, "Meta string class '%s' was not understood",
+              str);
+    return {str};
+  }
+  return {str};
 }
 
 void NParser::parse() {
@@ -147,6 +164,20 @@ void NParser::parse() {
       }
       gen_lexer_stopwords.insert(std::get<std::string>(token.value));
       break;
+    case ParserState::Literal:
+      if (token.type != TokenType::TOK_LITSTRING &&
+          token.type != TokenType::TOK_FILESTRING) {
+        statestack.pop(); // Literal
+        goto doitagain;
+      }
+      if (token.type == TokenType::TOK_FILESTRING) {
+        failing = true;
+        slts.show(Display::Type::MUST_SHOW, "file string not yet supported\n");
+        break;
+      }
+      for (auto t : handle_unicodes(std::get<std::string>(token.value)))
+        gen_lexer_literal_tags[std::get<std::string>(persist)].push_back(t);
+      break;
     case ParserState::Name:
       if (token.type == TokenType::TOK_OPCONST) {
         // persist = std::get<std::string>(token.value);
@@ -156,6 +187,10 @@ void NParser::parse() {
       if (token.type == TokenType::TOK_OPDEFINE) {
         // persist = std::get<std::string>(token.value);
         statestack.push(ParserState::Define);
+        break;
+      }
+      if (token.type == TokenType::TOK_OPLIT) {
+        statestack.push(ParserState::Literal);
         break;
       }
       failing = true;
@@ -1105,7 +1140,7 @@ void DFANLVMCodeGenerator<T>::generate(
     auto mroot = blk[node];
 
     llvm::IRBuilder<> dbuilder(builder.module.TheContext);
-    dbuilder.SetInsertPoint(&builder.module.current_main()->getEntryBlock());
+    dbuilder.SetInsertPoint(builder.module.start);
     dbuilder.CreateBr(mroot);
   }
   builder.issubexp = true;
@@ -1603,9 +1638,13 @@ int main() {
         bool run = true;
 
         std::thread render{[&]() {
-          nlvmg.builder.prepare(
-              parser.gen_lexer_normalisations, parser.gen_lexer_stopwords,
-              parser.gen_lexer_ignores, parser.gen_lexer_options);
+          nlvmg.builder.prepare({
+              parser.gen_lexer_options,
+              parser.gen_lexer_stopwords,
+              parser.gen_lexer_ignores,
+              parser.gen_lexer_normalisations,
+              parser.gen_lexer_literal_tags,
+          });
 
           nlvmg.generate(rootdfa);
           nlvmg.output();
@@ -1614,9 +1653,13 @@ int main() {
         exec(("../tools/wm '" + name + "'").c_str(), run);
         render.join();
       } else {
-        nlvmg.builder.prepare(
-            parser.gen_lexer_normalisations, parser.gen_lexer_stopwords,
-            parser.gen_lexer_ignores, parser.gen_lexer_options);
+        nlvmg.builder.prepare({
+            parser.gen_lexer_options,
+            parser.gen_lexer_stopwords,
+            parser.gen_lexer_ignores,
+            parser.gen_lexer_normalisations,
+            parser.gen_lexer_literal_tags,
+        });
 
         nlvmg.generate(rootdfa);
         nlvmg.output();

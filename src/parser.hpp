@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "codepoints.hpp"
+#include "genlexer.hpp"
 #include "nfa.hpp"
 #include "regexp.hpp"
 
@@ -30,6 +31,7 @@ enum class ParserState {
   Name,
   Define,
   Const,
+  Literal,
   Normal,
   NormalS,
 };
@@ -57,6 +59,8 @@ public:
   std::set<std::string> gen_lexer_stopwords;
   std::set<std::string> gen_lexer_ignores;
   std::map<std::string, std::string> gen_lexer_normalisations;
+  std::map<std::string, std::vector<std::string>> gen_lexer_literal_tags;
+
   bool generate_graph = false;
 
   std::unique_ptr<NLexer> lexer;

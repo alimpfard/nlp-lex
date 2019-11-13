@@ -114,6 +114,31 @@
         }
       }
       {
+        'begin' : '(\\w+)(\\s*)(--)'
+        'beginCaptures' : {
+          '1' : {
+            'name' : 'entity.name.type.class.NLex'
+          }
+          '2' : {
+            'name' : 'punctuation.NLex'
+          }
+          '3' : {
+            'name' : 'keyword punctuation.NLex'
+          }
+        }
+        'patterns' : [
+          {
+            'include' : '#main__4'
+          }
+        ]
+        'end' : '(^(?=.{0,1})(?:|))'
+        'endCaptures' : {
+          '1' : {
+            'name' : 'punctuation.NLex'
+          }
+        }
+      }
+      {
         'begin' : '(normalise)(\\s+)(\\{)((?:[^\\x{007d}]|\\\\})*)(\\})(\\s+)(to)(.)'
         'beginCaptures' : {
           '1' : {
@@ -126,7 +151,7 @@
             'name' : 'punctuation.NLex'
           }
           '4' : {
-            'name' : 'entity.name.type.class.NLex'
+            'name' : 'constant.character.NLex'
           }
           '5' : {
             'name' : 'punctuation.NLex'
@@ -138,18 +163,14 @@
             'name' : 'keyword.NLex'
           }
           '8' : {
-            'name' : 'entity.name.type.class.NLex'
+            'name' : 'constant.character.NLex'
           }
         }
-        'patterns' : [
-          {
-            'include' : '#normaliser'
-          }
-        ]
-        'end' : '(^)'
+        'contentName' : 'constant.character.NLex'
+        'end' : '(^(?=.{0,1})(?:|))'
         'endCaptures' : {
           '1' : {
-            'name' : 'constant.character.escape.NLex'
+            'name' : 'punctuation.NLex'
           }
         }
       }
@@ -264,16 +285,32 @@
       }
     ]
   }
-  'normaliser' : {
+  'main__4' : {
     'patterns' : [
       {
-        'match' : '(\\s)'
-        'name' : 'message.error.NLex'
+        'match' : '(-?)(")(?:(\\\\uc\\{[^\\x{007d}]*\\})|((?:[^\\x{0022}]|\\\\")*))(")'
+        'captures' : {
+          '1' : {
+            'name' : 'keyword punctuation.NLex'
+          }
+          '2' : {
+            'name' : 'punctuation.NLex'
+          }
+          '3' : {
+            'name' : 'entity.name.type.class.NLex'
+          }
+          '4' : {
+            'name' : 'string.NLex'
+          }
+          '5' : {
+            'name' : 'punctuation.NLex'
+          }
+        }
       }
-      {
-        'match' : '(.)'
-        'name' : 'string.other.link.NLex'
-      }
+    ]
+  }
+  'main__5' : {
+    'patterns' : [
     ]
   }
   'regularExpression' : {
@@ -453,13 +490,13 @@
             'name' : 'keyword punctuation.NLex'
           }
           '2' : {
-            'name' : 'constant.character.escape.NLex'
-          }
-          '3' : {
             'name' : 'punctuation.NLex'
           }
+          '3' : {
+            'name' : 'string.NLex'
+          }
           '4' : {
-            'name' : 'constant.character.escape.NLex'
+            'name' : 'punctuation.NLex'
           }
         }
       }
