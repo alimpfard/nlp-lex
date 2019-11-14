@@ -1,7 +1,7 @@
 # Emit a pure_normalise function that simply returns a normalised character
 option pure_normaliser on
 
-# Allow width-lenghening normalisations
+# Allow width-lengthening normalisations
 option unsafe_normaliser on
 
 option log_warning on

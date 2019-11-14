@@ -37,18 +37,47 @@ char *paths[] = {"/home/Test/shits/sample100150", "/home/Test/shits/sample10001"
 
 // char* paths[] = {"/home/Test/Documents/nlp-lex/wrapper/c/test"};
 
-int main()
+int main(int argc, char* argv[])
 {
+  int start_of_paths = 1;
+  int json = 0;
+    for (int i = 1; i < argc; i++) {
+      start_of_paths = i + 1;
+      if (strcmp("--", argv[i]) == 0) { start_of_paths = i + 1; break; }
+      char *arg = argv[i];
+      if (*arg == '-') {
+        if (strcmp(arg+1, "-json") == 0) {
+          json = 1;
+          continue;
+        }
+        if (strcmp(arg+1, "h") == 0) {
+          puts("nlex wrapper interface\n  wrap [options] -- input_file...\n\n[OPTIONS]\n\t--json : generate json output\n\t-h : print this help and exit");
+          exit(0);
+        }
+        printf("Error: unknown argument '%s'", arg);
+        exit(1);
+      } else {
+        start_of_paths = i + 1;
+        break;
+      }
+    }
     int y = 0;
     struct sresult res = {0};
-    for (char **x = &paths[0]; *x; x++) {
+    if (json)
+      printf("{\"description\": \"nlex\", \"documents\": [");
+    for (char **x = &argv[start_of_paths]; *x; x++) {
+      if (json)
+        printf("\n\t{\"filename\": \"%s\", \"tokens\": [", *x);
         char *end;
         char *s = getf(*x, &end);
         __nlex_feed(s);
         char *start = s;
         int pos, last_pos = -1;
+        int first = 1;
+        int id = 0;
       while (1) {
           y++;
+          id++;
           if (start>=end) break;
         __nlex_root(&res);
           if (res.length == 0 || (pos=__nlex_distance()) == last_pos) {
@@ -62,10 +91,17 @@ int main()
         if (res.errc) {
             break;
         }
-
+        if (json)
+          printf("%s\n\t\t{\"id\": %d, \"is_stopword\": %s, \"token\": \"%.*s\", \"type\": \"%s\"}", (first ? "" : ","), id*10, res.metadata&1?"true":"false", res.length, res.start, res.tag);
+        else 
         printf("%smatch {'%.*s' %d %s} is%sa stopword\n", (res.errc?"no ":""), res.length, res.start, res.length, res.tag, (res.metadata&1?" ":" not "));
+        if (first) first = 0;
       }
         free(s);
+        if(json) printf("\n\t]}");
+        if (json && x[1]) printf(",");
     }
+    if (json) printf("\n]}");
+    if (!json)
     printf("\n%d\n", y);
 }
