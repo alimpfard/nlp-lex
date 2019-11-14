@@ -80,6 +80,7 @@ currently significant options:
 | `pure_normaliser`   | creates a function `__nlex_pure_normalise` that returns the next normalised character in the stream | `off` |
 | `unsafe_normaliser`   | disable the length check on normalised values | `off` |
 | `skip_on_error`       | skip unmatchable characters | `off` |
+| `log_{verbose,warning,debug}` | set log level (verbose \< warning \< debug) | (unset) |
 
 ### Regular Expressions
 
