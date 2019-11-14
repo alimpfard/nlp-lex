@@ -62,6 +62,12 @@ to completely omit the result of a rule (discard its match), use the `ignore` st
 
 for example `ignore [space punct]` will omit all the tokens that would've matched either of the rules `space` or `punct`
 
+Comments span from the character `#` until the end of line except inside regex rules, wherein there are no comments available (`(?#...)` might be an option later)
+
+```
+    # Hi, I am a comment
+```
+
 ### Options
 
 an option is of the form `option <name> <value>` where \<value\> is either `on` or `off`
