@@ -10,13 +10,13 @@
 namespace Display {
 enum class Type : int {
   MUST_SHOW = 0,
-  ERROR,
-  INFO,
-  LOG,
-  VERBOSE,
-  WARNING,
-  DEBUG,
-  EVERYTHING,
+  ERROR = 1,
+  INFO = 2,
+  LOG = 3,
+  VERBOSE = 4,
+  WARNING = 5,
+  DEBUG = 6,
+  EVERYTHING = 7,
 };
 static char *Typename[] = {
     [(int)Type::MUST_SHOW] = "MUST_SHOW",
@@ -64,6 +64,8 @@ class SingleLineTermStatus {
     int x;
     int y;
   } sposition, eposition;
+
+public:
   Type min_req = Type::INFO;
 
   bool dirty = false;
@@ -104,7 +106,7 @@ public:
     display(Display::string_format("[{<green>}%s{<clean>}] %s",
                                    Typename[(int)type],
                                    Display::string_format(fmt, a...).c_str()),
-            true);
+            false);
   }
   template <typename... Args>
   void show_c(const Type type, std::string fmt, Args... a) {

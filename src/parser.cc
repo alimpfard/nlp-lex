@@ -135,8 +135,17 @@ void NParser::parse() {
         failing = true;
         break;
       }
-      gen_lexer_options[std::get<std::string>(persist)] =
-          std::get<bool>(token.value);
+      {
+        std::string s = std::get<std::string>(persist);
+        if (s == "log_verbose")
+          slts.min_req = Display::Type::VERBOSE;
+        else if (s == "log_debug")
+          slts.min_req = Display::Type::DEBUG;
+        else if (s == "log_warning")
+          slts.min_req = Display::Type::WARNING;
+        else
+          gen_lexer_options[s] = std::get<bool>(token.value);
+      }
       statestack.pop(); // OptionName
       statestack.pop(); // Option
       break;
@@ -392,16 +401,14 @@ std::vector<Regexp *> get_all_finals(Regexp *exp) {
 
 NFANode<std::string> *NParser::compile() {
   parse();
-#ifdef TEST
-  slts.show(Display::Type::INFO, "== all defined rules ==\n");
+  slts.show(Display::Type::WARNING, "== all defined rules ==\n");
   for (auto &it : values) {
     if (std::get<0>(it.second) == SymbolType::Define) {
       auto rule = std::get<Regexp *>(std::get<2>(it.second));
-      slts.show(Display::Type::INFO, "rule \"%s\" - <%s>\n", it.first.c_str(),
-                rule->to_str().c_str());
+      slts.show(Display::Type::WARNING, "rule \"%s\" - <%s>\n",
+                it.first.c_str(), rule->to_str().c_str());
     }
   }
-#endif
   NFANode<std::string> *root_node = new NFANode<std::string>{"root"};
   root_node->start = true;
   std::multimap<const Regexp *, NFANode<std::string> *> node_cache;

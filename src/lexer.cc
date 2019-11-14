@@ -718,7 +718,7 @@ std::optional<Regexp> NLexer::regexp_tl() {
     while (1) {
       c = *source_p;
       advance(1);
-      if (!isalnum(c))
+      if (!isalnum(c) && c != '_')
         break;
       buffer[length++] = c;
     }

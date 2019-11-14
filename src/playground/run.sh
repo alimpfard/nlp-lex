@@ -2,7 +2,7 @@ gen() {
   (
     cat $1
     echo ".dot"
-    # echo ".gengraph"
+    echo ".gengraph"
     echo ".nlvm"
     echo ".end"
   ) | ../a.out 2> ll.ll

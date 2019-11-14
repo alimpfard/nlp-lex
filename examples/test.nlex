@@ -1,8 +1,12 @@
+# Emit a pure_normalise function that simply returns a normalised character
 option pure_normaliser on
+
+# Allow width-lenghening normalisations
 option unsafe_normaliser on
 
-# option viterbi on from "model.json"
+option log_warning on
 
+# option viterbi on from "model.json"
 
 word    :: [آائبپتثجچحخدذرزژسشصضطظعغفقکكلمنوهي\u200c]+
 enword  :: [A-z]+
@@ -11,10 +15,17 @@ Punc     ::[.،,:;'()*%!~.:؟؛«»/\u002da#$%^&?_]+
 Space   :: [ 	\u000a]+
 Mention :: @[A-z][A-z_0-9]{4,}
 
+# \uc{RGI} is the set of all RGI emojis
 emoji   -- "\uc{RGI}"
 
-link    :: ([A-z]+://)?[A-z\u002d]+\.[A-z\u002d]{2,}(:[0-9]{2,5})?/?([A-z0-9._~:/?#@!$&'*+,;=\u002d]+)?
+maybe_specifier :- ([a-z]+://)?
+uri :- (([a-zA-Z0-9_]|-)+\.)+
+tld :- [a-z]{2,}
+maybe_port :- (:\d+)?
 
+link :: {{maybe_specifier}}{{uri}}{{tld}}{{maybe_port}}([a-zA-Z_0-9@:%\+.~\?&/=]|-)+
+
+# omit spaces from token output
 ignore [Space]
 
 
@@ -43,6 +54,7 @@ stopword "برخورد" "خارجي" "نظام" "كرد" "حال" "سياست" "
 stopword "توان" "جهت" "داشته" "ولي" "انقلاب" "اساسي" "آموزش" "خواهند" "روز" "امروز"
 stopword  "مختلف" "گذشته" "گفت" "قبل" "گرفتن" "هيچ" "كار" "بازرگاني" "بيني" "سابق" "-"
 
+# Spaces inside the normalise source set are ignored (use unicode codepoint if needed)
 normalise {٠} to ۰
 normalise {١} to ۱
 normalise {٢} to ۲
