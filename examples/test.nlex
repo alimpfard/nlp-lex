@@ -1,6 +1,9 @@
 option pure_normaliser on
 option unsafe_normaliser on
 
+# option viterbi on from "model.json"
+
+
 word    :: [آائبپتثجچحخدذرزژسشصضطظعغفقکكلمنوهي\u200c]+
 enword  :: [A-z]+
 number  :: [0-9]+

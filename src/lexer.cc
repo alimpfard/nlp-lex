@@ -129,6 +129,8 @@ inline void NLexer::comment(char c) {
   if (c == '#') {
     do {
       c = *source_p;
+      if (!c)
+        return;
       advance(1);
       if (c == '\n') {
         lineno++;
@@ -152,6 +154,8 @@ inline Token NLexer::_next() {
   if (!*source_p)
     return Token{TOK_EOF, lineno, offset, 0};
   do {
+    if (!*source_p)
+      return Token{TOK_EOF, lineno, offset, 0};
     c = *(source_p++);
     offset++;
     if (c == '#') {
