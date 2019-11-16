@@ -1,32 +1,22 @@
-# toplevel syntax
-#   constant  :- symbol :- string-literal
-#   rule      :- symbol :: defn
-#   normalise :- char <= char-list (comma separated? ask for ideas)
-#   stopwords :- stopword quoted-string-literal (commas optional)
-#   option    :- option _name_ _value_
-#   -"string" subst with file content
-#
-# split with a default delimiter?
-# NFA output + decompile back
-#
-# --
-
-option lemmatise on
-
-u0ffe  :- "\u0ffe"
-number :: \d+
-float  :: {{number}}\.{{number}}
-word   :: [\w{{u0ffe}}]+
-
-t      <= cdf
-x      <= xyz
-
-stopword "test", "shit", "blah", -"stopwords.list"
-
 # TODO items
 # - optimise regexp itself
 #   - if all branches of an Alternative are literals, transform to character class { 1|2|3|4|5|6... -> [123456] }
 #
+# -
+#  option pos_tagger on
+#  pos tag with delimiter Punc{.} and model "model.json"
+#  # Error if pos_tagger is off
+#  # model structure: https://github.com/alimpfard/citron-tp-test/blob/master/part-6/model.json
+#
+#  # This requires two variable-sized buffers for sentences of {start, length, tag, errc, modifier, *postag} x N 
+#  #      where N is the size of the buffer
+#  # and so, __nlex_root becomes a tailcall to itself until we reach the delimiter.
+#  # and in doing so, it reads a token into the working buffer, and releases a token from the ready buffer
+#  # if we reach a delimiter before running out of ready buffer, we just empty the ready buffer without reading more tokens
+#  # after which time, we rotate the buffers, run the pos tagger (XXX IDEA could the be made faster? if the tagger is bigram, we could
+#  #      run it in tandem with the token generation, and only tag the last bit at the end)
+#  # and continue as usual
+# 
 #
 # - Figure out how to handle:
 #   - rule-based token operations (for common mistakes)
@@ -39,6 +29,5 @@ stopword "test", "shit", "blah", -"stopwords.list"
 #       - provide a few well-known implementations for specific languages?
 #     - allow the user to provide her own implementation that generates llvm bytecode?
 #         - calling convention?
-#   - json in-out
-#   - create python wrapper with compile-on-need
+#   - add compile-on-need to python wrapper 
 #   - 'option farsi on' to appease the gods
