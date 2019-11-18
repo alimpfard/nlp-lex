@@ -4,7 +4,8 @@
 #
 # -
 #  option pos_tagger on
-#  pos tag with delimiter Punc{.} and model "model.json"
+#  |tag pos| |every <N> token| (N = 3) |from "model.json"| (path = 'pos-tag.json') |with| |delimiter Punc{.}| (punc{.})
+#  tag pos
 #  # Error if pos_tagger is off
 #  # model structure: https://github.com/alimpfard/citron-tp-test/blob/master/part-6/model.json
 #

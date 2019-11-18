@@ -85,10 +85,8 @@ std::vector<std::string> handle_unicodes(std::string str) {
 }
 
 void NParser::parse() {
-  statestack = {};
-  statestack.push(ParserState::Toplevel);
   bool failing = false;
-  std::variant<std::string, int> persist;
+  std::variant<std::string, int, TagPosSpecifier> persist;
   do {
     Token token = lexer->next();
     if (token.type == TOK_EOF)
@@ -98,6 +96,10 @@ void NParser::parse() {
     switch (statestack.top()) {
     case ParserState::Toplevel:
       switch (token.type) {
+      case TOK_TAG:
+        persist = TagPosSpecifier{};
+        statestack.push(ParserState::Tag);
+        break;
       case TOK_OPTION:
         statestack.push(ParserState::Option);
         break;
@@ -114,6 +116,7 @@ void NParser::parse() {
       case TokenType::TOK_OPNORMAL:
         statestack.push(ParserState::Normal);
         break;
+      error:
       case TOK_ERROR:
       default:
         slts.show(Display::Type::MUST_SHOW, "It's all gone to whack\n");
@@ -353,6 +356,83 @@ void NParser::parse() {
       statestack.pop(); // normalS
       break;
     }
+    case ParserState::Tag: {
+      if (token.type != TOK_TAGPOS) {
+        slts.show(Display::Type::ERROR, "Expected `pos' to follow `tag'");
+        goto error;
+      }
+      if (hastagpos) {
+        slts.show(Display::Type::ERROR,
+                  "Tag POS has already been specified once");
+        statestack.pop();
+        break;
+      }
+      statestack.pop();
+      statestack.push(ParserState::TagPos);
+      break;
+    }
+    case ParserState::TagPos: {
+      hastagpos = true;
+      tagpos = std::get<TagPosSpecifier>(persist);
+      switch (token.type) {
+      case TOK_TAGPOSEVERY: {
+        TagPosSpecifier &tpos = std::get<TagPosSpecifier>(persist);
+        if (tpos.gram_set) {
+          slts.show(Display::Type::ERROR,
+                    "`tag pos ... every %d tokens' already specified",
+                    tpos.gram);
+          break;
+        }
+        tpos.gram_set = true;
+        tpos.gram = std::get<int>(token.value);
+        break;
+      }
+      case TOK_TAGPOSFROM: {
+        TagPosSpecifier &tpos = std::get<TagPosSpecifier>(persist);
+        if (tpos.from_set) {
+          slts.show(Display::Type::ERROR,
+                    "`tag pos ... from %s' already specified",
+                    tpos.from.c_str());
+          break;
+        }
+        tpos.from_set = true;
+        const Token tok = lexer->next();
+        if (tok.type == TOK_ERROR)
+          goto error;
+        tpos.from = std::get<std::string>(tok.value);
+        break;
+      }
+      case TOK_TAGPOSDELIM: {
+        TagPosSpecifier &tpos = std::get<TagPosSpecifier>(persist);
+        if (tpos.rule_set) {
+          slts.show(Display::Type::ERROR,
+                    "`tag pos ... with delimiter %s{...}' already specified",
+                    tpos.rule.c_str());
+          break;
+        }
+        tpos.rule_set = true;
+        const Token tok = lexer->next(); // name
+        if (tok.type == TOK_ERROR)
+          goto error;
+        tpos.rule = std::get<std::string>(tok.value);
+        if (tpos.tval_set) {
+          slts.show(Display::Type::ERROR,
+                    "`tag pos ... with delimiter %s{%s}' already specified",
+                    tpos.rule.c_str(), tpos.tval.c_str());
+          break;
+        }
+        tpos.tval_set = true;
+        const Token tok2 = lexer->next(); // {...}
+        if (tok2.type == TOK_ERROR)
+          goto error;
+        tpos.tval = std::get<std::string>(tok2.value);
+        break;
+      }
+      default:
+        statestack.pop();
+        goto doitagain;
+      }
+    }
     }
   } while (!failing);
 }
@@ -401,6 +481,28 @@ std::vector<Regexp *> get_all_finals(Regexp *exp) {
 
 NFANode<std::string> *NParser::compile() {
   parse();
+  if (hastagpos) {
+    TagPosSpecifier tps = tagpos;
+    auto v = values.find(tps.rule);
+    if (v != values.end()) {
+      if (std::get<0>(v->second) != SymbolType::Define) {
+        slts.show(Display::Type::ERROR,
+                  "Tag POS can only be delimited by {<green>}matched{<clean>} "
+                  "rules, '%s' is an inline constant",
+                  tps.rule.c_str());
+        return nullptr;
+      }
+    } else {
+      slts.show(Display::Type::ERROR,
+                "Requested tag pos delimiter {<red>}%s{<clean>} has not been "
+                "defined.%s",
+                tps.rule.c_str(),
+                tps.rule_set ? ""
+                             : "\nTip: This could be fixed by specifying a "
+                               "rule:\n{<green>}tag pos {<magenta>}with "
+                               "delimiter Punc{.}{<clean>}\n");
+    }
+  }
   slts.show(Display::Type::WARNING, "== all defined rules ==\n");
   for (auto &it : values) {
     if (std::get<0>(it.second) == SymbolType::Define) {
@@ -1594,6 +1696,7 @@ int main() {
   nlvmg.builder.module._cmain = nlvmg.builder.module._main;
   while (1) {
     std::string line;
+    std::cout << parser.lexer->lxst2str[(int)parser.lexer->state];
     std::cout << "> ";
     std::getline(std::cin, line);
     if (line == ".tree") {
@@ -1645,13 +1748,12 @@ int main() {
         bool run = true;
 
         std::thread render{[&]() {
-          nlvmg.builder.prepare({
-              parser.gen_lexer_options,
-              parser.gen_lexer_stopwords,
-              parser.gen_lexer_ignores,
-              parser.gen_lexer_normalisations,
-              parser.gen_lexer_literal_tags,
-          });
+          nlvmg.builder.prepare(
+              {parser.gen_lexer_options, parser.gen_lexer_stopwords,
+               parser.gen_lexer_ignores, parser.gen_lexer_normalisations,
+               parser.gen_lexer_literal_tags,
+               parser.hastagpos ? std::optional<TagPosSpecifier>{parser.tagpos}
+                                : std::optional<TagPosSpecifier>{}});
 
           nlvmg.generate(rootdfa);
           nlvmg.output();
@@ -1660,13 +1762,12 @@ int main() {
         exec(("../tools/wm '" + name + "'").c_str(), run);
         render.join();
       } else {
-        nlvmg.builder.prepare({
-            parser.gen_lexer_options,
-            parser.gen_lexer_stopwords,
-            parser.gen_lexer_ignores,
-            parser.gen_lexer_normalisations,
-            parser.gen_lexer_literal_tags,
-        });
+        nlvmg.builder.prepare(
+            {parser.gen_lexer_options, parser.gen_lexer_stopwords,
+             parser.gen_lexer_ignores, parser.gen_lexer_normalisations,
+             parser.gen_lexer_literal_tags,
+             parser.hastagpos ? std::optional<TagPosSpecifier>{parser.tagpos}
+                              : std::optional<TagPosSpecifier>{}});
 
         nlvmg.generate(rootdfa);
         nlvmg.output();
@@ -1674,6 +1775,8 @@ int main() {
       continue;
     }
     parser.repl_feed(line);
+    parser.statestack = {};
+    parser.statestack.push(ParserState::Toplevel);
     parser.parse();
   }
 }

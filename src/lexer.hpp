@@ -25,6 +25,12 @@ enum TokenType {
   TOK_REGEX,
   TOK_EOF,
   TOK_CBRAC, // terminate ignore
+  TOK_TAG,
+  TOK_TAGPOS,
+  TOK_TAGPOSWITH,
+  TOK_TAGPOSFROM,
+  TOK_TAGPOSEVERY,
+  TOK_TAGPOSDELIM,
   TOK_ERROR
 };
 
@@ -43,6 +49,12 @@ static char *reverse_token_type[TOK_ERROR + 1] = {
     [TOK_REGEX] = "Regexp",
     [TOK_EOF] = "EOF",
     [TOK_CBRAC] = "CloseBracket",
+    [TOK_TAG] = "Tag",
+    [TOK_TAGPOS] = "Pos",
+    [TOK_TAGPOSWITH] = "TagPosWith",
+    [TOK_TAGPOSFROM] = "TagPosFrom",
+    [TOK_TAGPOSEVERY] = "TagPosEvery",
+    [TOK_TAGPOSDELIM] = "TagPosDelimiter",
     [TOK_ERROR] = "Error"};
 
 struct Token {
@@ -50,7 +62,7 @@ struct Token {
   int lineno;
   int offset;
   int length;
-  std::variant<std::string, bool, Regexp> value;
+  std::variant<std::string, bool, Regexp, int> value;
 
 public:
   void print();
@@ -64,7 +76,7 @@ static Token EOFToken = {
     0,
 };
 
-enum class LexerState {
+enum class LexerState : int {
   Toplevel = 0, // valid tokens:
                 /* Option   -> Option
                  * Stopword -> Stopword
@@ -97,6 +109,32 @@ enum class LexerState {
   NormalTgt, // -> Toplevel
   Define,    // -> Toplevel (parses a regex)
   Literal,   // -> Toplevel (parses a sequence of strings)
+
+  Tag,    // 'pos' -> TagPOS
+  TagPOS, // 'from' -> TagPOSFrom
+          // 'every' -> TagPOSEvery
+          // 'with' -> TagPOSWith
+          // 'delimiter' -> TagPOSWith
+          // * -> Toplevel
+
+  TagPOSFrom, // -> Toplevel (reads string)
+              // 'every' -> TagPOSEvery
+              // 'with' -> TagPOSWith
+              // 'delimiter' -> TagPOSWith
+
+  TagPOSEvery, // number -> TagPOSEveryToken
+
+  TagPOSEveryToken,
+  // 'with' -> TagPOSWith
+  // 'delimiter' -> TagPOSDelimiter
+  // 'from' -> TagPOSFrom
+
+  TagPOSWith,
+  // 'delimiter' -> TagPOSDelimiter
+
+  TagPOSDelimiter,
+  TagPOSDelimiterName,
+  TagPOSDelimiterValue,
 };
 
 enum ErrorPosition {
@@ -127,6 +165,31 @@ class NLexer {
   Token prev_token;
 
 public:
+  std::string lxst2str[((int)LexerState::TagPOSDelimiterValue) + 1] = {
+      [(int)LexerState::Toplevel] = "Toplevel",
+      [(int)LexerState::Name] = "Name",
+      [(int)LexerState::Option] = "Option",
+      [(int)LexerState::OptionBool] = "OptionBool",
+      [(int)LexerState::Stopword] = "Stopword",
+      [(int)LexerState::Ignore] = "Ignore",
+      [(int)LexerState::IgnoreBrac] = "IgnoreBrac",
+      [(int)LexerState::String] = "String",
+      [(int)LexerState::Const] = "Const",
+      [(int)LexerState::NormalSrc] = "NormalSrc",
+      [(int)LexerState::NormalTo] = "NormalTo",
+      [(int)LexerState::NormalTgt] = "NormalTgt",
+      [(int)LexerState::Define] = "Define",
+      [(int)LexerState::Literal] = "Literal",
+      [(int)LexerState::Tag] = "Tag",
+      [(int)LexerState::TagPOS] = "TagPOS",
+      [(int)LexerState::TagPOSFrom] = "TagPOSFrom",
+      [(int)LexerState::TagPOSEvery] = "TagPOSEvery",
+      [(int)LexerState::TagPOSEveryToken] = "TagPOSEveryToken",
+      [(int)LexerState::TagPOSWith] = "TagPOSWith",
+      [(int)LexerState::TagPOSDelimiter] = "TagPOSDelimiter",
+      [(int)LexerState::TagPOSDelimiterName] = "TagPOSDelimiterName",
+      [(int)LexerState::TagPOSDelimiterValue] = "TagPOSDelimiterValue",
+  };
   std::string source;
 
   char *source_p;

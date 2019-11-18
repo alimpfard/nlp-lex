@@ -34,6 +34,12 @@ enum class ParserState {
   Literal,
   Normal,
   NormalS,
+  // Tag ...
+  Tag,
+  TagPos,
+  TagPosEvery,
+  TagPosFrom,
+  TagPosDelim,
 };
 
 struct SymbolDebugInformation {
@@ -49,17 +55,20 @@ class NParser {
   std::map<std::string, std::tuple<SymbolType, SymbolDebugInformation,
                                    std::variant<std::string, Regexp *>>>
       values;
-  std::stack<ParserState> statestack;
 
   std::set<std::string> find_leaf_rules() const;
   std::set<std::string> find_rules() const;
 
 public:
+  std::stack<ParserState> statestack;
   std::map<std::string, bool> gen_lexer_options;
   std::set<std::string> gen_lexer_stopwords;
   std::set<std::string> gen_lexer_ignores;
   std::map<std::string, std::string> gen_lexer_normalisations;
   std::map<std::string, std::vector<std::string>> gen_lexer_literal_tags;
+
+  TagPosSpecifier tagpos;
+  bool hastagpos = false;
 
   bool generate_graph = false;
 

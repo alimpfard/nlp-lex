@@ -37,6 +37,31 @@
         }
       }
       {
+        'begin' : '(tag)(\\s*)(pos)'
+        'beginCaptures' : {
+          '1' : {
+            'name' : 'keyword punctuation.NLex'
+          }
+          '2' : {
+            'name' : 'punctuation.NLex'
+          }
+          '3' : {
+            'name' : 'keyword.NLex'
+          }
+        }
+        'patterns' : [
+          {
+            'include' : '#main__1'
+          }
+        ]
+        'end' : '(^(?=.{0,1})(?:|))'
+        'endCaptures' : {
+          '1' : {
+            'name' : 'punctuation.NLex'
+          }
+        }
+      }
+      {
         'begin' : '(\\w+)(\\s*)(::)'
         'beginCaptures' : {
           '1' : {
@@ -51,7 +76,7 @@
         }
         'patterns' : [
           {
-            'include' : '#main__1'
+            'include' : '#main__2'
           }
         ]
         'end' : '(^(?=.{0,1})(?:|))'
@@ -103,7 +128,7 @@
         }
         'patterns' : [
           {
-            'include' : '#main__3'
+            'include' : '#main__4'
           }
         ]
         'end' : '(^(?=.{0,1})(?:|))'
@@ -128,7 +153,7 @@
         }
         'patterns' : [
           {
-            'include' : '#main__4'
+            'include' : '#main__5'
           }
         ]
         'end' : '(^(?=.{0,1})(?:|))'
@@ -246,23 +271,19 @@
         }
         'patterns' : [
           {
-            'include' : '#regularExpression'
+            'include' : '#tag_pos'
           }
         ]
-        'end' : '(^|\\)|\\])'
+        'end' : '(^(?=.{0,1})(?:|))'
         'endCaptures' : {
           '1' : {
-            'name' : 'string.regexp.NLex'
+            'name' : 'punctuation.NLex'
           }
         }
       }
     ]
   }
   'main__2' : {
-    'patterns' : [
-    ]
-  }
-  'main__3' : {
     'patterns' : [
       {
         'begin' : '(\\s*)'
@@ -285,7 +306,34 @@
       }
     ]
   }
+  'main__3' : {
+    'patterns' : [
+    ]
+  }
   'main__4' : {
+    'patterns' : [
+      {
+        'begin' : '(\\s*)'
+        'beginCaptures' : {
+          '1' : {
+            'name' : 'punctuation.NLex'
+          }
+        }
+        'patterns' : [
+          {
+            'include' : '#regularExpression'
+          }
+        ]
+        'end' : '(^|\\)|\\])'
+        'endCaptures' : {
+          '1' : {
+            'name' : 'string.regexp.NLex'
+          }
+        }
+      }
+    ]
+  }
+  'main__5' : {
     'patterns' : [
       {
         'match' : '(-?)(")(?:(\\\\uc\\{[^\\x{007d}]*\\})|((?:[^\\x{0022}]|\\\\")*))(")'
@@ -309,7 +357,7 @@
       }
     ]
   }
-  'main__5' : {
+  'main__6' : {
     'patterns' : [
     ]
   }
@@ -496,6 +544,73 @@
             'name' : 'string.NLex'
           }
           '4' : {
+            'name' : 'punctuation.NLex'
+          }
+        }
+      }
+    ]
+  }
+  'tag_pos' : {
+    'patterns' : [
+      {
+        'match' : '(every)(\\s*)(\\d+)(\\s*)(tokens?)'
+        'captures' : {
+          '1' : {
+            'name' : 'keyword punctuation.NLex'
+          }
+          '2' : {
+            'name' : 'punctuation.NLex'
+          }
+          '3' : {
+            'name' : 'keyword.NLex'
+          }
+          '4' : {
+            'name' : 'punctuation.NLex'
+          }
+          '5' : {
+            'name' : 'keyword punctuation.NLex'
+          }
+        }
+      }
+      {
+        'match' : '(from)(\\s*)("(?:[^\\x{0022}]|\\\\")*")'
+        'captures' : {
+          '1' : {
+            'name' : 'keyword punctuation.NLex'
+          }
+          '2' : {
+            'name' : 'punctuation.NLex'
+          }
+          '3' : {
+            'name' : 'string.NLex'
+          }
+        }
+      }
+      {
+        'match' : '(with)?(\\s*)(delimiter)(\\s*)(\\w+)(\\{)([^\\x{007b}]+)(\\})'
+        'captures' : {
+          '1' : {
+            'name' : 'keyword punctuation.NLex'
+          }
+          '2' : {
+            'name' : 'punctuation.NLex'
+          }
+          '3' : {
+            'name' : 'keyword punctuation.NLex'
+          }
+          '4' : {
+            'name' : 'punctuation.NLex'
+          }
+          '5' : {
+            'name' : 'entity.name.type.class.NLex'
+          }
+          '6' : {
+            'name' : 'punctuation.NLex'
+          }
+          '7' : {
+            'name' : 'constant.character.NLex'
+          }
+          '8' : {
             'name' : 'punctuation.NLex'
           }
         }

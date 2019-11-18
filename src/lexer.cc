@@ -85,6 +85,10 @@ void Token::print() {
     std::printf("Token { %s, line %d, offset %d, length %d, value = <%s> }\n",
                 reverse_token_type[type], lineno, offset, length,
                 std::get<Regexp>(value).to_str().c_str());
+  else if (type == TokenType::TOK_TAGPOSEVERY)
+    std::printf("Token { %s, line %d, offset %d, length %d, value = <%d> }\n",
+                reverse_token_type[type], lineno, offset, length,
+                std::get<int>(value));
   else
     std::printf("Token { %s, line %d, offset %d, length %d, value = <%s> }\n",
                 reverse_token_type[type], lineno, offset, length,
@@ -191,6 +195,13 @@ inline Token NLexer::_next() {
       return Token{TOK_STOPWORD, lineno, offset - strlen("stopword"),
                    strlen("stopword"), empty_string};
     }
+    if (c == 't' && strncmp("ag", source_p, strlen("ag")) == 0 &&
+        !isalnum(source_p[strlen("ag")])) {
+      state = LexerState::Tag;
+      advance(strlen("ag"));
+      return Token{TOK_TAG, lineno, offset - strlen("tag"), strlen("tag"),
+                   empty_string};
+    }
     if (c == 'i' && strncmp("gnore", source_p, strlen("gnore")) == 0 &&
         !isalnum(*(source_p + strlen("gnore")))) {
       state = LexerState::Ignore;
@@ -232,6 +243,215 @@ inline Token NLexer::_next() {
     return Token{TOK_NAME, lineno, offset - length, length,
                  std::string{buffer, length}};
     break;
+  }
+  case LexerState::Tag: {
+    const Token &mtoken = error_token();
+    if (c != 'p' || strncmp(source_p, "os", 2) != 0) {
+      lexer_error(*this, Errors::Unexpected, mtoken, ErrorPosition::On,
+                  "Expected 'pos' after 'tag'");
+      return mtoken;
+    }
+    advance(2);
+    state = LexerState::TagPOS;
+    return Token{TOK_TAGPOS, lineno, offset - 3, 3, empty_string};
+  }
+  case LexerState::TagPOS: {
+    if (c == 'f' && strncmp(source_p, "rom", 3) == 0) {
+      // from
+      advance(3);
+      state = LexerState::TagPOSFrom;
+      return Token{TOK_TAGPOSFROM, lineno, offset - 4, 4, empty_string};
+    }
+    if (c == 'e' && strncmp(source_p, "very", 4) == 0) {
+      // every
+      advance(4);
+      state = LexerState::TagPOSEvery;
+      return _next(); // desugar
+    }
+    if (c == 'w' && strncmp(source_p, "ith", 3) == 0) {
+      // with
+      advance(3);
+      state = LexerState::TagPOSWith;
+      return _next(); // desugar
+    }
+    if (c == 'd' && strncmp(source_p, "elimiter", 8) == 0) {
+      // delimiter
+      advance(8);
+      state = LexerState::TagPOSDelimiterName;
+      return Token{TOK_TAGPOSDELIM, lineno, offset - 4, 4, empty_string};
+    }
+    advance(-1);
+    state = LexerState::Toplevel;
+    return _next();
+  }
+  case LexerState::TagPOSFrom: {
+    const Token &mtoken = error_token();
+    std::optional<std::string> vstr = string(true);
+    if (!vstr.has_value()) {
+      lexer_error(*this, Errors::ExpectedValue, mtoken, ErrorPosition::After,
+                  "Expected a string after `tag pos ... from'");
+      return mtoken;
+    }
+    state = LexerState::TagPOS;
+    std::string str = vstr.value();
+    return Token{TOK_LITSTRING, lineno, offset - str.size(), str.size(), str};
+  }
+  case LexerState::TagPOSEvery: {
+    const Token &mtoken = error_token();
+    char buf[40];
+    int ml = 0;
+    while (isdigit(c)) {
+      buf[ml++] = c;
+      advance(1);
+      c = *source_p;
+    }
+    buf[ml] = 0;
+    int gram = atoi(buf);
+    if (gram > 3 || gram < 1)
+      lexer_error(
+          *this, Errors::Unexpected, mtoken, ErrorPosition::On,
+          "Likely invalid gram size (%d) for `tag pos ... every %d tokens'",
+          gram, gram);
+
+    while (isspace(c)) {
+      if (c == '\n')
+        break;
+      advance(1);
+      c = *source_p;
+    }
+    if ((strncmp(source_p, "tokens", 5) != 0 &&
+         strncmp(source_p, "token", 4) != 0)) {
+      lexer_error(*this, Errors::ExpectedValue, mtoken, ErrorPosition::On,
+                  "Missing expected syntax element 'tokens' in `tag pos ... "
+                  "every %d tokens'",
+                  gram);
+    } else
+      advance((strncmp(source_p, "tokens", 5) == 0) + 5);
+    state = LexerState::TagPOS;
+    return Token{TOK_TAGPOSEVERY, lineno, offset - ml + 1, ml - 1, gram};
+  }
+  case LexerState::TagPOSWith: {
+    state = LexerState::TagPOSDelimiter;
+    return _next();
+  }
+  case LexerState::TagPOSDelimiter: {
+    // delimiter NAME '{' ... '}'
+    const Token &mtoken = error_token();
+    if (c != 'e' || strncmp(source_p, "limiter", 7) != 0) {
+      lexer_error(*this, Errors::ExpectedValue, mtoken, ErrorPosition::On,
+                  "Missing expected syntax element 'delimiter' in `tag pos ... "
+                  "with delimiter ...'");
+    }
+    advance(7);
+    state = LexerState::TagPOSDelimiterName;
+    return Token{TOK_TAGPOSDELIM, lineno, offset - 9, 9, empty_string};
+  }
+  case LexerState::TagPOSDelimiterName: {
+    // delimiter NAME '{' ... '}'
+    const Token &mtoken = error_token();
+
+    length = 0;
+    buffer[length++] = c;
+    do {
+      c = *source_p;
+      advance(1);
+      if (!c)
+        break;
+      buffer[length++] = c;
+      offset++;
+    } while (!isspace(c) && c != '{');
+    buffer[length--] = 0;
+    offset--;
+    if (length == 0) {
+      if (!*source_p)
+        return Token{TOK_EOF, lineno, offset, 0};
+      return Token{TOK_EOF, lineno, offset, 0};
+      // ...
+      lexer_error(*this, Errors::ExpectedValue, mtoken, ErrorPosition::After,
+                  "Expected an rule identifier after `delimiter'");
+      return mtoken;
+    }
+    state = LexerState::TagPOSDelimiterValue;
+
+    return Token{TOK_NAME, lineno, offset - length, length,
+                 std::string{buffer, length}};
+  }
+  case LexerState::TagPOSDelimiterValue: {
+    length = 0;
+    bool escape = false;
+    if (c != '{') {
+      const Token &mtoken = error_token();
+      lexer_error(*this, Errors::InvalidCodepointSpecification, mtoken,
+                  ErrorPosition::On,
+                  "Expected braced token value after `delimiter X' (e.g. "
+                  "'delimiter Example {example} ...')");
+    }
+    c = *source_p;
+    advance(1);
+    while (1) {
+      if (c == '\\') {
+        if (!escape) {
+          escape = true;
+          if ((c = *source_p) == '+') {
+            // \+HHHH(HH)?
+            // 4-chars seem to be the common format for smaller ones too
+            int len = 0;
+            uint32_t codepoint = 0;
+            advance(1);
+            c = *source_p;
+            while ((c <= '9' && c >= '0') || (c <= 'F' && c >= 'A') ||
+                   (c <= 'f' && c >= 'a')) {
+              if (len++ == 6)
+                break;
+              if (c <= '9')
+                codepoint = codepoint * 16 + (c - '0');
+              else if (c <= 'F')
+                codepoint = codepoint * 16 + (c - 'A' + 10);
+              else
+                codepoint = codepoint * 16 + (c - 'a' + 10);
+              advance(1);
+              c = *source_p;
+            }
+            if (len < 4 && len > 6) {
+              const Token &mtoken = error_token();
+              lexer_error(*this, Errors::InvalidCodepointSpecification, mtoken,
+                          ErrorPosition::On,
+                          "Expected between 4 and 6 hexadecimal characters to "
+                          "follow \\+, not %d",
+                          len);
+            }
+            length += utf8_encode(buffer + length, codepoint);
+            escape = false;
+            c = *source_p;
+            continue;
+          }
+        }
+      }
+      if (c == '}') {
+        if (escape)
+          escape = false;
+        else
+          break;
+      }
+      if (c == ' ') {
+        if (escape)
+          escape = false;
+        else {
+          c = *source_p;
+          advance(1);
+          continue;
+        }
+      }
+      if (c == '\0' || c == '\n')
+        break;
+      buffer[length++] = c;
+      c = *source_p;
+      advance(1);
+    }
+    buffer[length] = 0;
+    state = LexerState::TagPOS;
+    return Token{TOK_LITSTRING, lineno, offset - length, length,
+                 std::string{buffer, length}};
   }
   case LexerState::Name: {
     const Token &mtoken = error_token();

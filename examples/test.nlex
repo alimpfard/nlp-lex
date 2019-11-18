@@ -101,3 +101,6 @@ normalise {ۜ ۩ ۡ ۖ ۬ ۣ ۢ ۞ ۠ ۚ ۥ ۤ ۛ ۝ ۧ ۘ ۦ ۭ ۗ ۫ ۨ ۟ ۪ 
 normalise {ی ۍ ې ے ۓ ێ ؽ ﻱ ؠ ۑ ؾ ؿ ٸ ﻯ ﺉ ي ﯼ} to ي
 normalise {ـ} to _
 
+# POS tag (WIP)
+
+tag pos every 2 tokens with delimiter Punc{.} from "shit.json"
