@@ -381,8 +381,6 @@ void NParser::parse() {
       break;
     }
     case ParserState::TagPos: {
-      hastagpos = true;
-      tagpos = std::get<TagPosSpecifier>(persist);
       switch (token.type) {
       case TOK_TAGPOSEVERY: {
         TagPosSpecifier &tpos = std::get<TagPosSpecifier>(persist);
@@ -400,7 +398,7 @@ void NParser::parse() {
         TagPosSpecifier &tpos = std::get<TagPosSpecifier>(persist);
         if (tpos.from_set) {
           slts.show(Display::Type::ERROR,
-                    "`tag pos ... from %s' already specified",
+                    "`tag pos ... from \"%s\"' already specified",
                     tpos.from.c_str());
           break;
         }
@@ -441,6 +439,8 @@ void NParser::parse() {
         statestack.pop();
         goto doitagain;
       }
+      hastagpos = true;
+      tagpos = std::get<TagPosSpecifier>(persist);
     }
     }
   } while (!failing);
@@ -1841,7 +1841,7 @@ int main(int argc, char *argv[]) {
       std::string line;
       std::cout << parser.lexer->lxst2str[(int)parser.lexer->state];
       std::cout << "> ";
-      std::getline(file, line);
+      std::getline(std::cin, line);
       if (line == ".tree") {
         root = parser.compile();
         root->print();

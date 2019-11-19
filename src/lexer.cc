@@ -286,6 +286,7 @@ inline Token NLexer::_next() {
   }
   case LexerState::TagPOSFrom: {
     const Token &mtoken = error_token();
+    advance(-1);
     std::optional<std::string> vstr = string(true);
     if (!vstr.has_value()) {
       lexer_error(*this, Errors::ExpectedValue, mtoken, ErrorPosition::After,
