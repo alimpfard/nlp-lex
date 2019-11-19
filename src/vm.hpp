@@ -26,6 +26,7 @@
 #include <memory>
 #include <queue>
 #include <string>
+#include <unistd.h>
 #include <vector>
 
 template <typename T>
@@ -39,6 +40,11 @@ typename T::mapped_type get(T value, typename T::key_type key) {
 extern Display::SingleLineTermStatus slts;
 
 namespace nlvm {
+
+static void debugPrintValue(llvm::Value *v) { v->print(llvm::errs(), true); }
+static void debugPrintType(llvm::Value *v) {
+  v->getType()->print(llvm::errs(), true);
+}
 
 static llvm::AllocaInst *createEntryBlockAlloca(llvm::Function *TheFunction,
                                                 const std::string &VarName,
@@ -89,6 +95,14 @@ public:
 
   llvm::raw_ostream *outputv;
 
+  void emitLocationL(int l, llvm::IRBuilder<> &builder) {
+    llvm::DIScope *Scope;
+    if (LexicalDebugBlocks.empty())
+      Scope = TheCU;
+    else
+      Scope = LexicalDebugBlocks.back();
+    builder.SetCurrentDebugLocation(llvm::DebugLoc::get(l, 0, Scope));
+  }
   template <typename T> void emitLocation(T *node, llvm::IRBuilder<> &builder) {
     llvm::DIScope *Scope;
     if (LexicalDebugBlocks.empty())
@@ -112,7 +126,6 @@ public:
                                       node->debug_info.offset);
     LexicalDebugBlocks.push_back(Scope);
   }
-
   void exitScope() {
     assert(!LexicalDebugBlocks.empty() && "Extra block pop");
     LexicalDebugBlocks.pop_back();
@@ -171,6 +184,28 @@ public:
     return DBuilder->createSubroutineType(
         DBuilder->getOrCreateTypeArray(EltTys));
   }
+  llvm::DISubroutineType *createNullaryFunctionType() {
+    llvm::SmallVector<llvm::Metadata *, 1> EltTys;
+
+    // Add the result type.
+    EltTys.push_back(nullptr);
+
+    return DBuilder->createSubroutineType(
+        DBuilder->getOrCreateTypeArray(EltTys));
+  }
+
+  llvm::DISubprogram *enterSubprogramN(std::string name) {
+    llvm::DIScope *FContext = TheCU;
+    unsigned LineNo = 0;
+    unsigned ScopeLine = 0;
+    llvm::DISubprogram *SP = DBuilder->createFunction(
+        FContext, name, "", DIFile, LineNo, createNullaryFunctionType(),
+        ScopeLine, llvm::DINode::DIFlags::FlagZero,
+        llvm::DISubprogram::toSPFlags(true, true, true, 0, false));
+    DBuilder->finalizeSubprogram(SP);
+    LexicalDebugBlocks.push_back(SP);
+    return SP;
+  }
 
   llvm::DISubprogram *enterSubprogram(llvm::Function *fn) {
     llvm::DIScope *FContext = TheCU;
@@ -218,15 +253,20 @@ public:
     Builder.CreateStore(c, tvalp);
   }
 
-  llvm::Function *mkfunc(bool clear = true) {
+  llvm::Function *mkfunc(bool clear = true, std::string name = "__nlex_root",
+                         bool toplevels = true, bool nullary = false) {
     llvm::Function *_main;
-    llvm::Type *args[] = {llvm::PointerType::get(input_struct_type, 0)};
-    llvm::FunctionType *ncf =
-        llvm::FunctionType::get(llvm::Type::getVoidTy(TheContext), args, false);
+    llvm::ArrayRef<llvm::Type *> args = {
+        llvm::PointerType::get(input_struct_type, 0)};
+    llvm::ArrayRef<llvm::Type *> nnargs = {};
+    llvm::FunctionType *ncf = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(TheContext), nullary ? nnargs : args, false);
 
-    _main = llvm::Function::Create(ncf, llvm::Function::ExternalLinkage,
-                                   "__nlex_root", TheModule.get());
+    _main = llvm::Function::Create(ncf, llvm::Function::ExternalLinkage, name,
+                                   TheModule.get());
     auto main_entry = llvm::BasicBlock::Create(TheContext, "", _main);
+    if (!toplevels)
+      return _main;
 
     last_tag = createEntryBlockAlloca(
         _main, "ltag",
@@ -292,6 +332,12 @@ public:
     start = main_entry;
     return _main;
   }
+  auto createGlobal(llvm::Type *type, llvm::Constant *value, std::string name) {
+    auto res = new llvm::GlobalVariable(
+        type, false, llvm::GlobalValue::InternalLinkage, value, name);
+    TheModule->getGlobalList().push_back(res);
+    return res;
+  }
   Module(std::string name, llvm::raw_ostream *os)
       : TheContext(), Builder(TheContext), outputv(os) {
     TheModule = std::make_unique<llvm::Module>(name, TheContext);
@@ -301,7 +347,9 @@ public:
                              llvm::DEBUG_METADATA_VERSION);
 
     DBuilder = new llvm::DIBuilder(*TheModule.get());
-    DIFile = DBuilder->createFile(name, "/home/Test/Documents/examples");
+    char buf[PATH_MAX];
+    getcwd(buf, PATH_MAX);
+    DIFile = DBuilder->createFile(name, buf);
     TheCU = DBuilder->createCompileUnit(llvm::dwarf::DW_LANG_C, DIFile,
                                         "NLex Compiler", false, "", 0);
 
@@ -352,28 +400,22 @@ public:
 
     nlex_distance = llvm::Function::Create(nc, llvm::Function::ExternalLinkage,
                                            "__nlex_distance", TheModule.get());
-    nlex_match_start = new llvm::GlobalVariable(
-        llvm::PointerType::get(llvm::Type::getInt8Ty(TheContext), 0), false,
-        llvm::GlobalValue::InternalLinkage,
+    nlex_match_start = createGlobal(
+        llvm::PointerType::get(llvm::Type::getInt8Ty(TheContext), 0),
         llvm::Constant::getNullValue(
             llvm::PointerType::get(llvm::Type::getInt8Ty(TheContext), 0)),
         "nlex_match_start");
-    TheModule->getGlobalList().push_back(nlex_match_start);
 
-    token_value = new llvm::GlobalVariable(
-        llvm::ArrayType::get(llvm::Type::getInt8Ty(TheContext), 1024000), false,
-        llvm::GlobalValue::InternalLinkage,
+    token_value = createGlobal(
+        llvm::ArrayType::get(llvm::Type::getInt8Ty(TheContext), 1024000),
         llvm::Constant::getNullValue(
             llvm::ArrayType::get(llvm::Type::getInt8Ty(TheContext), 1024000)),
         "ltoken_value");
-    TheModule->getGlobalList().push_back(token_value);
 
-    token_length = new llvm::GlobalVariable(
-        llvm::Type::getInt32Ty(TheContext), false,
-        llvm::GlobalValue::InternalLinkage,
+    token_length = createGlobal(
+        llvm::Type::getInt32Ty(TheContext),
         llvm::Constant::getNullValue(llvm::Type::getInt32Ty(TheContext)),
         "ltoken_length");
-    TheModule->getGlobalList().push_back(token_length);
   }
 };
 
@@ -477,49 +519,36 @@ public:
     // create global values & normalisation logic
     module.emitLocation((DFANode<NFANode<std::nullptr_t> *> *)NULL);
     {
-      auto nlex_fed_string = new llvm::GlobalVariable(
+      auto nlex_fed_string = module.nlex_fed_string = module.createGlobal(
           llvm::PointerType::get(llvm::Type::getInt8Ty(module.TheContext), 0),
-          false, llvm::GlobalValue::InternalLinkage,
           llvm::Constant::getNullValue(llvm::PointerType::get(
               llvm::Type::getInt8Ty(module.TheContext), 0)),
           "nlex_fed_string");
-      module.TheModule->getGlobalList().push_back(nlex_fed_string);
-      module.nlex_fed_string = nlex_fed_string;
-      auto nlex_true_start = new llvm::GlobalVariable(
+      auto nlex_true_start = module.createGlobal(
           llvm::PointerType::get(llvm::Type::getInt8Ty(module.TheContext), 0),
-          false, llvm::GlobalValue::InternalLinkage,
           llvm::Constant::getNullValue(llvm::PointerType::get(
               llvm::Type::getInt8Ty(module.TheContext), 0)),
           "nlex_true_start");
-      module.TheModule->getGlobalList().push_back(nlex_true_start);
-      auto nlex_tmp_char = new llvm::GlobalVariable(
-          llvm::Type::getInt8Ty(module.TheContext), false,
-          llvm::GlobalValue::InternalLinkage,
-          llvm::Constant::getNullValue(
-              llvm::Type::getInt8Ty(module.TheContext)),
-          "nlex_tmp_char");
-      module.TheModule->getGlobalList().push_back(nlex_tmp_char);
-      auto nlex_injected = new llvm::GlobalVariable(
+      auto nlex_tmp_char =
+          module.createGlobal(llvm::Type::getInt8Ty(module.TheContext),
+                              llvm::Constant::getNullValue(
+                                  llvm::Type::getInt8Ty(module.TheContext)),
+                              "nlex_tmp_char");
+      auto nlex_injected = module.createGlobal(
           llvm::PointerType::get(llvm::Type::getInt8Ty(module.TheContext), 0),
-          false, llvm::GlobalValue::InternalLinkage,
           llvm::Constant::getNullValue(llvm::PointerType::get(
               llvm::Type::getInt8Ty(module.TheContext), 0)),
           "nlex_injected");
-      module.TheModule->getGlobalList().push_back(nlex_injected);
-      auto nlex_injected_length = new llvm::GlobalVariable(
-          llvm::Type::getInt32Ty(module.TheContext), false,
-          llvm::GlobalValue::InternalLinkage,
-          llvm::Constant::getNullValue(
-              llvm::Type::getInt8Ty(module.TheContext)),
-          "nlex_injected_length");
-      module.TheModule->getGlobalList().push_back(nlex_injected_length);
-      auto nlex_injected_length_diff = new llvm::GlobalVariable(
-          llvm::Type::getInt32Ty(module.TheContext), false,
-          llvm::GlobalValue::InternalLinkage,
-          llvm::Constant::getNullValue(
-              llvm::Type::getInt8Ty(module.TheContext)),
-          "nlex_injected_length_diff");
-      module.TheModule->getGlobalList().push_back(nlex_injected_length_diff);
+      auto nlex_injected_length =
+          module.createGlobal(llvm::Type::getInt32Ty(module.TheContext),
+                              llvm::Constant::getNullValue(
+                                  llvm::Type::getInt8Ty(module.TheContext)),
+                              "nlex_injected_length");
+      auto nlex_injected_length_diff =
+          module.createGlobal(llvm::Type::getInt32Ty(module.TheContext),
+                              llvm::Constant::getNullValue(
+                                  llvm::Type::getInt8Ty(module.TheContext)),
+                              "nlex_injected_length_diff");
 
       // create "library" functions
       llvm::IRBuilder<> builder(module.TheContext);
@@ -536,7 +565,7 @@ public:
       builder.SetInsertPoint(BB);
       builder.CreateRet(
           builder.CreateGEP(builder.CreateLoad(nlex_fed_string),
-                            {builder.CreateLoad(nlex_injected_length_diff)}));
+                            builder.CreateLoad(nlex_injected_length_diff)));
 
       // nlex_distance - get current position in string (as int)
       BB =
@@ -544,7 +573,7 @@ public:
       builder.SetInsertPoint(BB);
       builder.CreateRet(builder.CreatePtrDiff(
           builder.CreateGEP(builder.CreateLoad(nlex_fed_string),
-                            {builder.CreateLoad(nlex_injected_length_diff)}),
+                            builder.CreateLoad(nlex_injected_length_diff)),
           builder.CreateLoad(nlex_true_start)));
 
       // nlex_restore - restore position from passed in pointer
@@ -610,7 +639,7 @@ public:
       builder.CreateStore(gep, nlex_fed_string);
       auto cvv = builder.CreateLoad(fs);
       // create a select of all specified normalisations and then set
-      std::map<std::string, llvm::SwitchInst *> levels;
+      ::std::map<std::string, llvm::SwitchInst *> levels;
       llvm::IRBuilder<> mbuilder(module.TheContext);
       auto BBend = llvm::BasicBlock::Create(module.TheContext, "default_escape",
                                             module.nlex_next);
@@ -998,6 +1027,34 @@ public:
             swinst->removeFromParent();
           }
         }
+      }
+    }
+    // likely to be replaced at link-time with a separate module
+    /* if constexpr (false) */
+    {
+      // generate a pos tagger if we have it specified
+      module.createGlobal(llvm::Type::getInt1Ty(module.TheContext),
+                          (lexer_stuff.tagpos.has_value()
+                               ? llvm::ConstantInt::getTrue(
+                                     llvm::Type::getInt1Ty(module.TheContext))
+                               : llvm::ConstantInt::getFalse(
+                                     llvm::Type::getInt1Ty(module.TheContext))),
+                          "__nlex_has_tagpos");
+      module.createGlobal(
+          llvm::PointerType::get(llvm::Type::getInt8Ty(module.TheContext), 0),
+          (llvm::Constant
+               *)(lexer_stuff.tagpos.has_value()
+                      ? get_or_create_tag(lexer_stuff.tagpos.value().rule)
+                      : llvm::Constant::getNullValue(llvm::PointerType::get(
+                            llvm::Type::getInt8Ty(module.TheContext), 0))),
+          "__nlex_tagpos");
+      if (lexer_stuff.tagpos.has_value()) {
+        auto gentag =
+            module.mkfunc(false, "__nlex_generated_postag", false, true);
+        // generate some magic pos tagger from the model
+        llvm::IRBuilder<> builder{module.TheContext};
+        builder.SetInsertPoint(&gentag->getEntryBlock());
+        builder.CreateRetVoid();
       }
     }
   }

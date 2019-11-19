@@ -16,8 +16,8 @@ paste() {
 
 compile() {
   # opt all.bc -o all-opt.bc -da -constmerge -gvn -globaldce -instcombine -lcssa -licm -adce -constprop -inline -tailcallelim -instcombine -adce -dce -sink -simplifycfg
-  opt all.bc -o all-opt.bc -instcombine -dce -constprop -inline -tailcallelim -instcombine -dce -sink -simplifycfg
-  # cp all.bc all-opt.bc
+  # opt all.bc -o all-opt.bc -instcombine -dce -constprop -inline -tailcallelim -instcombine -dce -sink -simplifycfg
+  cp all.bc all-opt.bc
   llc -filetype=obj -relocation-model=pic all-opt.bc
   gcc -g all-opt.o
   gcc all-opt.o -shared -o all.so
