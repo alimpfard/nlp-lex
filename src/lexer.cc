@@ -355,13 +355,12 @@ inline Token NLexer::_next() {
     do {
       c = *source_p;
       advance(1);
-      if (!c)
+      if (!c || c == '{')
         break;
       buffer[length++] = c;
-      offset++;
-    } while (!isspace(c) && c != '{');
-    buffer[length--] = 0;
-    offset--;
+    } while (!isspace(c));
+    buffer[length] = 0;
+    advance(-1);
     if (length == 0) {
       if (!*source_p)
         return Token{TOK_EOF, lineno, offset, 0};

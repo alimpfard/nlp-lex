@@ -1,5 +1,6 @@
 #include "parser.hpp"
 #include "vm.hpp"
+#include <iostream>
 #include <list>
 
 enum class CodegenTarget {
@@ -67,7 +68,12 @@ public:
   DFANLVMCodeGenerator()
       : CodeGenerator<T>(
             {CodegenStartPhase::DFAPhase, CodegenTarget::TargetNLVM}),
-        builder("test.nlex") {} // todo: read from file...
+        builder("test.nlex") {}
+
+  DFANLVMCodeGenerator(std::string fname, llvm::raw_ostream *out)
+      : CodeGenerator<T>(
+            {CodegenStartPhase::DFAPhase, CodegenTarget::TargetNLVM}),
+        builder(fname, out) {}
 
   virtual void
   generate(DFANode<std::set<NFANode<T> *>> *node,

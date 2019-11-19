@@ -1,7 +1,7 @@
 gen() {
   (
     cat $1
-    echo ".dot"
+    # echo ".dot"
     echo ".gengraph"
     echo ".nlvm"
     echo ".end"
@@ -29,6 +29,6 @@ all() {
   compile
 }
 
-gen "$@"
+# gen "$@"
 paste
 compile

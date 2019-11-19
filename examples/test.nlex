@@ -1,34 +1,37 @@
 # Emit a pure_normalise function that simply returns a normalised character
 option pure_normaliser on
-
+#
 # Allow width-lengthening normalisations
 option unsafe_normaliser on
-
-option log_warning on
-
-# option viterbi on from "model.json"
-
+#
+# only log errors
+option log_error on
+#
+# POS tag (WIP)
+tag pos every 2 tokens with delimiter SentenceDelimiter{*} from "pos_model.json"
+#
 word    :: [آائبپتثجچحخدذرزژسشصضطظعغفقکكلمنوهي\u200c]+
 enword  :: [A-z]+
 number  :: [0-9]+
-Punc     ::[.،,:;'()*%!~.:؟؛«»/\u002da#$%^&?_]+
+Punc     ::[،,:;'()*%~:؛«»/\u002da#$%^&_]+
+SentenceDelimiter :: [.؟!?]
 Space   :: [ 	\u000a]+
 Mention :: @[A-z][A-z_0-9]{4,}
-
+#
 # \uc{RGI} is the set of all RGI emojis
 emoji   -- "\uc{RGI}"
-
+#
 maybe_specifier :- ([a-z]+://)?
 uri :- (([a-zA-Z0-9_]|-)+\.)+
 tld :- [a-z]{2,}
 maybe_port :- (:\d+)?
-
+#
 link :: {{maybe_specifier}}{{uri}}{{tld}}{{maybe_port}}([a-zA-Z_0-9@:%\+.~\?&/=]|-)+
-
+#
 # omit spaces from token output
 ignore [Space]
-
-
+#
+#
 stopword "i" "me" "my" "myself" "we" "our" "ours" "ourselves" "you" "your"
 stopword "yours" "yourself" "yourselves" "he" "him" "his" "himself" "she" "her"
 stopword "hers" "herself" "it" "its" "itself" "they" "them" "their" "theirs"
@@ -42,7 +45,7 @@ stopword "again" "further" "then" "once" "here" "there" "when" "where" "why"
 stopword "how" "all" "any" "both" "each" "few" "more" "most" "other" "some"
 stopword "such" "no" "nor" "not" "only" "own" "same" "so" "than" "too" "very"
 stopword "s" "t" "can" "will" "just" "don" "should" "now"
-
+#
 stopword "اين" "كه" "است" "گزارش" "براي" "ديگر" "اسلامي" "سرويس" "دارد" "و" ":" "را"
 stopword "دو" "تا" "مي" "ها" "ايران" "شده" "المللي" "،" "راه" "اند" "بين" "شود" "از"
 stopword "آنها" "برگزار" "دهد" "هاي" "خارج" "در" "كند" "به" "همه" "با" "كنند" "هستند"
@@ -53,7 +56,7 @@ stopword "صرف" "همچنين" "تصويب" "حوزه" "روزهاي" "رسي�
 stopword "برخورد" "خارجي" "نظام" "كرد" "حال" "سياست" "فرانسه" "كامل" "سه" "فروش"
 stopword "توان" "جهت" "داشته" "ولي" "انقلاب" "اساسي" "آموزش" "خواهند" "روز" "امروز"
 stopword  "مختلف" "گذشته" "گفت" "قبل" "گرفتن" "هيچ" "كار" "بازرگاني" "بيني" "سابق" "-"
-
+#
 # Spaces inside the normalise source set are ignored (use unicode codepoint if needed)
 normalise {٠} to ۰
 normalise {١} to ۱
@@ -100,7 +103,4 @@ normalise {۽} to ﻉ
 normalise {ۜ ۩ ۡ ۖ ۬ ۣ ۢ ۞ ۠ ۚ ۥ ۤ ۛ ۝ ۧ ۘ ۦ ۭ ۗ ۫ ۨ ۟ ۪ ۙ} to _
 normalise {ی ۍ ې ے ۓ ێ ؽ ﻱ ؠ ۑ ؾ ؿ ٸ ﻯ ﺉ ي ﯼ} to ي
 normalise {ـ} to _
-
-# POS tag (WIP)
-
-tag pos every 2 tokens with delimiter Punc{.} from "shit.json"
+#

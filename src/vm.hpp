@@ -87,6 +87,8 @@ public:
 
   llvm::Type *input_struct_type;
 
+  llvm::raw_ostream *outputv;
+
   template <typename T> void emitLocation(T *node, llvm::IRBuilder<> &builder) {
     llvm::DIScope *Scope;
     if (LexicalDebugBlocks.empty())
@@ -290,7 +292,8 @@ public:
     start = main_entry;
     return _main;
   }
-  Module(std::string name) : TheContext(), Builder(TheContext) {
+  Module(std::string name, llvm::raw_ostream *os)
+      : TheContext(), Builder(TheContext), outputv(os) {
     TheModule = std::make_unique<llvm::Module>(name, TheContext);
     TheModule->addModuleFlag(llvm::Module::Warning, "Dwarf Version",
                              llvm::dwarf::DWARF_VERSION);
@@ -377,10 +380,12 @@ public:
 class Builder {
 public:
   Module module;
+  llvm::raw_ostream *outputv = nullptr;
   llvm::BasicBlock *first_root = nullptr;
   bool issubexp = false;
 
-  Builder(std::string mname) : module(mname) {}
+  Builder(std::string mname, llvm::raw_ostream *o)
+      : outputv(o), module(mname, o) {}
 
   void begin(llvm::Function *fn, bool cleanup_if_fail = false,
              bool skip_on_error = true) {
@@ -1000,7 +1005,7 @@ public:
     // finish the function
     module.DBuilder->finalize();
     llvm::verifyFunction(*module.main());
-    module.TheModule->print(llvm::errs(), nullptr);
+    module.TheModule->print(*outputv, nullptr);
   }
 
   llvm::Constant *mk_string(llvm::Module *M, llvm::LLVMContext &Context,

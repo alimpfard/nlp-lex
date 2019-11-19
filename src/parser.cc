@@ -6,12 +6,19 @@
 #include "optimise.tcc"
 
 #include <array>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <queue>
 #include <sstream>
 #include <stdarg.h>
 #include <thread>
+
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #include <algorithm>
 #include <execution>
@@ -91,7 +98,7 @@ void NParser::parse() {
     Token token = lexer->next();
     if (token.type == TOK_EOF)
       break;
-    token.print();
+    // token.print();
   doitagain:;
     switch (statestack.top()) {
     case ParserState::Toplevel:
@@ -146,6 +153,8 @@ void NParser::parse() {
           slts.min_req = Display::Type::DEBUG;
         else if (s == "log_warning")
           slts.min_req = Display::Type::WARNING;
+        else if (s == "log_error")
+          slts.min_req = Display::Type::ERROR;
         else
           gen_lexer_options[s] = std::get<bool>(token.value);
       }
@@ -492,6 +501,27 @@ NFANode<std::string> *NParser::compile() {
                   tps.rule.c_str());
         return nullptr;
       }
+      if (tps.tval != "*") {
+        slts.show(
+            Display::Type::ERROR,
+            "Delimiters that are subsets of a tag category are not yet "
+            "supported,\n"
+            "please split the delimiters and tag them with a different name:\n"
+            "\t{<magenta>}%s{<clean>} :: {<magenta>}%s{<clean>}|... "
+            "{<green>}line %d{<clean>}\n"
+            "\ttag pos ... with delimiter {<magenta>}%s{%s}{<clean>}\n"
+            "Should be transformed to:\n"
+            "\t{<green>}%s{<clean>} :: ...\n"
+            "\t{<green>}%s_delimiter_lit{<clean>} :- \"{<green>}%s{<clean>}\"\n"
+            "\t{<green>}%s_delimiter{<clean>} :: "
+            "{<green>}{{%s_delimiter_lit}}{<clean>}\n"
+            "\ttag pos ... with delimiter {<green>}%s_delimiter{*}{<clean>}\n",
+            tps.rule.c_str(), tps.tval.c_str(), std::get<1>(v->second).lineno,
+            tps.rule.c_str(), tps.tval.c_str(), tps.rule.c_str(),
+            tps.rule.c_str(), tps.tval.c_str(), tps.rule.c_str(),
+            tps.rule.c_str(), tps.rule.c_str());
+        tps.tval = "*";
+      }
     } else {
       slts.show(Display::Type::ERROR,
                 "Requested tag pos delimiter {<red>}%s{<clean>} has not been "
@@ -499,8 +529,18 @@ NFANode<std::string> *NParser::compile() {
                 tps.rule.c_str(),
                 tps.rule_set ? ""
                              : "\nTip: This could be fixed by specifying a "
-                               "rule:\n{<green>}tag pos {<magenta>}with "
-                               "delimiter Punc{.}{<clean>}\n");
+                               "rule:\n\t{<green>}tag pos {<magenta>}with "
+                               "delimiter Punc{*}{<clean>}\n");
+    }
+    if (!std::filesystem::exists(tps.from)) {
+      slts.show(Display::Type::ERROR,
+                "Requested model file '{<red>}%s{<clean>}' does not exist.%s",
+                tps.from.c_str(),
+                tps.from_set
+                    ? ""
+                    : "\nTip: This could be fixed by specifying a model "
+                      "file:\n\t{<green>}tag pos ... {<magenta>}from "
+                      "\"some/path/model.json\"{<clean>}");
     }
   }
   slts.show(Display::Type::WARNING, "== all defined rules ==\n");
@@ -1460,7 +1500,7 @@ void DFANLVMCodeGenerator<T>::generate(
         emitted.insert(val);
         if (em) {
           slts.show(
-              Display::Type::ERROR,
+              Display::Type::DEBUG,
               "[ICE] State %s can emit multiple tags (at least %s and %s)\n",
               get_name(node->state_info.value()).c_str(), emit.c_str(),
               val.c_str());
@@ -1684,70 +1724,189 @@ std::string exec(const char *cmd, const bool &run) {
   return result;
 }
 
+static const char m_help[] = R"(
+./a.out [args] [filename|-]
+ARGS:
+    -h  This help
+    -g  generate graph
+    -r  dry run (no compilation)
+    -o [file]
+        set output filename [default: stdout]
+)";
+void parse_commandline(int argc, char *argv[], /* out */ char **filename,
+                       /* out */ bool *generate_graph,
+                       /* out */ bool *compile, /* out */ char **outname) {
+  int i = 0;
+  int split = 0;
+  int file = 0;
+  *compile = true;
+  *outname = "";
+  for (char *arg = argv[i]; i < argc; i++, arg = argv[i]) {
+    if (split++) {
+      slts.show(Display::Type::ERROR,
+                "{<red>}Excessive number (%d) of arguments since at least "
+                "argument %d{<clean>}",
+                i - 1, split);
+      *filename = arg;
+      continue;
+    }
+    if (strcmp(arg, "-h") == 0) {
+      puts(m_help);
+      exit(0);
+      continue;
+    }
+    if (strcmp(arg, "-g") == 0) {
+      *generate_graph = true;
+      continue;
+    }
+    if (strcmp(arg, "-r") == 0) {
+      *compile = false;
+      continue;
+    }
+    if (strcmp(arg, "-o") == 0) {
+      if (i == argc - 1) {
+        slts.show(Display::Type::ERROR,
+                  "argument {<magenta>}-o{clean>} expects a parameter");
+        continue;
+      }
+      *outname = argv[++i];
+      continue;
+    }
+    if (strcmp(arg, "--") == 0) {
+      split++;
+      continue;
+    }
+    if (file) {
+      slts.show(Display::Type::ERROR,
+                "{<red>}Unknown argument %d (%s){<clean>}", i, arg);
+    } else {
+      file = true;
+      *filename = arg;
+    }
+  }
+}
+
+char *read_file(const char *path) {
+  int fd = open(path, 0, O_RDONLY);
+  if (fd == -1) {
+    slts.show(Display::Type::ERROR,
+              "failed to read referenced file '{<magenta>}%s{<clean>}': "
+              "{<red>}%s{<clean>}",
+              path, strerror(errno));
+    return "";
+  }
+  int len = lseek(fd, 0, SEEK_END);
+  int amt = len;
+  lseek(fd, 0, SEEK_SET);
+  char *contents = (char *)malloc(len * sizeof(char));
+  while ((amt -= read(fd, contents, amt)) > 0)
+    ;
+  close(fd);
+  return contents;
+}
 #ifdef TEST
-int main() {
+int main(int argc, char *argv[]) {
+  char *filename = "";
+  bool compile = false;
+  char *outname = "";
   NParser parser;
-  parser.lexer = std::make_unique<NLexer>("");
+  parse_commandline(argc - 1, argv + 1, &filename, &parser.generate_graph,
+                    &compile, &outname);
+  int fromstdin = 0, tostdout = 0;
+  if (strlen(filename) == 0 || strcmp(filename, "-") == 0) {
+    fromstdin = 1;
+    filename = "<stdin>";
+  }
+  if (strlen(outname) == 0 || strcmp(outname, "-") == 0)
+    tostdout = 1;
+  parser.lexer = std::make_unique<NLexer>(filename);
   NFANode<std::string> *root;
   DFACCodeGenerator<std::string> cg;
-  DFANLVMCodeGenerator<std::string> nlvmg;
+  std::error_code ec;
+  llvm::raw_fd_ostream of(outname, ec);
+  if (ec) {
+    slts.show(Display::Type::ERROR, "Error writing to output '%s': %s", outname,
+              ec.message().c_str());
+    exit(1);
+  }
+  DFANLVMCodeGenerator<std::string> nlvmg(filename,
+                                          tostdout ? &llvm::errs() : &of);
   nlvmg.builder.begin(nlvmg.builder.module.main(), false,
                       parser.gen_lexer_options["skip_on_error"]);
   nlvmg.builder.module._cmain = nlvmg.builder.module._main;
-  while (1) {
-    std::string line;
-    std::cout << parser.lexer->lxst2str[(int)parser.lexer->state];
-    std::cout << "> ";
-    std::getline(std::cin, line);
-    if (line == ".tree") {
-      root = parser.compile();
-      root->print();
-      continue;
-    } else if (line == ".dot") {
-      root = parser.compile();
-      root->print_dot();
-      continue;
-    } else if (line == ".end") {
-      // root = parser.compile();
-      // root->print();
-      break;
-    } else if (line == ".opt=") {
-      std::cout << "opt=? ";
-      std::cin >> parser.max_opt_steps;
-      continue;
-    } else if (line == ".cg") {
-      root = parser.compile();
-      cg.run(root);
-      std::cout << cg.output();
-      continue;
-    } else if (line == ".gengraph") {
-      parser.generate_graph = !parser.generate_graph;
-      slts.show(Display::Type::MUST_SHOW, "will %sgenerate a graph\n",
-                parser.generate_graph ? "" : "not ");
-      continue;
-    } else if (line == ".nlvm") {
-      root = parser.compile();
-      auto rootdfa = root->to_dfa();
-      rootdfa->start = true;
-      if (parser.generate_graph) {
-        std::set<DFANode<std::set<NFANode<std::string> *>> *,
-                 DFANodePointerComparer<std::set<NFANode<std::string> *>>>
-            nodes;
-        std::set<DFANode<std::set<NFANode<std::string> *>> *> anodes;
-        std::unordered_set<CanonicalTransition<
-            DFANode<std::set<NFANode<std::string> *>>, char>>
-            transitions;
+  // auto &&file = fromstdin ? std::move(std::cin) : std::ifstream{filename};
+  std::ifstream file{filename};
+  if (fromstdin)
+    while (1) {
+      std::string line;
+      std::cout << parser.lexer->lxst2str[(int)parser.lexer->state];
+      std::cout << "> ";
+      std::getline(file, line);
+      if (line == ".tree") {
+        root = parser.compile();
+        root->print();
+        continue;
+      } else if (line == ".dot") {
+        root = parser.compile();
+        root->print_dot();
+        continue;
+      } else if (line == ".end") {
+        // root = parser.compile();
+        // root->print();
+        break;
+      } else if (line == ".opt=") {
+        std::cout << "opt=? ";
+        std::cin >> parser.max_opt_steps;
+        continue;
+      } else if (line == ".cg") {
+        root = parser.compile();
+        cg.run(root);
+        std::cout << cg.output();
+        continue;
+      } else if (line == ".gengraph") {
+        parser.generate_graph = !parser.generate_graph;
+        slts.show(Display::Type::MUST_SHOW, "will %sgenerate a graph\n",
+                  parser.generate_graph ? "" : "not ");
+        continue;
+      } else if (line == ".nlvm") {
+        root = parser.compile();
+        auto rootdfa = root->to_dfa();
+        rootdfa->start = true;
+        if (parser.generate_graph) {
+          std::set<DFANode<std::set<NFANode<std::string> *>> *,
+                   DFANodePointerComparer<std::set<NFANode<std::string> *>>>
+              nodes;
+          std::set<DFANode<std::set<NFANode<std::string> *>> *> anodes;
+          std::unordered_set<CanonicalTransition<
+              DFANode<std::set<NFANode<std::string> *>>, char>>
+              transitions;
 
-        rootdfa->aggregate_dot(nodes, anodes, transitions);
+          rootdfa->aggregate_dot(nodes, anodes, transitions);
 
-        std::string name = std::tmpnam(nullptr);
-        auto fp = std::fopen(name.c_str(), "w+");
-        std::fprintf(fp, "%s\n", rootdfa->gen_dot(anodes, transitions).c_str());
-        std::fclose(fp);
+          std::string name = std::tmpnam(nullptr);
+          auto fp = std::fopen(name.c_str(), "w+");
+          std::fprintf(fp, "%s\n",
+                       rootdfa->gen_dot(anodes, transitions).c_str());
+          std::fclose(fp);
 
-        bool run = true;
+          bool run = true;
 
-        std::thread render{[&]() {
+          std::thread render{[&]() {
+            nlvmg.builder.prepare(
+                {parser.gen_lexer_options, parser.gen_lexer_stopwords,
+                 parser.gen_lexer_ignores, parser.gen_lexer_normalisations,
+                 parser.gen_lexer_literal_tags,
+                 parser.hastagpos
+                     ? std::optional<TagPosSpecifier>(parser.tagpos)
+                     : std::optional<TagPosSpecifier>{}});
+
+            nlvmg.generate(rootdfa);
+            nlvmg.output();
+            run = false;
+          }};
+          exec(("../tools/wm '" + name + "'").c_str(), run);
+          render.join();
+        } else {
           nlvmg.builder.prepare(
               {parser.gen_lexer_options, parser.gen_lexer_stopwords,
                parser.gen_lexer_ignores, parser.gen_lexer_normalisations,
@@ -1757,27 +1916,80 @@ int main() {
 
           nlvmg.generate(rootdfa);
           nlvmg.output();
+        }
+        continue;
+      } else if (line == "")
+        parser.lexer->lineno++;
+      parser.repl_feed(line);
+      parser.statestack = {};
+      parser.statestack.push(ParserState::Toplevel);
+      parser.parse();
+    }
+  else {
+    char *data = read_file(filename);
+    char *tok = strtok(data, "\n");
+    while (tok) {
+      if (strlen(tok) == 0) {
+        parser.lexer->lineno++;
+        tok = strtok(NULL, "\n");
+        continue;
+      }
+      parser.repl_feed(tok);
+      parser.statestack = {};
+      parser.statestack.push(ParserState::Toplevel);
+      parser.parse();
+      tok = strtok(NULL, "\n");
+    }
+    root = parser.compile();
+    auto rootdfa = root->to_dfa();
+    rootdfa->start = true;
+    if (parser.generate_graph) {
+      std::set<DFANode<std::set<NFANode<std::string> *>> *,
+               DFANodePointerComparer<std::set<NFANode<std::string> *>>>
+          nodes;
+      std::set<DFANode<std::set<NFANode<std::string> *>> *> anodes;
+      std::unordered_set<
+          CanonicalTransition<DFANode<std::set<NFANode<std::string> *>>, char>>
+          transitions;
+
+      rootdfa->aggregate_dot(nodes, anodes, transitions);
+
+      std::string name = std::tmpnam(nullptr);
+      auto fp = std::fopen(name.c_str(), "w+");
+      std::fprintf(fp, "%s\n", rootdfa->gen_dot(anodes, transitions).c_str());
+      std::fclose(fp);
+      std::thread *rendert = nullptr;
+      bool run = true;
+      if (compile) {
+        std::thread render{[&]() {
+          nlvmg.builder.prepare(
+              {parser.gen_lexer_options, parser.gen_lexer_stopwords,
+               parser.gen_lexer_ignores, parser.gen_lexer_normalisations,
+               parser.gen_lexer_literal_tags,
+               parser.hastagpos ? std::optional<TagPosSpecifier>(parser.tagpos)
+                                : std::optional<TagPosSpecifier>{}});
+
+          nlvmg.generate(rootdfa);
+          nlvmg.output();
           run = false;
         }};
-        exec(("../tools/wm '" + name + "'").c_str(), run);
-        render.join();
-      } else {
-        nlvmg.builder.prepare(
-            {parser.gen_lexer_options, parser.gen_lexer_stopwords,
-             parser.gen_lexer_ignores, parser.gen_lexer_normalisations,
-             parser.gen_lexer_literal_tags,
-             parser.hastagpos ? std::optional<TagPosSpecifier>{parser.tagpos}
-                              : std::optional<TagPosSpecifier>{}});
-
-        nlvmg.generate(rootdfa);
-        nlvmg.output();
+        rendert = &render;
       }
-      continue;
+      exec(("../tools/wm '" + name + "'").c_str(), run);
+      if (compile)
+        rendert->join();
+    } else {
+      nlvmg.builder.prepare(
+          {parser.gen_lexer_options, parser.gen_lexer_stopwords,
+           parser.gen_lexer_ignores, parser.gen_lexer_normalisations,
+           parser.gen_lexer_literal_tags,
+           parser.hastagpos ? std::optional<TagPosSpecifier>{parser.tagpos}
+                            : std::optional<TagPosSpecifier>{}});
+
+      nlvmg.generate(rootdfa);
+      nlvmg.output();
     }
-    parser.repl_feed(line);
-    parser.statestack = {};
-    parser.statestack.push(ParserState::Toplevel);
-    parser.parse();
+    free(data);
   }
 }
 #endif
