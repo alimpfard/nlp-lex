@@ -8,7 +8,10 @@ option unsafe_normaliser on
 option log_error on
 #
 # POS tag (WIP)
-tag pos every 2 tokens with delimiter SentenceDelimiter{*} from "pos_model.json"
+# Splitting sentences also uses this rule 
+tag pos with delimiter SentenceDelimiter{*} 
+# pos tagging not supported yet
+# every 2 tokens from "/home/Test/Documents/nlp-lex/wrapper/python/nlex/model.dat"
 #
 word    :: [آائبپتثجچحخدذرزژسشصضطظعغفقکكلمنوهي\u200c]+
 enword  :: [A-z]+

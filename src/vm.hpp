@@ -332,9 +332,13 @@ public:
     start = main_entry;
     return _main;
   }
-  auto createGlobal(llvm::Type *type, llvm::Constant *value, std::string name) {
-    auto res = new llvm::GlobalVariable(
-        type, false, llvm::GlobalValue::InternalLinkage, value, name);
+  auto createGlobal(llvm::Type *type, llvm::Constant *value, std::string name,
+                    bool dexport = false) {
+    auto res =
+        new llvm::GlobalVariable(type, false,
+                                 dexport ? llvm::GlobalValue::ExternalLinkage
+                                         : llvm::GlobalValue::InternalLinkage,
+                                 value, name);
     TheModule->getGlobalList().push_back(res);
     return res;
   }
@@ -1039,7 +1043,7 @@ public:
                                      llvm::Type::getInt1Ty(module.TheContext))
                                : llvm::ConstantInt::getFalse(
                                      llvm::Type::getInt1Ty(module.TheContext))),
-                          "__nlex_has_tagpos");
+                          "__nlex_has_tagpos", true);
       module.createGlobal(
           llvm::PointerType::get(llvm::Type::getInt8Ty(module.TheContext), 0),
           (llvm::Constant
@@ -1048,10 +1052,17 @@ public:
                       : llvm::Constant::getNullValue(llvm::PointerType::get(
                             llvm::Type::getInt8Ty(module.TheContext), 0))),
           "__nlex_tagpos");
+      get_or_create_tag(lexer_stuff.tagpos->rule, true, "__nlex_ptag");
       if (lexer_stuff.tagpos.has_value()) {
         auto gentag =
             module.mkfunc(false, "__nlex_generated_postag", false, true);
         // generate some magic pos tagger from the model
+        mk_string(module.TheModule.get(), module.TheContext, lexer_stuff.tagpos->from, "__nlex_tagpos_filename");
+        module.createGlobal(
+            llvm::Type::getInt32Ty(module.TheContext),
+            llvm::ConstantInt::get(llvm::Type::getInt32Ty(module.TheContext),
+                                   lexer_stuff.tagpos->gram),
+            "__nlex_tagpos_gram", true);
         llvm::IRBuilder<> builder{module.TheContext};
         builder.SetInsertPoint(&gentag->getEntryBlock());
         builder.CreateRetVoid();
@@ -1066,12 +1077,15 @@ public:
   }
 
   llvm::Constant *mk_string(llvm::Module *M, llvm::LLVMContext &Context,
-                            const std::string &svalue) {
+                            const std::string &svalue,
+                            const std::string name = "str") {
     llvm::ArrayType *Ty =
         llvm::ArrayType::get(llvm::Type::getInt8Ty(Context), svalue.size() + 1);
     llvm::GlobalVariable *GV = new llvm::GlobalVariable(
-        *M, Ty, true, llvm::GlobalValue::InternalLinkage,
-        llvm::ConstantDataArray::getString(Context, svalue), "str");
+        *M, Ty, true,
+        name == "str" ? llvm::GlobalValue::InternalLinkage
+                      : llvm::GlobalValue::ExternalLinkage,
+        llvm::ConstantDataArray::getString(Context, svalue), name);
 
     llvm::Value *idxs[] = {
         // idxs.push_back(
@@ -1085,7 +1099,11 @@ public:
   }
 
   std::map<std::string, llvm::Constant *> registered_tags;
-  llvm::Value *get_or_create_tag(std::string tag, bool istag = true) {
+  llvm::Value *get_or_create_tag(std::string tag, bool istag = true,
+                                 std::string name = "str") {
+    if (name != "str") {
+      return mk_string(module.TheModule.get(), module.TheContext, tag, name);
+    }
     if (istag) {
       auto pos = tag.find("{::}");
       if (pos != tag.npos)

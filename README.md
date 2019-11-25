@@ -116,3 +116,32 @@ the regex engine is currently very limited in what it supports, however here is 
 - [X] recursive matching
 
 read [regex_flavour](regex_flavour.md) for further details on the specific flavour of regular expressions used in tandem with the generator
+
+## Building
+
+To build the compiler the following libraries are required:
+
++ LLVM (\>= 8)
++ TCL  (soft dependency, will be removed later)
++ Intel TBB
++ OpenMP + pthread
+
+how to build:
+
+```sh
+$ git clone https://github.com/alimpfard/nlp-lex
+$ cd nlp-lex
+$ make
+```
+
+## Using the Compiler 
+
+This is still in alpha stages, so a multistep procedure is used to produce binaries and libraries:
+
+```sh
+$ src/a.out -o src/playground/ll.ll path/to/nlex
+$ cd src/playground # the runtime system is here (will be moved out later)
+$ sh run.sh
+```
+
+which will generate a binary (`./a.out`) and a shared library (`all.so`) which can be used with the wrappers

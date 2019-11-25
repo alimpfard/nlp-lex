@@ -5,6 +5,7 @@ class Token(object):
         self.tag = tag[:]
         self.metadata = metadata
         self.offset = offset
+        self.pos = None
 
     def desanitify(self, nlex):
         return {
@@ -15,9 +16,12 @@ class Token(object):
             'delete_ref': [], # we don't support this
             'log': 'correct', # not quite sure if it can handle nulls
             'is_stopword': bool(self.metadata&1),
-            'POS': '',
+            'POS': self.pos if self.pos else '',
             'stem': ''
         }
+    @property
+    def token(self):
+        return self.raw.decode('utf-8', 'ignore')
 
     def __repr__(self):
         return f'Token(value={repr(self.raw)}, length={self.length}, tag={self.tag}, metadata={self.metadata}, offset={self.offset})'

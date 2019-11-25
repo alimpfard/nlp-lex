@@ -15,6 +15,8 @@ class NLexWrappedObject(object):
             ("tag", ctypes.c_char_p),
             ("errc", ctypes.c_char),
             ("metadata", ctypes.c_ubyte),
+            ("pos", ctypes.POINTER(ctypes.c_char)),
+            ("allocd", ctypes.c_int),
         ]
         def __repr__(self):
             return f"NLexWrappedObject.ValueStruct(start={self.start}, length={self.length}, tag={self.tag}, errc={self.errc}, metadata={self.metadata})"
@@ -29,6 +31,15 @@ class NLexWrappedObject(object):
         self._nlex_root.argtypes = (ctypes.POINTER(NLexWrappedObject.ValueStruct),)
         self._nlex_distance = getattr(self.__lib, '__nlex_distance')
         self.__nlex_skip = getattr(self.__lib, '__nlex_skip')
+        self.__has_postag = ctypes.c_int.in_dll(self.__lib, '__nlex_has_tagpos')
+        self.can_split_sentences = self.__has_postag
+        self.__postag_gram = None
+        if self.__has_postag:
+            self.__postag_gram = ctypes.c_int.in_dll(self.__lib, '__nlex_tagpos_gram')
+            self.__sentence_delimiter = ctypes.string_at(ctypes.addressof(ctypes.c_char.in_dll(self.__lib, '__nlex_ptag')))
+            # self.token_array_space = (NLexWrappedObject.ValueStruct * 4096)() # 4096 tokens in a sentence...?
+            self._create_postagger()
+
         self.__has_normaliser = True
         self.__last_offset = -1
         self.total = 0
@@ -37,6 +48,48 @@ class NLexWrappedObject(object):
             self._nlex_pure_normalise.restype = ctypes.c_char
         except AttributeError:
             self.__has_normaliser = False
+
+    def _create_postagger(self):
+        def next_sentence(cleanup):
+            if not self._fed:
+                raise Exception("NLexWrappedObject.__next_tagged_sentence called before __feed")
+            sentence = []
+            token = self.__next_token(cleanup)
+            sentence.append(token)
+            while not token or token.tag != self.__sentence_delimiter:
+                token = self.__next_token(cleanup)
+                sentence.append(token)
+            return sentence
+
+        def sentences(clean=True):
+            i = 0
+            while True:
+                try:
+                    x = self.next_sentence(clean)
+                except Exception as e:
+                    return
+                if not x:
+                    return
+                yield x
+                i += 1
+        
+        # TODO: move this out
+        def ptag_sentences(clean=True):
+            raise NotImplemented
+
+        self.next_sentence = next_sentence
+        self.sentences = sentences
+        self.pos_tagged_sentences = ptag_sentences
+
+        # init pos tagger
+        # self.__nlex_load_postagger = getattr(self.__lib, '__nlex_load_tagpos')
+        # self.__nlex_unload_postagger = getattr(self.__lib, '__nlex_unload_tagpos')
+        #self.__nlex_load_postagger()
+    
+    def __del__(self):
+        # if self.__has_postag:
+            # self.__nlex_unload_postagger()
+        pass
 
     def __feed(self, string):
         self._fed = ctypes.create_string_buffer(bytes(string, 'utf-8') if isinstance(string, str) else string)
@@ -54,7 +107,7 @@ class NLexWrappedObject(object):
         self._nlex_root(ctypes.pointer(self._m_value))
         offset = self._nlex_distance()-self._m_value.length
         if cleanup:
-            if self._m_value.errc != b'\0':
+            if self._m_value.errc != b'\0': # TODO: can_produce_token()
                 self._fed = None
                 return None
 
@@ -123,13 +176,24 @@ class NLexWrappedObject(object):
         for di,req in enumerate(s):
             self.next_id = 0
             self.feed(req['text'])
-            docs.append({
-                'id': di,
-                'sentences': [{
-                    'id': 0, # we have no idea :shrug:
-                    'tokens': list(x.desanitify(self) for x in self.tokens(clean))
-                }]
-            })
+            if self.can_split_sentences:
+                docs.append({
+                    'id': di,
+                    'sentences': [{
+                        'id': sid,
+                        'tokens': list(x.desanitify(self) for x in sentence)
+                    } for sid,sentence in enumerate(
+                            self.sentences(clean))
+                    ]
+                })
+            else:
+                docs.append({
+                    'id': di,
+                    'sentences': [{
+                        'id': 0, # we have no idea :shrug:
+                        'tokens': list(x.desanitify(self) for x in self.tokens(clean))
+                    }]
+                })
         return json.dumps(res)
 
     def next_id():
