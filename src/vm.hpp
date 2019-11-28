@@ -1057,7 +1057,8 @@ public:
         auto gentag =
             module.mkfunc(false, "__nlex_generated_postag", false, true);
         // generate some magic pos tagger from the model
-        mk_string(module.TheModule.get(), module.TheContext, lexer_stuff.tagpos->from, "__nlex_tagpos_filename");
+        mk_string(module.TheModule.get(), module.TheContext,
+                  lexer_stuff.tagpos->from, "__nlex_tagpos_filename");
         module.createGlobal(
             llvm::Type::getInt32Ty(module.TheContext),
             llvm::ConstantInt::get(llvm::Type::getInt32Ty(module.TheContext),

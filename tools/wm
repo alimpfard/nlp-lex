@@ -1,4 +1,5 @@
 #! /bin/sh
+echo "dot file at $1" 1>&2
 
 fname=$1
-dot $fname -Tpdf > ${fname}.pdf && evince $fname.pdf 2>&1 >/dev/null
+dot "$fname" -Tx11 -Efontsize=12 -Epenwidth=10

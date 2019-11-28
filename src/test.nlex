@@ -1,4 +1,4 @@
-test :: 1|2
-fest :: {{test}}-{{test}}
+option unsafe_normaliser on
+normalise {t} to ا
 
-.dot
+root :: (ا)+

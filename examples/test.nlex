@@ -15,7 +15,7 @@ tag pos with delimiter SentenceDelimiter{*}
 #
 word    :: [آائبپتثجچحخدذرزژسشصضطظعغفقکكلمنوهي\u200c]+
 enword  :: [A-z]+
-number  :: [0-9]+
+number  :: [0123456789۰۱۲۳۴۵۶۷۸۹]+
 Punc     ::[،,:;'()*%~:؛«»/\u002da#$%^&_]+
 SentenceDelimiter :: [.؟!?]
 Space   :: [ 	\u000a]+

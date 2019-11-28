@@ -857,28 +857,32 @@ std::string DFANode<T>::gen_dot(
   constexpr auto ss_end = "\n\t";
   oss << "digraph finite_state_machine {" << ss_end;
   oss << "rankdir=LR;" << ss_end;
-  oss << "size=\"8,5\";" << ss_end;
   int node_id = 0, error = 1000000;
   std::map<DFANode<T> *, int> nodeids;
   for (auto node : nodes) {
     nodeids[node] = node_id++;
-    oss << "node [shape = " << (node->final ? "doublecircle" : "circle")
-        << (", label = \"" + std::string(node->start ? "Initial State:" : "") +
-            get_name(node->state_info.value(), false, true) + "\\nat " +
-            string_format("%p", node))
-        << (node->assertions.size() > 0
-                ? string_format(" [asserts %s]",
-                                print_asserts(node->assertions).c_str())
-                : "")
-        << (node->subexpr_idxs.size() > 0
-                ? string_format(" [ind%s %s]",
-                                (node->subexpr_idxs.size() > 1 ? "ices" : "ex"),
-                                print_idxs(node->subexpr_idxs).c_str())
-                : "")
-        << (node->subexpr_call > -1
-                ? string_format(" [calls %d]", node->subexpr_call)
-                : "")
-        << '"' << "] LR_" << nodeids[node] << ";" << ss_end;
+    if constexpr (true)
+      oss << "node [shape = " << (node->final ? "doublecircle" : "circle")
+          << (", label = \"" +
+              std::string(node->start ? "Initial State:" : "") +
+              get_name(node->state_info.value(), false, true) + "\\nat " +
+              string_format("%p", node))
+          << (node->assertions.size() > 0
+                  ? string_format(" [asserts %s]",
+                                  print_asserts(node->assertions).c_str())
+                  : "")
+          << (node->subexpr_idxs.size() > 0
+                  ? string_format(
+                        " [ind%s %s]",
+                        (node->subexpr_idxs.size() > 1 ? "ices" : "ex"),
+                        print_idxs(node->subexpr_idxs).c_str())
+                  : "")
+          << (node->subexpr_call > -1
+                  ? string_format(" [calls %d]", node->subexpr_call)
+                  : "")
+          << '"' << "] LR_" << nodeids[node] << ";" << ss_end;
+    else
+      oss << "LR_" << nodeids[node] << ";" << ss_end;
   }
   std::map<std::pair<int, int>, std::pair<std::set<std::string>, DFANode<T> *>>
       target_labels{};
@@ -907,7 +911,7 @@ std::string DFANode<T>::gen_dot(
         << " [ label = \""
         << "{" << join(kv.second.first) << "}"
         << " -> " << get_name(kv.second.second->state_info.value(), false, true)
-        << "\\n@" << string_format("%p", kv.second.second) << "\" ];" << ss_end;
+        << "\\n@" << string_format("%p", kv.second.second) << "\"];" << ss_end;
   oss << "}";
   return oss.str();
 }
@@ -1742,7 +1746,8 @@ void parse_commandline(int argc, char *argv[], /* out */ char **filename,
   *compile = true;
   *outname = "";
   for (char *arg = argv[i]; i < argc; i++, arg = argv[i]) {
-    if (split++) {
+    if (split) {
+      split++;
       slts.show(Display::Type::ERROR,
                 "{<red>}Excessive number (%d) of arguments since at least "
                 "argument %d{<clean>}",
@@ -1958,27 +1963,9 @@ int main(int argc, char *argv[]) {
       auto fp = std::fopen(name.c_str(), "w+");
       std::fprintf(fp, "%s\n", rootdfa->gen_dot(anodes, transitions).c_str());
       std::fclose(fp);
-      std::thread *rendert = nullptr;
-      bool run = true;
-      if (compile) {
-        std::thread render{[&]() {
-          nlvmg.builder.prepare(
-              {parser.gen_lexer_options, parser.gen_lexer_stopwords,
-               parser.gen_lexer_ignores, parser.gen_lexer_normalisations,
-               parser.gen_lexer_literal_tags,
-               parser.hastagpos ? std::optional<TagPosSpecifier>(parser.tagpos)
-                                : std::optional<TagPosSpecifier>{}});
-
-          nlvmg.generate(rootdfa);
-          nlvmg.output();
-          run = false;
-        }};
-        rendert = &render;
-      }
-      exec(("../tools/wm '" + name + "'").c_str(), run);
-      if (compile)
-        rendert->join();
-    } else {
+      exec(("../tools/wm '" + name + "'").c_str(), true);
+    }
+    if (compile) {
       nlvmg.builder.prepare(
           {parser.gen_lexer_options, parser.gen_lexer_stopwords,
            parser.gen_lexer_ignores, parser.gen_lexer_normalisations,
