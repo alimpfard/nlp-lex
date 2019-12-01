@@ -260,6 +260,41 @@
       }
     ]
   }
+  'kaleid' : {
+    'patterns' : [
+      {
+        'match' : '(\\d+|\\d*\\.\\d+)'
+        'name' : 'constant.numeric.NLex'
+      }
+      {
+        'match' : '(\\b(?:if|then|else|def|extern)\\b)'
+        'name' : 'keyword.NLex'
+      }
+      {
+        'match' : '(\\w+)(\\s*\\(\\s*)'
+        'captures' : {
+          '1' : {
+            'name' : 'entity.name.function.NLex'
+          }
+          '2' : {
+            'name' : 'punctuation.NLex'
+          }
+        }
+      }
+      {
+        'match' : '(\\)|,)'
+        'name' : 'punctuation.NLex'
+      }
+      {
+        'match' : '(\\w+)'
+        'name' : 'variable.NLex'
+      }
+      {
+        'match' : '(\\W+)'
+        'name' : 'keyword.operator.NLex'
+      }
+    ]
+  }
   'main__1' : {
     'patterns' : [
       {
@@ -403,7 +438,7 @@
         }
       }
       {
-        'begin' : '(\\||\\\\[^pg])'
+        'begin' : '(\\||\\\\[^pgE])'
         'beginCaptures' : {
           '1' : {
             'name' : 'string.other.link.NLex'
@@ -418,6 +453,25 @@
         'endCaptures' : {
           '1' : {
             'name' : 'string.regexp.NLex'
+          }
+        }
+      }
+      {
+        'begin' : '(\\\\E\\{)'
+        'beginCaptures' : {
+          '1' : {
+            'name' : 'constant.character.escape.NLex'
+          }
+        }
+        'patterns' : [
+          {
+            'include' : '#kaleid'
+          }
+        ]
+        'end' : '(\\})'
+        'endCaptures' : {
+          '1' : {
+            'name' : 'constant.character.escape.NLex'
           }
         }
       }
