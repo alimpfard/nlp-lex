@@ -7,6 +7,7 @@
     + `(...)`    Group
     + `[...]`    Character Class
     + `{{...}}`  Rule embed
+    + `\E{...}`  Embedded Code
 
 2. Characters
 
@@ -89,13 +90,27 @@
 
     + `(...)` is a capture group and its index is the number of open-parens since the beginning of the regexp (unique)
 
+11. Embedded Rule Actions (WIP)
+    + Appears as an escaped entity `\E{...}`, and acts on its own
+    + Is run after the subexpression before it is successfully matched
+    + Toplevel syntax:
+        * `\E{ statement-list }` where 
+            + `statement-list : expression ';' statement-list | `
+            + `expression : ifexpr | loopexpr | callexpr | number | opexpr`
+            + `ifexpr : 'if' expression 'then' expression 'else' expression`
+            + `loopexpr : 'for' identifier '=' expression ',' expression (',' expression)? 'in' expression`
+            + `callexpr : identifier '(' arglist ')'`
+            + `arglist : expression (',' arglist)? | `
+            + `opexpr : operator expression | expression operator expression`
+            + `operator : <defined single character>`
+
 
 ## Basic Features
 
 | support         | '+' quantifier | Nested character classes | Non-greedy quantifiers | Non-capturing groups | Recursion      | Lookahead      | Lookbehind     | Backreferences | Indexable captures | Directives         | Conditionals       | Atomic Groups      | Named Captures     | Comments           | Embedded code      | Unicode Property   | Balancing Groups   | Variable length lookbehind |
 | :-------------  | :------------- | :-------------           | :-------------         | :-------------       | :------------- | :------------- | :------------- | :------------- | :-------------     | :-------------     | :-------------     | :-------------     | :-------------     | :-------------     | :-------------     | :-------------     | :-------------     | :-------------             |
-| Current support | Yes            | No                       | Yes                    | Yes                  | WIP              | No             | No             | No             | Yes                | No                 | No                 | Yes                | No                 | No                 | No                 | Partial            | No                 | No                         |
-| Planned support | -              | No                       | -                      | -                    | Yes              | Yes            | Yes            | Yes            | -                  | Yes                | No                 | -                  | No                 | No                 | ?                  | Yes                | No                 | No                         |
+| Current support | Yes            | No                       | Yes                    | Yes                  | WIP              | No             | No             | No             | Yes                | No                 | No                 | Yes                | No                 | No                 | Yes                | Partial            | No                 | No                         |
+| Planned support | -              | No                       | -                      | -                    | Yes              | Yes            | Yes            | Yes            | -                  | Yes                | No                 | -                  | No                 | No                 | WIP                | Yes                | No                 | No                         |
 
 
 ## API features

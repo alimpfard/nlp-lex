@@ -46,6 +46,9 @@ public:
   int max_opt_steps = 50;
   int opt_step = max_opt_steps;
 
+  std::optional<std::string> inline_code =
+      {}; // code that would be executed should this node match
+
   CUDebugInformation debug_info = {0, 0, 0, "<Unknown>"};
 
   std::set<Transition<DFANode, char> *, TransitionPointerComparer<StateInfoT>>
@@ -114,6 +117,10 @@ public:
        reference_node = false;
   int max_opt_steps = 50;
   int opt_step = max_opt_steps;
+
+  std::optional<std::string> inline_code =
+      {}; // code that would be executed should this node match
+
   std::set<Transition<NFANode, std::variant<char, EpsilonTransitionT,
                                             AnythingTransitionT>> *,
            TransitionPointerComparer<StateInfoT>>

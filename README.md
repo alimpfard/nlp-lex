@@ -111,7 +111,7 @@ the regex engine is currently very limited in what it supports, however here is 
 - [X] medium-simple quantifiers ({x,y})
 - [X] not-simple quantifiers (?)
 - [X] insane quantifiers (??)
-- [ ] rule actions (design a DSL for it...?)
+- [X] rule actions
 - [ ] backreferences
 - [X] recursive matching
 

@@ -469,14 +469,9 @@ std::vector<Regexp *> get_all_finals(Regexp *exp) {
   case RegexpType::Dot:
   case RegexpType::SubExprCall:
   case RegexpType::Literal:
-    ends.push_back(exp);
-    break;
-
-  case RegexpType::CharacterClass: {
-    ends.push_back(exp);
-    break;
-  }
   case RegexpType::Assertion:
+  case RegexpType::Code:
+  case RegexpType::CharacterClass:
     ends.push_back(exp);
     break;
   case RegexpType::Escape: {
@@ -1102,6 +1097,12 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
           dfanode->debug_info = s->debug_info;
         }
       }
+      if (s->inline_code.has_value()) {
+        if (dfanode->inline_code.has_value())
+          dfanode->inline_code->append(s->inline_code.value());
+        else
+          dfanode->inline_code = s->inline_code.value();
+      }
       if (s->subexpr_idx > -1) {
         dfanode->subexpr_idxs.insert(s->subexpr_idx);
       }
@@ -1531,6 +1532,13 @@ void DFANLVMCodeGenerator<T>::generate(
         llvm::ConstantInt::get(llvm::Type::getInt8Ty(builder.module.TheContext),
                                (int)!em),
         builder.module.nlex_errc);
+  }
+  // if there's an inline code piece, insert it here
+  if (node->inline_code.has_value()) {
+    std::string code = node->inline_code.value();
+    if (code != "") {
+      KaleidCompile(code, builder.module.Builder);
+    }
   }
   // if there is a subexpr call, create it now
   if (node->subexpr_call > -1) {

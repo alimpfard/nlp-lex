@@ -1,5 +1,6 @@
 #pragma once
 
+#include "basevm.hpp"
 #include "genlexer.hpp"
 #include "termdisplay.hpp"
 #include "wordtree.hpp"
@@ -40,12 +41,6 @@ typename T::mapped_type get(T value, typename T::key_type key) {
 extern Display::SingleLineTermStatus slts;
 
 namespace nlvm {
-
-static void debugPrintValue(llvm::Value *v) { v->print(llvm::errs(), true); }
-static void debugPrintType(llvm::Value *v) {
-  v->getType()->print(llvm::errs(), true);
-}
-
 static llvm::AllocaInst *createEntryBlockAlloca(llvm::Function *TheFunction,
                                                 const std::string &VarName,
                                                 llvm::Type *ty) {
@@ -53,12 +48,9 @@ static llvm::AllocaInst *createEntryBlockAlloca(llvm::Function *TheFunction,
                          TheFunction->getEntryBlock().begin());
   return TmpB.CreateAlloca(ty, 0, VarName.c_str());
 }
-
-struct Module {
+struct Module : public nlvm::BaseModule {
 public:
-  llvm::LLVMContext TheContext;
   llvm::IRBuilder<> Builder;
-  std::unique_ptr<llvm::Module> TheModule;
 
   llvm::BasicBlock *start;
 
@@ -343,7 +335,7 @@ public:
     return res;
   }
   Module(std::string name, llvm::raw_ostream *os)
-      : TheContext(), Builder(TheContext), outputv(os) {
+      : BaseModule(), Builder(TheContext), outputv(os) {
     TheModule = std::make_unique<llvm::Module>(name, TheContext);
     TheModule->addModuleFlag(llvm::Module::Warning, "Dwarf Version",
                              llvm::dwarf::DWARF_VERSION);
@@ -422,6 +414,17 @@ public:
         "ltoken_length");
   }
 };
+} // namespace nlvm
+
+extern void KaleidInitialise(std::string startup_code,
+                             nlvm::BaseModule *module);
+extern void KaleidCompile(std::string code, llvm::IRBuilder<> &builder);
+
+namespace nlvm {
+static void debugPrintValue(llvm::Value *v) { v->print(llvm::errs(), true); }
+static void debugPrintType(llvm::Value *v) {
+  v->getType()->print(llvm::errs(), true);
+}
 
 class Builder {
 public:
@@ -435,6 +438,21 @@ public:
 
   void begin(llvm::Function *fn, bool cleanup_if_fail = false,
              bool skip_on_error = true) {
+    KaleidInitialise(R"(
+        extern putchard(x);
+        extern mallocd(sze);
+        extern memsetd(ptr val sze);
+        extern freed(ptr);
+        
+        extern deref(ptr);
+        extern derefset(ptr val);
+
+        def binary : (x y) y;
+        def unary ^ (ptr) deref(ptr);
+        def binary ` (ptr val) derefset(ptr, val);
+    )",
+                     &module);
+
     module.emitLocation((DFANode<NFANode<std::nullptr_t> *> *)NULL);
     auto BBfinalise =
         llvm::BasicBlock::Create(module.TheContext, "_escape_top", fn);

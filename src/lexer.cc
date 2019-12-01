@@ -1071,6 +1071,28 @@ std::optional<Regexp> NLexer::regexp_expression() {
     case 'v':
       return Regexp{std::string{source_p - 2, 2}, RegexpType::Literal, '\v',
                     regexp_debug_info(this, "\\v", 2)};
+    case 'E': {
+      char pc = *source_p;
+      if (pc != '{')
+        lexer_error(*this, Errors::InvalidRegexpSyntax, error_token(),
+                    ErrorPosition::On,
+                    "Expected an open-brace '{' to follow \\E");
+      else
+        advance(1); // attempt to read code
+      char bf[10240] = {0}, *bufv = &bf[0];
+      pc = *source_p;
+      while (pc != '}') {
+        *(bufv++) = pc;
+        advance(1);
+        pc = *source_p;
+      }
+      size_t length = bufv - (char *)&bf;
+      advance(1);
+      *bufv++ = 0;
+      return Regexp{std::string{source_p - length - 4, length + 4},
+                    RegexpType::Code, bf,
+                    regexp_debug_info(this, "inline_code", 11)};
+    }
     case 'p':
     case 'P': {
       char pc = *source_p;
@@ -1754,6 +1776,8 @@ bool Regexp::operator==(const Regexp &other) const {
     return false; // TODO
   case CharacterClass:
     /* fallthrough */
+  case Code:
+    /* fallthrough */
   case Symbol:
     return std::get<std::string>(inner) == std::get<std::string>(other.inner);
   case Alternative: {
@@ -1798,6 +1822,7 @@ void Regexp::resolve(
   case RegexpType::Dot:
   case RegexpType::Escape:
   case RegexpType::CharacterClass:
+  case RegexpType::Code:
   case RegexpType::Assertion:
     return;
   case RegexpType::Nested:
@@ -1891,6 +1916,15 @@ Regexp::compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
     tl->named_rule = namef;
     result = tl;
     result->debug_info = debug_info;
+    break;
+  }
+  case RegexpType::Code: {
+    std::optional<std::string> &code = deep_output_end(parent)->inline_code;
+    if (code.has_value())
+      code->append(std::get<std::string>(inner));
+    else
+      code = std::get<std::string>(inner);
+    result = parent;
     break;
   }
   case RegexpType::Assertion: {

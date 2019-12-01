@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <memory.h>
 
 struct sresult {
   char const *start;
@@ -156,6 +157,41 @@ extern int __nlex_distance();
 //     predictor = NULL;
 //   }
 // }
+
+/* kaleidoscope rts */
+double putchard(double d) {
+  char c = (char) d;
+  int x = putchar(c);
+  return (double) x;
+}
+
+double mallocd(double s) {
+  size_t sze = (size_t) s;
+  void *mem = malloc(sze);
+  __intptr_t ip = (__intptr_t) mem;
+  return (double) ip;
+}
+
+double memsetd(double p, double s, double n) {
+  __intptr_t ip = p;
+  ip = (__intptr_t) memset((void*) ip, (int) s, (size_t) n);
+  return (double) ip;
+}
+
+double freed(double ptr) {
+  __intptr_t p = ptr;
+  return (double) free((void*) p);
+}
+
+double deref(double ptr) {
+  __intptr_t p = ptr;
+  return * ((double*) p);
+}
+
+double derefset(double ptr, double value) {
+  __intptr_t p = ptr;
+  return (*((double*) p) = value);
+}
 /* lib code */
 
 int main() {
