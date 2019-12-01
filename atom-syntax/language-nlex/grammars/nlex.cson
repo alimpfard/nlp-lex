@@ -267,7 +267,7 @@
         'name' : 'constant.numeric.NLex'
       }
       {
-        'match' : '(\\b(?:if|then|else|def|extern)\\b)'
+        'match' : '(\\b(?:if|then|else|def|extern|for|in|var)\\b)'
         'name' : 'keyword.NLex'
       }
       {

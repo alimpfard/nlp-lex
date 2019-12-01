@@ -82,16 +82,18 @@ static char next_char() {
 }
 
 /// gettok - Return the next token from standard input.
-static int gettok() {
+static int gettok(bool reset = false) {
   static int LastChar = ' ';
-
+  if (reset)
+    LastChar = ' ';
   // Skip any whitespace.
   while (isspace(LastChar))
     LastChar = next_char();
 
-  if (isalpha(LastChar)) { // identifier: [a-zA-Z][a-zA-Z0-9]*
+  if (isalpha(LastChar) ||
+      LastChar == '_') { // identifier: [a-zA-Z_][a-zA-Z_0-9]*
     IdentifierStr = LastChar;
-    while (isalnum((LastChar = next_char())))
+    while (isalnum((LastChar = next_char())) || LastChar == '_')
       IdentifierStr += LastChar;
 
     if (IdentifierStr == "def")
@@ -138,9 +140,9 @@ static int gettok() {
       return gettok();
   }
 
-  // Check for end of file.  Don't eat the EOF.
-  if (LastChar == 0)
+  if (LastChar == 0) {
     return tok_eof;
+  }
 
   // Otherwise, just return the character as its ascii value.
   int ThisChar = LastChar;
@@ -314,7 +316,7 @@ public:
 /// token the parser is looking at.  getNextToken reads another token from the
 /// lexer and updates CurTok with its results.
 static int CurTok;
-static int getNextToken() { return CurTok = gettok(); }
+static int getNextToken(bool reset = false) { return CurTok = gettok(reset); }
 
 /// BinopPrecedence - This holds the precedence for each binary operator that is
 /// defined.
@@ -716,6 +718,19 @@ static IRBuilder<> *Builder;
 static std::map<std::string, AllocaInst *> NamedValues;
 static std::map<std::string, std::unique_ptr<PrototypeAST>> FunctionProtos;
 
+static Value *cast2dbl(Value *inst) {
+  auto instT = inst->getType();
+  auto dblT = llvm::Type::getDoubleTy(mModule->TheContext);
+  if (instT != dblT) {
+    auto i64T = llvm::Type::getInt64Ty(mModule->TheContext);
+    if (instT->isPointerTy())
+      inst = (*Builder).CreatePtrToInt(inst, i64T);
+    inst = llvm::CastInst::Create(Instruction::SIToFP, inst, dblT, "mcast",
+                                  (*Builder).GetInsertBlock());
+  }
+  return inst;
+}
+
 Value *LogErrorV(const char *Str) {
   LogError(Str);
   return nullptr;
@@ -753,11 +768,14 @@ Value *NumberExprAST::codegen() {
 Value *VariableExprAST::codegen() {
   // Look this variable up in the function.
   Value *V = NamedValues[Name];
-  if (!V)
-    return LogErrorV("Unknown variable name");
+
+  if (!V) {
+    if ((V = mModule->TheModule->getGlobalVariable(Name, true)) == nullptr)
+      return LogErrorV("Unknown variable name");
+  }
 
   // Load the value.
-  return (*Builder).CreateLoad(V, Name.c_str());
+  return cast2dbl((*Builder).CreateLoad(V, Name.c_str()));
 }
 
 Value *UnaryExprAST::codegen() {
@@ -830,7 +848,8 @@ Value *CallExprAST::codegen() {
   // Look up the name in the global module table.
   Function *CalleeF = getFunction(Callee);
   if (!CalleeF)
-    return LogErrorV("Unknown function referenced");
+    return LogErrorV(
+        (std::string{"Unknown function `"} + Callee + "' referenced").c_str());
 
   // If argument mismatch error.
   if (CalleeF->arg_size() != Args.size())
@@ -1162,7 +1181,8 @@ static void HandleTopLevelExpression() {
 void KaleidCompile(std::string code, llvm::IRBuilder<> &TheBuilder) {
   Builder = &TheBuilder;
   KaleidFeed(code);
-  while (code != "") {
+  getNextToken(true);
+  while (true) {
     switch (CurTok) {
     case tok_eof:
       return;
@@ -1229,7 +1249,6 @@ void KaleidInitialise(std::string startup_code, nlvm::BaseModule *module) {
 
   // Prime the first token
   KaleidFeed(startup_code);
-  getNextToken();
 
   // Initialize the target registry etc.
   InitializeAllTargetInfos();

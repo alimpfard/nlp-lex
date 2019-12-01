@@ -1089,7 +1089,7 @@ std::optional<Regexp> NLexer::regexp_expression() {
       size_t length = bufv - (char *)&bf;
       advance(1);
       *bufv++ = 0;
-      return Regexp{std::string{source_p - length - 4, length + 4},
+      return Regexp{std::string{source_p - length - 6, length + 4},
                     RegexpType::Code, bf,
                     regexp_debug_info(this, "inline_code", 11)};
     }
@@ -1420,7 +1420,7 @@ std::optional<Regexp> NLexer::regexp_expression() {
       }
       buffer[length++] = c;
     } while (1);
-    return Regexp{"[" + std::string{source_p - rlength - 4, rlength + 3} + "]",
+    return Regexp{"[" + std::string{source_p - rlength, rlength - 1} + "]",
                   RegexpType::CharacterClass, std::string{buffer, length},
                   regexp_debug_info(this, "\\u", rlength + 3)};
   }
@@ -1919,12 +1919,12 @@ Regexp::compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
     break;
   }
   case RegexpType::Code: {
-    std::optional<std::string> &code = deep_output_end(parent)->inline_code;
-    if (code.has_value())
-      code->append(std::get<std::string>(inner));
-    else
-      code = std::get<std::string>(inner);
-    result = parent;
+    NFANode<std::string> *tl = new NFANode<std::string>{"EC" + mangle()};
+    parent->epsilon_transition_to(tl);
+    tl->named_rule = namef;
+    tl->inline_code = std::get<std::string>(inner);
+    result = tl;
+    result->debug_info = debug_info;
     break;
   }
   case RegexpType::Assertion: {

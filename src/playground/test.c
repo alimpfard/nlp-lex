@@ -165,6 +165,10 @@ double putchard(double d) {
   return (double) x;
 }
 
+double printd(double d) {
+  return (double) printf("%lf", d);
+}
+
 double mallocd(double s) {
   size_t sze = (size_t) s;
   void *mem = malloc(sze);
@@ -183,14 +187,14 @@ double freed(double ptr) {
   return (double) free((void*) p);
 }
 
-double deref(double ptr) {
+double cderef(double ptr) {
   __intptr_t p = ptr;
-  return * ((double*) p);
+  return * ((char*) p);
 }
 
-double derefset(double ptr, double value) {
+double cderefset(double ptr, double value) {
   __intptr_t p = ptr;
-  return (*((double*) p) = value);
+  return (double) (*((char*) p) = (char) value);
 }
 /* lib code */
 

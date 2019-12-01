@@ -735,6 +735,7 @@ std::string NFANode<T>::gen_dot(
   oss << "digraph finite_state_machine {" << ss_end;
   oss << "rankdir=LR;" << ss_end;
   oss << "size=\"8,5\";" << ss_end;
+  oss << "forcelabels=true;" << ss_end;
   int node_id = 0, error = 1000000;
   std::map<NFANode<T> *, int> nodeids;
   for (auto node : nodes) {
@@ -753,6 +754,12 @@ std::string NFANode<T>::gen_dot(
         << (node->subexpr_call > -1
                 ? string_format(" [calls %d]", node->subexpr_call)
                 : "")
+        << '"'
+        << ", xlabel=\"" +
+               (node->inline_code.has_value()
+                    ? string_format("Executes\\n%s",
+                                    node->inline_code.value().c_str())
+                    : "")
         << '"' << "] LR_" << nodeids[node] << ";" << ss_end;
   }
   std::map<std::pair<int, int>, std::pair<std::set<std::string>, NFANode<T> *>>
@@ -852,6 +859,7 @@ std::string DFANode<T>::gen_dot(
   constexpr auto ss_end = "\n\t";
   oss << "digraph finite_state_machine {" << ss_end;
   oss << "rankdir=LR;" << ss_end;
+  oss << "forcelabels=true;" << ss_end;
   int node_id = 0, error = 1000000;
   std::map<DFANode<T> *, int> nodeids;
   for (auto node : nodes) {
@@ -875,6 +883,12 @@ std::string DFANode<T>::gen_dot(
           << (node->subexpr_call > -1
                   ? string_format(" [calls %d]", node->subexpr_call)
                   : "")
+          << '"'
+          << ", xlabel=\"" +
+                 (node->inline_code.has_value()
+                      ? string_format("Executes\\n%s",
+                                      node->inline_code.value().c_str())
+                      : "")
           << '"' << "] LR_" << nodeids[node] << ";" << ss_end;
     else
       oss << "LR_" << nodeids[node] << ";" << ss_end;
@@ -1533,13 +1547,6 @@ void DFANLVMCodeGenerator<T>::generate(
                                (int)!em),
         builder.module.nlex_errc);
   }
-  // if there's an inline code piece, insert it here
-  if (node->inline_code.has_value()) {
-    std::string code = node->inline_code.value();
-    if (code != "") {
-      KaleidCompile(code, builder.module.Builder);
-    }
-  }
   // if there is a subexpr call, create it now
   if (node->subexpr_call > -1) {
     llvm::Function *fn;
@@ -1563,6 +1570,13 @@ void DFANLVMCodeGenerator<T>::generate(
     //     // jump to _escape, we failed
     //   );
     // }
+  }
+  // if there's an inline code piece, insert it here
+  if (node->inline_code.has_value()) {
+    std::string code = node->inline_code.value();
+    if (code != "") {
+      KaleidCompile(code, builder.module.Builder);
+    }
   }
   builder.module.Builder.CreateCall(builder.module.nlex_next, {});
   auto readv = builder.module.Builder.CreateCall(builder.module.nlex_current_f,
@@ -1956,6 +1970,22 @@ int main(int argc, char *argv[]) {
     root = parser.compile();
     auto rootdfa = root->to_dfa();
     rootdfa->start = true;
+    if (parser.generate_graph) {
+      std::set<NFANode<std::string> *, NFANodePointerComparer<std::string>>
+          nodes;
+      std::set<NFANode<std::string> *> anodes;
+      std::unordered_set<CanonicalTransition<
+          NFANode<std::string>,
+          std::variant<char, EpsilonTransitionT, AnythingTransitionT>>>
+          transitions;
+      root->aggregate_dot(nodes, anodes, transitions);
+
+      std::string name = std::tmpnam(nullptr);
+      auto fp = std::fopen(name.c_str(), "w+");
+      std::fprintf(fp, "%s\n", root->gen_dot(anodes, transitions).c_str());
+      std::fclose(fp);
+      exec(("../tools/wm '" + name + "'").c_str(), true);
+    }
     if (parser.generate_graph) {
       std::set<DFANode<std::set<NFANode<std::string> *>> *,
                DFANodePointerComparer<std::set<NFANode<std::string> *>>>
