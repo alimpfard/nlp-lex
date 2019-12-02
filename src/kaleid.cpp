@@ -64,7 +64,8 @@ enum Token {
   tok_unary = -12,
 
   // var definition
-  tok_var = -13
+  tok_var = -13,
+  tok_global = -14
 };
 
 static std::string IdentifierStr; // Filled in if tok_identifier
@@ -116,6 +117,8 @@ static int gettok(bool reset = false) {
       return tok_unary;
     if (IdentifierStr == "var")
       return tok_var;
+    if (IdentifierStr == "global")
+      return tok_global;
     return tok_identifier;
   }
 
@@ -172,6 +175,7 @@ public:
   NumberExprAST(double Val) : Val(Val) {}
 
   Value *codegen() override;
+  double getValue() const { return Val; }
 };
 
 /// VariableExprAST - Expression class for referencing a variable, like "a".
@@ -264,6 +268,17 @@ public:
   Value *codegen() override;
 };
 
+/// GlobalExprAST - Expression class for global
+class GlobalExprAST : public ExprAST {
+  std::vector<std::pair<std::string, Constant *>> Names;
+
+public:
+  GlobalExprAST(std::vector<std::pair<std::string, Constant *>> Names)
+      : Names(std::move(Names)) {}
+
+  Value *codegen() override;
+};
+
 /// PrototypeAST - This class represents the "prototype" for a function,
 /// which captures its name, and its argument names (thus implicitly the number
 /// of arguments the function takes), as well as if it is an operator.
@@ -321,6 +336,10 @@ static int getNextToken(bool reset = false) { return CurTok = gettok(reset); }
 /// BinopPrecedence - This holds the precedence for each binary operator that is
 /// defined.
 static std::map<char, int> BinopPrecedence;
+
+/// Module
+/// Stolen from Codegen, required here
+static nlvm::BaseModule *mModule;
 
 /// GetTokPrecedence - Get the precedence of the pending binary operator token.
 static int GetTokPrecedence() {
@@ -479,6 +498,48 @@ static std::unique_ptr<ExprAST> ParseForExpr() {
                                       std::move(Step), std::move(Body));
 }
 
+/// globalexpr ::= 'global' identifier ('=' number)? (, identifier ('='
+/// number)?)*
+static std::unique_ptr<ExprAST> ParseGlobalExpr() {
+  getNextToken(); // eat the global
+
+  std::vector<std::pair<std::string, Constant *>> Names;
+
+  // at least one global name is required
+  if (CurTok != tok_identifier)
+    return LogError("expected identifier after global");
+
+  while (true) {
+    std::string Name = IdentifierStr;
+    getNextToken(); // eat identifier
+
+    Constant *init = nullptr;
+    if (CurTok == '=') {
+      getNextToken(); // eat the '='
+
+      std::unique_ptr<ExprAST> number = nullptr;
+      number = ParseNumberExpr();
+
+      if (!number)
+        return nullptr;
+
+      NumberExprAST *nast = (NumberExprAST *)number.get();
+      double value = nast->getValue();
+      init = ConstantFP::get(mModule->TheContext, APFloat{value});
+    }
+    Names.push_back({Name, init});
+
+    if (CurTok != ',')
+      break;
+    getNextToken();
+
+    if (CurTok != tok_identifier)
+      return LogError("expected identifier list after global");
+  }
+
+  return std::make_unique<GlobalExprAST>(std::move(Names));
+}
+
 /// varexpr ::= 'var' identifier ('=' expression)?
 //                    (',' identifier ('=' expression)?)* 'in' expression
 static std::unique_ptr<ExprAST> ParseVarExpr() {
@@ -550,6 +611,8 @@ static std::unique_ptr<ExprAST> ParsePrimary() {
     return ParseForExpr();
   case tok_var:
     return ParseVarExpr();
+  case tok_global:
+    return ParseGlobalExpr();
   }
 }
 
@@ -713,7 +776,6 @@ static std::unique_ptr<PrototypeAST> ParseExtern() {
 // Code Generation
 //===----------------------------------------------------------------------===//
 
-static nlvm::BaseModule *mModule;
 static IRBuilder<> *Builder;
 static std::map<std::string, AllocaInst *> NamedValues;
 static std::map<std::string, std::unique_ptr<PrototypeAST>> FunctionProtos;
@@ -785,7 +847,8 @@ Value *UnaryExprAST::codegen() {
 
   Function *F = getFunction(std::string("unary") + Opcode);
   if (!F)
-    return LogErrorV("Unknown unary operator");
+    return LogErrorV(
+        std::string{"Unknown unary operator " + std::string{Opcode}}.c_str());
 
   return (*Builder).CreateCall(F, OperandV, "unop");
 }
@@ -808,7 +871,9 @@ Value *BinaryExprAST::codegen() {
     // Look up the name.
     Value *Variable = NamedValues[LHSE->getName()];
     if (!Variable)
-      return LogErrorV("Unknown variable name");
+      if ((Variable = mModule->TheModule->getGlobalVariable(LHSE->getName(),
+                                                            true)) == nullptr)
+        return LogErrorV("Unknown variable name");
 
     (*Builder).CreateStore(Val, Variable);
     return Val;
@@ -826,9 +891,15 @@ Value *BinaryExprAST::codegen() {
     return (*Builder).CreateFSub(L, R, "subtmp");
   case '*':
     return (*Builder).CreateFMul(L, R, "multmp");
+  case '/':
+    return (*Builder).CreateFDiv(L, R, "divtmp");
   case '<':
     L = (*Builder).CreateFCmpULT(L, R, "cmptmp");
     // Convert bool 0/1 to double 0.0 or 1.0
+    return (*Builder).CreateUIToFP(L, Type::getDoubleTy((mModule->TheContext)),
+                                   "booltmp");
+  case '>':
+    L = (*Builder).CreateFCmpUGT(L, R, "cmptmp");
     return (*Builder).CreateUIToFP(L, Type::getDoubleTy((mModule->TheContext)),
                                    "booltmp");
   default:
@@ -1018,6 +1089,22 @@ Value *ForExprAST::codegen() {
     NamedValues.erase(VarName);
 
   // for expr always returns 0.0.
+  return Constant::getNullValue(Type::getDoubleTy((mModule->TheContext)));
+}
+
+Value *GlobalExprAST::codegen() {
+  // Register all globals that don't exist
+  for (auto [name, initialiser] : Names) {
+    if (mModule->TheModule->getGlobalVariable(name) != nullptr)
+      continue;
+
+    new GlobalVariable{*mModule->TheModule,
+                       llvm::Type::getDoubleTy(mModule->TheContext),
+                       false,
+                       GlobalValue::LinkageTypes::InternalLinkage,
+                       initialiser,
+                       name};
+  }
   return Constant::getNullValue(Type::getDoubleTy((mModule->TheContext)));
 }
 
@@ -1238,10 +1325,13 @@ extern "C" DLLEXPORT double printd(double X) {
 void KaleidInitialise(std::string startup_code, nlvm::BaseModule *module) {
   // Install standard binary operators.
   // 1 is lowest precedence.
+  BinopPrecedence['='] = 5;
   BinopPrecedence['<'] = 10;
+  BinopPrecedence['>'] = 10;
   BinopPrecedence['+'] = 20;
   BinopPrecedence['-'] = 20;
   BinopPrecedence['*'] = 40; // highest.
+  BinopPrecedence['/'] = 40; // highest.
 
   mModule = module;
   llvm::IRBuilder<> TheBuilder(mModule->TheContext);

@@ -441,6 +441,7 @@ public:
     KaleidInitialise(R"(
         extern putchard(x);
         extern printd(x);
+        extern eprintd(x);
         extern mallocd(sze);
         extern memsetd(ptr val sze);
         extern freed(ptr);

@@ -264,34 +264,34 @@
     'patterns' : [
       {
         'match' : '(\\d+|\\d*\\.\\d+)'
-        'name' : 'constant.numeric.NLex'
+        'name' : 'constant.numeric.comment.block.preprocessor.NLex'
       }
       {
-        'match' : '(\\b(?:if|then|else|def|extern|for|in|var)\\b)'
-        'name' : 'keyword.NLex'
+        'match' : '(\\b(?:if|then|else|def|extern|for|in|var|global)\\b)'
+        'name' : 'keyword.comment.block.preprocessor.NLex'
       }
       {
         'match' : '(\\w+)(\\s*\\(\\s*)'
         'captures' : {
           '1' : {
-            'name' : 'entity.name.function.NLex'
+            'name' : 'entity.name.function.comment.block.preprocessor.NLex'
           }
           '2' : {
-            'name' : 'punctuation.NLex'
+            'name' : 'keyword.operator.comment.block.preprocessor.NLex'
           }
         }
       }
       {
         'match' : '(\\)|,)'
-        'name' : 'punctuation.NLex'
+        'name' : 'keyword.operator.comment.block.preprocessor.NLex'
       }
       {
         'match' : '(\\w+)'
-        'name' : 'variable.NLex'
+        'name' : 'entity.meta.property-name.comment.block.preprocessor.NLex'
       }
       {
         'match' : '(\\W+)'
-        'name' : 'keyword.operator.NLex'
+        'name' : 'keyword.operator.comment.block.preprocessor.NLex'
       }
     ]
   }
@@ -460,7 +460,7 @@
         'begin' : '(\\\\E\\{)'
         'beginCaptures' : {
           '1' : {
-            'name' : 'constant.character.escape.NLex'
+            'name' : 'comment.block.preprocessor.NLex'
           }
         }
         'patterns' : [
@@ -471,7 +471,7 @@
         'end' : '(\\})'
         'endCaptures' : {
           '1' : {
-            'name' : 'constant.character.escape.NLex'
+            'name' : 'comment.block.preprocessor.NLex'
           }
         }
       }
@@ -561,6 +561,10 @@
       {
         'match' : '(\\+|\\*|\\?)'
         'name' : 'string.regexp.NLex'
+      }
+      {
+        'match' : '(.)'
+        'name' : 'constant.character.NLex'
       }
     ]
   }

@@ -1,0 +1,12 @@
+cstring :: \E{global tlength = 0, clength = 0 def tincrement() tlength = tlength+ltoken_length}"([^"]|\\")*"\E{tincrement()}
+cchar :: '([^']|\\.)'\E{tincrement()}
+lcomment :: //.*\E{clength = clength+ltoken_length}
+bcomment :: /\*(.|\n)*\*/\E{clength = clength+ltoken_length}
+space :: [ 	]+
+number :: [0-9]+[lL]?|[0-9]*\.[0-9]+[df]?\E{tincrement()}
+ident :: [A-Za-z_][A-Za-z_0-9]*\E{tincrement()}
+operator :: (->|shhit[*+/?:%#!~^&(),.]|\[|\]|-|[=<>])\E{tincrement()}
+semicolon :: ;
+brace :: [{}]\E{tincrement(); eprintd(tlength); eprintd(clength); eprintd(tlength / clength)}
+
+ignore [space]

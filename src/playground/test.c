@@ -169,6 +169,10 @@ double printd(double d) {
   return (double) printf("%lf", d);
 }
 
+double eprintd(double d) {
+  return (double) fprintf(stderr, "%lf", d);
+}
+
 double mallocd(double s) {
   size_t sze = (size_t) s;
   void *mem = malloc(sze);
@@ -228,3 +232,4 @@ int main() {
   free(s);
   // __nlex_unload_tagpos();
 }
+
