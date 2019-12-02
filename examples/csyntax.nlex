@@ -1,12 +1,13 @@
-cstring :: \E{global tlength = 0, clength = 0 def tincrement() tlength = tlength+ltoken_length}"([^"]|\\")*"\E{tincrement()}
+cstring :: \E{global tlength = 0, clength = 0, bclength = 0, blockid = 0; def tincrement() (tlength = tlength+ltoken_length); def printf() 0}"([^"]|\\"|\\.)*"\E{tincrement()}
 cchar :: '([^']|\\.)'\E{tincrement()}
-lcomment :: //.*\E{clength = clength+ltoken_length}
-bcomment :: /\*(.|\n)*\*/\E{clength = clength+ltoken_length}
-space :: [ 	]+
+bcomment :: /\*(.|\n)*\*/\E{bclength = bclength+ltoken_length-4}
+lcomment :: (//.*)\n\E{clength = clength+ltoken_length-2}
+space :: [\u000a 	]+
 number :: [0-9]+[lL]?|[0-9]*\.[0-9]+[df]?\E{tincrement()}
 ident :: [A-Za-z_][A-Za-z_0-9]*\E{tincrement()}
-operator :: (->|shhit[*+/?:%#!~^&(),.]|\[|\]|-|[=<>])\E{tincrement()}
+operator :: (->|[*+/?:%#!~^&(),.|]|\[|\]|-|[=<>])\E{tincrement()}
 semicolon :: ;
-brace :: [{}]\E{tincrement(); eprintd(tlength); eprintd(clength); eprintd(tlength / clength)}
+cbrace :: \}\E{blockid = blockid - 1;dprintdf(2, "Position: %0.f, Id: %0.f, Text len: %0.f, block comment len: %0.f, line comment len: %0.f, Rat: %.4f\r\n", nlex_fed_string-nlex_true_start, blockid, tlength, bclength, clength, tlength/(clength+bclength))}
+obrace :: \{\E{blockid = blockid + 1}
 
 ignore [space]

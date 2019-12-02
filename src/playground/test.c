@@ -1,5 +1,9 @@
 #include <stdio.h>
 #include <memory.h>
+#include <unistd.h>
+#include <errno.h>
+#include <stdarg.h>
+#include <stdlib.h>
 
 struct sresult {
   char const *start;
@@ -161,7 +165,13 @@ extern int __nlex_distance();
 /* kaleidoscope rts */
 double putchard(double d) {
   char c = (char) d;
-  int x = putchar(c);
+  int x = fprintf(stderr, "%c", c);
+  return (double) x;
+}
+
+double eputchard(double d) {
+  char c = (char) d;
+  int x = fprintf(stderr, "%c", c);
   return (double) x;
 }
 
@@ -171,6 +181,16 @@ double printd(double d) {
 
 double eprintd(double d) {
   return (double) fprintf(stderr, "%lf", d);
+}
+
+double dprintdf(double fd, double ptr, ...) {
+  va_list ap;
+  va_start(ap, ptr);
+
+  __intptr_t ip = ptr;
+  double res = (double) vdprintf((int) fd, (char*) ip, ap);
+  va_end(ap);
+  return res;
 }
 
 double mallocd(double s) {
@@ -188,7 +208,8 @@ double memsetd(double p, double s, double n) {
 
 double freed(double ptr) {
   __intptr_t p = ptr;
-  return (double) free((void*) p);
+  free((void*) p);
+  return 0.0;
 }
 
 double cderef(double ptr) {
@@ -200,18 +221,43 @@ double cderefset(double ptr, double value) {
   __intptr_t p = ptr;
   return (double) (*((char*) p) = (char) value);
 }
+
+double dderef(double ptr) {
+  __intptr_t p = ptr;
+  return * ((double*) p);
+}
+
+double dderefset(double ptr, double value) {
+  __intptr_t p = ptr;
+  return (*((double*) p) = value);
+}
+
+double trap() { 
+  __asm("int3");
+  return 0;
+}
 /* lib code */
 
 int main() {
   // __nlex_load_tagpos();
   struct sresult res = {0};
-  size_t size = 1024;
+  size_t size = 1024000;
   char *s = malloc(size);
   printf("res at %p, s at %p\n", &res, s);
   while (1) {
     int last = -1;
-    printf("> ");
-    size_t els = getline(&s, &size, stdin);
+    size_t els = 0;
+    if (isatty(STDIN_FILENO)) {
+        printf("> ");
+        els = getline(&s, &size, stdin);
+    } else {
+        els = read(STDIN_FILENO, s, 1024000);
+        if (els < 0) {
+            fprintf(stderr, "Error from read(2): %s", strerror(errno));
+            break;
+        }
+        if (els == 0) continue;
+    }
     s[els - 1] = 0;
     printf("processing - '%s'\n", s);
     // __nlex_reset_state();

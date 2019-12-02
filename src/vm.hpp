@@ -440,21 +440,29 @@ public:
              bool skip_on_error = true) {
     KaleidInitialise(R"(
         extern putchard(x);
+        extern eputchard(x);
         extern printd(x);
         extern eprintd(x);
         extern mallocd(sze);
         extern memsetd(ptr val sze);
         extern freed(ptr);
+
+        extern variadic dprintdf(fd fmt);
         
         extern cderef(ptr);
         extern cderefset(ptr val);
+        extern dderef(ptr);
+        extern dderefset(ptr val);
 
         def binary : (x y) y;
         def unary ^ (ptr) cderef(ptr);
         def binary ` (ptr val) cderefset(ptr, val);
 
-        def print_string(str len) for mlen=0, mlen<len in 
-            putchard(cderef(str + mlen))
+        def print_string(str) for x=0,^(str+x) in
+            putchard(^(str+x))
+
+        def eprint_string(str) for x=0,^(str+x) in
+            eputchard(^(str+x))
     )",
                      &module);
 

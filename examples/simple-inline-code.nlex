@@ -1,1 +1,1 @@
-expr :: \E{printd(10+43)}
+expr :: \E{printstring("shit")}

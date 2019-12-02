@@ -49,6 +49,16 @@ const static inline std::string string_format(const std::string fmt_str, ...) {
   }
   return std::string(formatted.get());
 }
+std::string findAndReplaceAllT(std::string data, std::string toSearch,
+                               std::string replaceStr) {
+  auto pos = data.find(toSearch);
+
+  while (pos != std::string::npos) {
+    data.replace(pos, toSearch.size(), replaceStr);
+    pos = data.find(toSearch, pos + replaceStr.size());
+  }
+  return data;
+}
 void findAndReplaceAll(std::string &data, std::string toSearch,
                        std::string replaceStr) {
   auto pos = data.find(toSearch);

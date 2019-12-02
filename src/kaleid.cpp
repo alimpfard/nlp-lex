@@ -65,11 +65,18 @@ enum Token {
 
   // var definition
   tok_var = -13,
-  tok_global = -14
+  tok_global = -14,
+
+  // string
+  tok_string = -15,
+
+  // extern modifier
+  tok_variadic = -16,
 };
 
 static std::string IdentifierStr; // Filled in if tok_identifier
 static double NumVal;             // Filled in if tok_number
+static std::string StringValue;   // Filled in if tok_string
 static std::string fed_string = "";
 
 void KaleidFeed(std::string s) { fed_string += s; }
@@ -90,6 +97,54 @@ static int gettok(bool reset = false) {
   // Skip any whitespace.
   while (isspace(LastChar))
     LastChar = next_char();
+
+  if (LastChar == '"') {
+    StringValue = "";
+    bool escape = false;
+    while ((LastChar = next_char()) != '"') {
+      char c = LastChar;
+      if (c == '\\') {
+        if (escape) {
+          escape = false;
+          StringValue += c;
+        } else
+          escape = true;
+      } else {
+        if (escape) {
+          escape = false;
+          switch (c) {
+          case 'x': {
+            char buf[3];
+            buf[0] = next_char();
+            buf[1] = next_char();
+            buf[2] = 0;
+            StringValue += (char)strtol(buf, NULL, 16);
+            break;
+          }
+          case 'n':
+            StringValue += "\n";
+            break;
+          case 'r':
+            StringValue += "\r";
+            break;
+          case 'f':
+            StringValue += "\f";
+            break;
+          case 't':
+            StringValue += "\t";
+            break;
+          default:
+            StringValue += LastChar;
+            break;
+          }
+        } else
+          StringValue += LastChar;
+      }
+    }
+
+    LastChar = next_char(); // eat the ending '"'
+    return tok_string;
+  }
 
   if (isalpha(LastChar) ||
       LastChar == '_') { // identifier: [a-zA-Z_][a-zA-Z_0-9]*
@@ -119,6 +174,8 @@ static int gettok(bool reset = false) {
       return tok_var;
     if (IdentifierStr == "global")
       return tok_global;
+    if (IdentifierStr == "variadic")
+      return tok_variadic;
     return tok_identifier;
   }
 
@@ -176,6 +233,14 @@ public:
 
   Value *codegen() override;
   double getValue() const { return Val; }
+};
+
+class StringExprAST : public ExprAST {
+  std::string Val;
+
+public:
+  StringExprAST(std::string &&s) : Val(std::move(s)) {}
+  Value *codegen() override;
 };
 
 /// VariableExprAST - Expression class for referencing a variable, like "a".
@@ -287,18 +352,20 @@ class PrototypeAST {
   std::vector<std::string> Args;
   bool IsOperator;
   unsigned Precedence; // Precedence if a binary op.
+  bool IsVariadic;
 
 public:
   PrototypeAST(const std::string &Name, std::vector<std::string> Args,
-               bool IsOperator = false, unsigned Prec = 0)
+               bool IsOperator = false, unsigned Prec = 0, bool IsVar = false)
       : Name(Name), Args(std::move(Args)), IsOperator(IsOperator),
-        Precedence(Prec) {}
+        Precedence(Prec), IsVariadic(IsVar) {}
 
   Function *codegen();
   const std::string &getName() const { return Name; }
 
   bool isUnaryOp() const { return IsOperator && Args.size() == 1; }
   bool isBinaryOp() const { return IsOperator && Args.size() == 2; }
+  bool isVariadic() const { return !IsOperator && IsVariadic; }
 
   char getOperatorName() const {
     assert(isUnaryOp() || isBinaryOp());
@@ -588,6 +655,12 @@ static std::unique_ptr<ExprAST> ParseVarExpr() {
   return std::make_unique<VarExprAST>(std::move(VarNames), std::move(Body));
 }
 
+static std::unique_ptr<ExprAST> ParseString() {
+  std::string stringvalue = StringValue;
+  getNextToken(); // eat string
+  return std::make_unique<StringExprAST>(std::move(stringvalue));
+}
+
 /// primary
 ///   ::= identifierexpr
 ///   ::= numberexpr
@@ -595,6 +668,7 @@ static std::unique_ptr<ExprAST> ParseVarExpr() {
 ///   ::= ifexpr
 ///   ::= forexpr
 ///   ::= varexpr
+///   ::= string
 static std::unique_ptr<ExprAST> ParsePrimary() {
   switch (CurTok) {
   default:
@@ -613,6 +687,8 @@ static std::unique_ptr<ExprAST> ParsePrimary() {
     return ParseVarExpr();
   case tok_global:
     return ParseGlobalExpr();
+  case tok_string:
+    return ParseString();
   }
 }
 
@@ -684,7 +760,7 @@ static std::unique_ptr<ExprAST> ParseExpression() {
 ///   ::= id '(' id* ')'
 ///   ::= binary LETTER number? (id, id)
 ///   ::= unary LETTER (id)
-static std::unique_ptr<PrototypeAST> ParsePrototype() {
+static std::unique_ptr<PrototypeAST> ParsePrototype(bool variadic = false) {
   std::string FnName;
 
   unsigned Kind = 0; // 0 = identifier, 1 = unary, 2 = binary.
@@ -743,7 +819,7 @@ static std::unique_ptr<PrototypeAST> ParsePrototype() {
     return LogErrorP("Invalid number of operands for operator");
 
   return std::make_unique<PrototypeAST>(FnName, ArgNames, Kind != 0,
-                                        BinaryPrecedence);
+                                        BinaryPrecedence, variadic);
 }
 
 /// definition ::= 'def' prototype expression
@@ -766,10 +842,15 @@ static std::unique_ptr<ExprAST> ParseTopLevelExpr() {
   return nullptr;
 }
 
-/// external ::= 'extern' prototype
+/// external ::= 'extern' 'variadic'? prototype
 static std::unique_ptr<PrototypeAST> ParseExtern() {
   getNextToken(); // eat extern.
-  return ParsePrototype();
+  auto var = false;
+  if (CurTok == tok_variadic) {
+    var = true;
+    getNextToken(); // eat 'variadic
+  }
+  return ParsePrototype(var);
 }
 
 //===----------------------------------------------------------------------===//
@@ -785,6 +866,10 @@ static Value *cast2dbl(Value *inst) {
   auto dblT = llvm::Type::getDoubleTy(mModule->TheContext);
   if (instT != dblT) {
     auto i64T = llvm::Type::getInt64Ty(mModule->TheContext);
+    if (instT->isArrayTy()) {
+      inst = (*Builder).CreateBitCast(inst, i64T);
+      instT = inst->getType();
+    }
     if (instT->isPointerTy())
       inst = (*Builder).CreatePtrToInt(inst, i64T);
     inst = llvm::CastInst::Create(Instruction::SIToFP, inst, dblT, "mcast",
@@ -827,6 +912,32 @@ Value *NumberExprAST::codegen() {
   return ConstantFP::get((mModule->TheContext), APFloat(Val));
 }
 
+Value *StringExprAST::codegen() {
+  std::vector<Constant *> ref;
+  for (int i = 0; i < Val.size(); i++)
+    ref.push_back(
+        ConstantInt::get(Type::getInt8Ty(mModule->TheContext), Val[i]));
+  ref.push_back(ConstantInt::get(Type::getInt8Ty(mModule->TheContext), 0));
+  GlobalVariable *stringVal = new GlobalVariable{
+      *mModule->TheModule,
+      ArrayType::get(Type::getInt8Ty(mModule->TheContext), Val.size() + 1),
+      true,
+      GlobalValue::LinkageTypes::InternalLinkage,
+      ConstantArray::get(
+          ArrayType::get(Type::getInt8Ty(mModule->TheContext), Val.size() + 1),
+          ref),
+      "@userstring"};
+  llvm::Value *idxs[] = {
+      reinterpret_cast<llvm::Value *>(llvm::ConstantInt::get(
+          llvm::Type::getInt64Ty(mModule->TheContext), 0, false)),
+      reinterpret_cast<llvm::Value *>(llvm::ConstantInt::get(
+          llvm::Type::getInt64Ty(mModule->TheContext), 0, false)),
+  };
+  return cast2dbl(ConstantExpr::getInBoundsGetElementPtr(
+      ArrayType::get(Type::getInt8Ty(mModule->TheContext), Val.size() + 1),
+      stringVal, idxs));
+}
+
 Value *VariableExprAST::codegen() {
   // Look this variable up in the function.
   Value *V = NamedValues[Name];
@@ -837,6 +948,18 @@ Value *VariableExprAST::codegen() {
   }
 
   // Load the value.
+  if (V->getType()->isPointerTy() &&
+      V->getType()->getPointerElementType()->isArrayTy()) {
+    llvm::Value *idxs[] = {
+        reinterpret_cast<llvm::Value *>(llvm::ConstantInt::get(
+            llvm::Type::getInt64Ty(mModule->TheContext), 0, false)),
+        reinterpret_cast<llvm::Value *>(llvm::ConstantInt::get(
+            llvm::Type::getInt64Ty(mModule->TheContext), 0, false)),
+    };
+    return cast2dbl(
+        (*Builder).CreateInBoundsGEP(V->getType()->getPointerElementType(), V,
+                                     idxs)); // load arrays by pointer
+  }
   return cast2dbl((*Builder).CreateLoad(V, Name.c_str()));
 }
 
@@ -923,8 +1046,19 @@ Value *CallExprAST::codegen() {
         (std::string{"Unknown function `"} + Callee + "' referenced").c_str());
 
   // If argument mismatch error.
-  if (CalleeF->arg_size() != Args.size())
-    return LogErrorV("Incorrect # arguments passed");
+  if (!CalleeF->isVarArg() && CalleeF->arg_size() < Args.size())
+    return LogErrorV((std::string{"Incorrect # arguments passed to " + Callee +
+                                  " (Expected "} +
+                      std::to_string(CalleeF->arg_size()) + " but got " +
+                      std::to_string(Args.size()) + ")")
+                         .c_str());
+
+  if (CalleeF->arg_size() > Args.size())
+    return LogErrorV((std::string{"Incorrect # arguments passed to " + Callee +
+                                  " (Expected "} +
+                      std::to_string(CalleeF->arg_size()) + " but got " +
+                      std::to_string(Args.size()) + ")")
+                         .c_str());
 
   std::vector<Value *> ArgsV;
   for (unsigned i = 0, e = Args.size(); i != e; ++i) {
@@ -1161,7 +1295,7 @@ Function *PrototypeAST::codegen() {
   std::vector<Type *> Doubles(Args.size(),
                               Type::getDoubleTy((mModule->TheContext)));
   FunctionType *FT = FunctionType::get(Type::getDoubleTy((mModule->TheContext)),
-                                       Doubles, false);
+                                       Doubles, isVariadic());
 
   Function *F = Function::Create(FT, Function::ExternalLinkage, Name,
                                  (mModule->TheModule).get());

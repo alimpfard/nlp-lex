@@ -267,6 +267,20 @@
         'name' : 'constant.numeric.comment.block.preprocessor.NLex'
       }
       {
+        'match' : '(")((?:[^\\x{0022}]|\\\\")*)(")'
+        'captures' : {
+          '1' : {
+            'name' : 'string.comment.block.preprocessor.NLex'
+          }
+          '2' : {
+            'name' : 'string.comment.block.preprocessor.NLex'
+          }
+          '3' : {
+            'name' : 'string.comment.block.preprocessor.NLex'
+          }
+        }
+      }
+      {
         'match' : '(\\b(?:if|then|else|def|extern|for|in|var|global)\\b)'
         'name' : 'keyword.comment.block.preprocessor.NLex'
       }
@@ -287,10 +301,10 @@
       }
       {
         'match' : '(\\w+)'
-        'name' : 'entity.meta.property-name.comment.block.preprocessor.NLex'
+        'name' : 'entity.name.function.comment.block.preprocessor.NLex'
       }
       {
-        'match' : '(\\W+)'
+        'match' : '([^\\x{0022}\\w]+)'
         'name' : 'keyword.operator.comment.block.preprocessor.NLex'
       }
     ]
@@ -460,7 +474,7 @@
         'begin' : '(\\\\E\\{)'
         'beginCaptures' : {
           '1' : {
-            'name' : 'comment.block.preprocessor.NLex'
+            'name' : 'constant.character.escape.comment.block.preprocessor.NLex'
           }
         }
         'patterns' : [
@@ -471,7 +485,7 @@
         'end' : '(\\})'
         'endCaptures' : {
           '1' : {
-            'name' : 'comment.block.preprocessor.NLex'
+            'name' : 'constant.character.escape.comment.block.preprocessor.NLex'
           }
         }
       }

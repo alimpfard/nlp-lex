@@ -685,6 +685,8 @@ std::string get_name(NFANode<T> *node, bool simple = false, bool ptr = false) {
 }
 
 std::string sanitised(char c) {
+  if (c == -1)
+    return "DEFAULT";
   if (c < 10)
     return "<" + std::bitset<8>(c).to_string() + ">";
   else if (c == '"')
@@ -742,8 +744,10 @@ std::string NFANode<T>::gen_dot(
     nodeids[node] = node_id++;
     oss << "node [shape = "
         << (node->start ? "square" : node->final ? "doublecircle" : "circle")
-        << (", label = \"" + get_name(node, true) + "\\nat " +
-            string_format("%p", node))
+        << (", label = \"" +
+            Display::findAndReplaceAllT(get_name(node, true) + "\\nat " +
+                                            string_format("%p", node),
+                                        "\"", "\\\""))
         << (node->assertions.size() > 0
                 ? string_format(" [asserts %s]",
                                 print_asserts(node->assertions).c_str())
@@ -758,7 +762,9 @@ std::string NFANode<T>::gen_dot(
         << ", xlabel=\"" +
                (node->inline_code.has_value()
                     ? string_format("Executes\\n%s",
-                                    node->inline_code.value().c_str())
+                                    Display::findAndReplaceAllT(
+                                        node->inline_code.value(), "\"", "\\\"")
+                                        .c_str())
                     : "")
         << '"' << "] LR_" << nodeids[node] << ";" << ss_end;
   }
@@ -826,7 +832,7 @@ void NFANode<T>::aggregate_dot(
     }
     auto default_transition = deep_output_end(this)->default_transition;
     if (default_transition) {
-      transitions.insert({this, default_transition, '\0'});
+      transitions.insert({this, default_transition, -1});
       default_transition->aggregate_dot(nodes, anodes, transitions);
     }
     // for (auto transition : incoming_transitions) {
@@ -884,11 +890,13 @@ std::string DFANode<T>::gen_dot(
                   ? string_format(" [calls %d]", node->subexpr_call)
                   : "")
           << '"'
-          << ", xlabel=\"" +
-                 (node->inline_code.has_value()
-                      ? string_format("Executes\\n%s",
-                                      node->inline_code.value().c_str())
-                      : "")
+          << ", xlabel=\"" + (node->inline_code.has_value()
+                                  ? string_format("Executes\\n%s",
+                                                  Display::findAndReplaceAllT(
+                                                      node->inline_code.value(),
+                                                      "\"", "\\\"")
+                                                      .c_str())
+                                  : "")
           << '"' << "] LR_" << nodeids[node] << ";" << ss_end;
     else
       oss << "LR_" << nodeids[node] << ";" << ss_end;
@@ -942,7 +950,7 @@ void DFANode<T>::aggregate_dot(
       transition->target->aggregate_dot(nodes, anodes, transitions);
     }
     if (default_transition) {
-      transitions.insert({this, default_transition, '\0'});
+      transitions.insert({this, default_transition, -1});
       default_transition->aggregate_dot(nodes, anodes, transitions);
     }
     // for (auto transition : incoming_transitions) {
