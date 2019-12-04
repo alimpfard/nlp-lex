@@ -25,6 +25,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <iostream>
 #include <map>
 #include <memory>
 #include <string>
@@ -57,21 +58,22 @@ enum Token {
   tok_then = -7,
   tok_else = -8,
   tok_for = -9,
-  tok_in = -10,
+  tok_while = -10,
+  tok_in = -11,
 
   // operators
-  tok_binary = -11,
-  tok_unary = -12,
+  tok_binary = -12,
+  tok_unary = -13,
 
   // var definition
-  tok_var = -13,
-  tok_global = -14,
+  tok_var = -14,
+  tok_global = -15,
 
   // string
-  tok_string = -15,
+  tok_string = -16,
 
   // extern modifier
-  tok_variadic = -16,
+  tok_variadic = -17,
 };
 
 static std::string IdentifierStr; // Filled in if tok_identifier
@@ -164,6 +166,8 @@ static int gettok(bool reset = false) {
       return tok_else;
     if (IdentifierStr == "for")
       return tok_for;
+    if (IdentifierStr == "while")
+      return tok_while;
     if (IdentifierStr == "in")
       return tok_in;
     if (IdentifierStr == "binary")
@@ -179,12 +183,18 @@ static int gettok(bool reset = false) {
     return tok_identifier;
   }
 
-  if (isdigit(LastChar) || LastChar == '.') { // Number: [0-9.]+
+  if (isdigit(LastChar) || LastChar == '.' ||
+      LastChar == '-') { // Number: -?[0-9.]+
     std::string NumStr;
     do {
       NumStr += LastChar;
       LastChar = next_char();
     } while (isdigit(LastChar) || LastChar == '.');
+
+    if (NumStr == "-") {
+      // This ain't no number
+      return NumStr[0]; // just return it as a normal token
+    }
 
     NumVal = strtod(NumStr.c_str(), nullptr);
     return tok_number;
@@ -319,6 +329,17 @@ public:
   Value *codegen() override;
 };
 
+/// WhileExprAST - Expression class for while/in.
+class WhileExprAST : public ExprAST {
+  std::unique_ptr<ExprAST> Condition, Body;
+
+public:
+  WhileExprAST(std::unique_ptr<ExprAST> Cond, std::unique_ptr<ExprAST> Body)
+      : Condition(std::move(Cond)), Body(std::move(Body)) {}
+
+  Value *codegen() override;
+};
+
 /// VarExprAST - Expression class for var/in
 class VarExprAST : public ExprAST {
   std::vector<std::pair<std::string, std::unique_ptr<ExprAST>>> VarNames;
@@ -425,6 +446,11 @@ std::unique_ptr<ExprAST> LogError(const char *Str) {
   fprintf(stderr, "Error: %s\n", Str);
   return nullptr;
 }
+/// LogError* - These are little helper functions for error handling.
+std::unique_ptr<ExprAST> LogError(const std::string &Str) {
+  fprintf(stderr, "Error: %s\n", Str.c_str());
+  return nullptr;
+}
 
 std::unique_ptr<PrototypeAST> LogErrorP(const char *Str) {
   LogError(Str);
@@ -517,6 +543,25 @@ static std::unique_ptr<ExprAST> ParseIfExpr() {
 
   return std::make_unique<IfExprAST>(std::move(Cond), std::move(Then),
                                      std::move(Else));
+}
+
+/// whileexpr ::= 'while' expr in expr
+static std::unique_ptr<ExprAST> ParseWhileExpr() {
+  getNextToken(); // eat the while
+
+  auto Cond = ParseExpression();
+  if (!Cond)
+    return nullptr;
+
+  if (CurTok != tok_in)
+    return LogError("expected 'in' after while");
+  getNextToken(); // eat 'in'.
+
+  auto Body = ParseExpression();
+  if (!Body)
+    return nullptr;
+
+  return std::make_unique<WhileExprAST>(std::move(Cond), std::move(Body));
 }
 
 /// forexpr ::= 'for' identifier '=' expr ',' expr (',' expr)? 'in' expression
@@ -672,7 +717,8 @@ static std::unique_ptr<ExprAST> ParseString() {
 static std::unique_ptr<ExprAST> ParsePrimary() {
   switch (CurTok) {
   default:
-    return LogError("unknown token when expecting an expression");
+    return LogError("unknown token " + std::to_string((char)CurTok) +
+                    " when expecting an expression");
   case tok_identifier:
     return ParseIdentifierExpr();
   case tok_number:
@@ -683,6 +729,8 @@ static std::unique_ptr<ExprAST> ParsePrimary() {
     return ParseIfExpr();
   case tok_for:
     return ParseForExpr();
+  case tok_while:
+    return ParseWhileExpr();
   case tok_var:
     return ParseVarExpr();
   case tok_global:
@@ -861,6 +909,24 @@ static IRBuilder<> *Builder;
 static std::map<std::string, AllocaInst *> NamedValues;
 static std::map<std::string, std::unique_ptr<PrototypeAST>> FunctionProtos;
 
+static Value *castfromdbl(Value *inst, Type *target) {
+  auto instT = inst->getType();
+  if (instT != target) {
+    auto i64T = llvm::Type::getInt64Ty(mModule->TheContext);
+    if (target->isArrayTy()) {
+      inst = (*Builder).CreateFPToSI(inst, i64T);
+      inst = (*Builder).CreateIntToPtr(
+          inst, target->getArrayElementType()->getPointerTo());
+      inst = (*Builder).CreateBitCast(inst, target);
+    } else if (target->isPointerTy()) {
+      inst = (*Builder).CreateFPToSI(inst, i64T);
+      inst = (*Builder).CreateIntToPtr(inst, target);
+    } else
+      inst = llvm::CastInst::Create(Instruction::FPToSI, inst, target, "rcast",
+                                    (*Builder).GetInsertBlock());
+  }
+  return inst;
+}
 static Value *cast2dbl(Value *inst) {
   auto instT = inst->getType();
   auto dblT = llvm::Type::getDoubleTy(mModule->TheContext);
@@ -944,7 +1010,7 @@ Value *VariableExprAST::codegen() {
 
   if (!V) {
     if ((V = mModule->TheModule->getGlobalVariable(Name, true)) == nullptr)
-      return LogErrorV("Unknown variable name");
+      return LogErrorV(("Unknown variable name " + Name).c_str());
   }
 
   // Load the value.
@@ -996,9 +1062,15 @@ Value *BinaryExprAST::codegen() {
     if (!Variable)
       if ((Variable = mModule->TheModule->getGlobalVariable(LHSE->getName(),
                                                             true)) == nullptr)
-        return LogErrorV("Unknown variable name");
+        return LogErrorV(("Unknown variable name " + LHSE->getName()).c_str());
 
-    (*Builder).CreateStore(Val, Variable);
+    auto val = Val;
+
+    if (Variable->getType()->getPointerElementType() != val->getType()) {
+      // cast back
+      val = castfromdbl(val, Variable->getType()->getPointerElementType());
+    }
+    (*Builder).CreateStore(val, Variable);
     return Val;
   }
 
@@ -1023,6 +1095,14 @@ Value *BinaryExprAST::codegen() {
                                    "booltmp");
   case '>':
     L = (*Builder).CreateFCmpUGT(L, R, "cmptmp");
+    return (*Builder).CreateUIToFP(L, Type::getDoubleTy((mModule->TheContext)),
+                                   "booltmp");
+  case '?':
+    L = (*Builder).CreateFCmpUEQ(L, R, "cmptmp");
+    return (*Builder).CreateUIToFP(L, Type::getDoubleTy((mModule->TheContext)),
+                                   "booltmp");
+  case '!':
+    L = (*Builder).CreateFCmpUNE(L, R, "cmptmp");
     return (*Builder).CreateUIToFP(L, Type::getDoubleTy((mModule->TheContext)),
                                    "booltmp");
   default:
@@ -1124,24 +1204,87 @@ Value *IfExprAST::codegen() {
   return PN;
 }
 
+// Output while-loop as:
+// loopcond:
+//   ... condition
+//   br condition, loop, outloop
+// loop:
+//   ...
+//   bodyexpr
+//   ...
+//   br loopcond
+// outloop:
+Value *WhileExprAST::codegen() {
+  Function *TheFunction = (*Builder).GetInsertBlock()->getParent();
+
+  // Make the new basic block for the loop header, inserting after current
+  // block.
+  BasicBlock *LoopBB =
+      BasicBlock::Create((mModule->TheContext), "wloopcond", TheFunction);
+  BasicBlock *LoopBBB =
+      BasicBlock::Create((mModule->TheContext), "wloop", TheFunction);
+
+  // Insert an explicit fall through from the current block to the LoopBB.
+  (*Builder).CreateBr(LoopBB);
+
+  // Start insertion in LoopBB.
+  (*Builder).SetInsertPoint(LoopBB);
+
+  // Emit the condition of the loop
+  auto CondVal = Condition->codegen();
+  if (!CondVal)
+    return nullptr;
+
+  // Create the "after loop" block and insert it.
+  BasicBlock *AfterBB =
+      BasicBlock::Create((mModule->TheContext), "wafterloop", TheFunction);
+
+  // Jump to the body if condition ok
+  (*Builder).CreateCondBr(
+      (*Builder).CreateFCmpONE(
+          CondVal, ConstantFP::get((mModule->TheContext), APFloat(0.0)),
+          "wloopcond"),
+      LoopBBB, AfterBB);
+
+  // Start insertion in LoopBBB.
+  (*Builder).SetInsertPoint(LoopBBB);
+
+  // Emit the body of the loop.  This, like any other expr, can change the
+  // current BB.  Note that we ignore the value computed by the body, but don't
+  // allow an error.
+  if (!Body->codegen())
+    return nullptr;
+
+  // jump back to condition
+  (*Builder).CreateBr(LoopBB);
+
+  // Switch to insertion inside After
+  (*Builder).SetInsertPoint(AfterBB);
+
+  // while expr always returns 0.0.
+  return Constant::getNullValue(Type::getDoubleTy((mModule->TheContext)));
+}
 // Output for-loop as:
 //   var = alloca double
 //   ...
 //   start = startexpr
 //   store start -> var
-//   goto loop
+//   goto check
+// check:
+//   endcond = endexpr
+//   br endcond, outloop, loop
 // loop:
 //   ...
 //   bodyexpr
 //   ...
-// loopend:
+//   br loopnext
+// loopnext:
 //   step = stepexpr
-//   endcond = endexpr
 //
 //   curvar = load var
 //   nextvar = curvar + step
 //   store nextvar -> var
-//   br endcond, loop, endloop
+//   br check
 // outloop:
 Value *ForExprAST::codegen() {
   Function *TheFunction = (*Builder).GetInsertBlock()->getParent();
@@ -1161,9 +1304,15 @@ Value *ForExprAST::codegen() {
   // block.
   BasicBlock *LoopBB =
       BasicBlock::Create((mModule->TheContext), "loop", TheFunction);
+  BasicBlock *CondBB =
+      BasicBlock::Create((mModule->TheContext), "loopcond", TheFunction);
+  BasicBlock *LoopNextBB =
+      BasicBlock::Create((mModule->TheContext), "loopnext", TheFunction);
+  BasicBlock *AfterBB =
+      BasicBlock::Create((mModule->TheContext), "afterloop", TheFunction);
 
   // Insert an explicit fall through from the current block to the LoopBB.
-  (*Builder).CreateBr(LoopBB);
+  (*Builder).CreateBr(CondBB);
 
   // Start insertion in LoopBB.
   (*Builder).SetInsertPoint(LoopBB);
@@ -1179,6 +1328,25 @@ Value *ForExprAST::codegen() {
   if (!Body->codegen())
     return nullptr;
 
+  (*Builder).CreateBr(LoopNextBB);
+
+  (*Builder).SetInsertPoint(CondBB);
+
+  // Compute the end condition.
+  Value *EndCond = End->codegen();
+  if (!EndCond)
+    return nullptr;
+
+  // Convert condition to a bool by comparing non-equal to 0.0.
+  EndCond = (*Builder).CreateFCmpONE(
+      EndCond, ConstantFP::get((mModule->TheContext), APFloat(0.0)),
+      "loopcondv");
+
+  // Insert the conditional branch into the end.
+  (*Builder).CreateCondBr(EndCond, LoopBB, AfterBB);
+
+  (*Builder).SetInsertPoint(LoopNextBB);
+
   // Emit the step value.
   Value *StepVal = nullptr;
   if (Step) {
@@ -1190,28 +1358,14 @@ Value *ForExprAST::codegen() {
     StepVal = ConstantFP::get((mModule->TheContext), APFloat(1.0));
   }
 
-  // Compute the end condition.
-  Value *EndCond = End->codegen();
-  if (!EndCond)
-    return nullptr;
-
   // Reload, increment, and restore the alloca.  This handles the case where
   // the body of the loop mutates the variable.
   Value *CurVar = (*Builder).CreateLoad(Alloca, VarName.c_str());
   Value *NextVar = (*Builder).CreateFAdd(CurVar, StepVal, "nextvar");
   (*Builder).CreateStore(NextVar, Alloca);
 
-  // Convert condition to a bool by comparing non-equal to 0.0.
-  EndCond = (*Builder).CreateFCmpONE(
-      EndCond, ConstantFP::get((mModule->TheContext), APFloat(0.0)),
-      "loopcond");
-
-  // Create the "after loop" block and insert it.
-  BasicBlock *AfterBB =
-      BasicBlock::Create((mModule->TheContext), "afterloop", TheFunction);
-
-  // Insert the conditional branch into the end of LoopEndBB.
-  (*Builder).CreateCondBr(EndCond, LoopBB, AfterBB);
+  // jump and test the condition
+  (*Builder).CreateBr(CondBB);
 
   // Any new code will be inserted in AfterBB.
   (*Builder).SetInsertPoint(AfterBB);
@@ -1364,9 +1518,9 @@ Function *FunctionAST::codegen() {
 static void HandleDefinition() {
   if (auto FnAST = ParseDefinition()) {
     if (auto *FnIR = FnAST->codegen()) {
-      fprintf(stderr, "Read function definition:");
-      FnIR->print(errs());
-      fprintf(stderr, "\n");
+      // fprintf(stderr, "Read function definition:");
+      // FnIR->print(errs());
+      // fprintf(stderr, "\n");
     }
   } else {
     // Skip token for error recovery.
@@ -1377,9 +1531,9 @@ static void HandleDefinition() {
 static void HandleExtern() {
   if (auto ProtoAST = ParseExtern()) {
     if (auto *FnIR = ProtoAST->codegen()) {
-      fprintf(stderr, "Read extern: ");
-      FnIR->print(errs());
-      fprintf(stderr, "\n");
+      // fprintf(stderr, "Read extern: ");
+      // FnIR->print(errs());
+      // fprintf(stderr, "\n");
       FunctionProtos[ProtoAST->getName()] = std::move(ProtoAST);
     }
   } else {
@@ -1462,6 +1616,8 @@ void KaleidInitialise(std::string startup_code, nlvm::BaseModule *module) {
   BinopPrecedence['='] = 5;
   BinopPrecedence['<'] = 10;
   BinopPrecedence['>'] = 10;
+  BinopPrecedence['?'] = 10;
+  BinopPrecedence['!'] = 10;
   BinopPrecedence['+'] = 20;
   BinopPrecedence['-'] = 20;
   BinopPrecedence['*'] = 40; // highest.
@@ -1505,3 +1661,24 @@ void KaleidInitialise(std::string startup_code, nlvm::BaseModule *module) {
 
   (mModule->TheModule)->setDataLayout(TheTargetMachine->createDataLayout());
 }
+
+#ifdef TEST
+auto main() -> int {
+  nlvm::BaseModule m;
+  m.TheModule = std::move(std::make_unique<llvm::Module>("shit", m.TheContext));
+
+  KaleidInitialise("", &m);
+  llvm::IRBuilder<> builder(m.TheContext);
+  std::string line;
+  while (true) {
+    std::cout << "> ";
+    std::getline(std::cin, line);
+
+    KaleidCompile(line, builder);
+    if (line == "")
+      break;
+  }
+  m.TheModule->print(llvm::errs(), nullptr);
+  return 0;
+}
+#endif

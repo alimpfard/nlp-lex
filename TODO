@@ -9,7 +9,7 @@
 #  # Error if pos_tagger is off
 #  # model structure: https://github.com/alimpfard/citron-tp-test/blob/master/part-6/model.json
 #
-#  # This requires two variable-sized buffers for sentences of {start, length, tag, errc, modifier, *postag} x N 
+#  # This requires two variable-sized buffers for sentences of {start, length, tag, errc, modifier, *postag} x N
 #  #      where N is the size of the buffer
 #  # and so, __nlex_root becomes a tailcall to itself until we reach the delimiter.
 #  # and in doing so, it reads a token into the working buffer, and releases a token from the ready buffer
@@ -17,9 +17,17 @@
 #  # after which time, we rotate the buffers, run the pos tagger (XXX IDEA could the be made faster? if the tagger is bigram, we could
 #  #      run it in tandem with the token generation, and only tag the last bit at the end)
 #  # and continue as usual
-# 
+#
 #
 # - Figure out how to handle:
+#   - store group positions and lengths and make them available to the inline code
+#       - effectively makes variable-length lookbehinds possible
+#       - discard_group(idx)
+#           - might be difficult to splice out a certain portion of the token
+#               - what would happen to the fed string?
+#                   - reread_group(idx) - put the given group back on the stream?
+#   - tag an already tagged token if it matches a certain rule (kinda like stopword)
+#       - tag word coord_conj and|or|for
 #   - rule-based token operations (for common mistakes)
 #       - word:a word:b -> word:ab
 #       - word:a number:b -> wordnum:ba
@@ -30,5 +38,5 @@
 #       - provide a few well-known implementations for specific languages?
 #     - allow the user to provide her own implementation that generates llvm bytecode?
 #         - calling convention?
-#   - add compile-on-need to python wrapper 
+#   - add compile-on-need to python wrapper
 #   - 'option farsi on' to appease the gods

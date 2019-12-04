@@ -13,7 +13,7 @@ struct sresult {
   unsigned char metadata; // bit 0: stopword, bit 1: sentence_delimiter
   char const *pos;
   int allocd;
-};
+} res = {0};
 extern void __nlex_root(struct sresult *);
 extern void __nlex_feed(char const *p);
 extern int __nlex_distance();
@@ -219,7 +219,8 @@ double cderef(double ptr) {
 
 double cderefset(double ptr, double value) {
   __intptr_t p = ptr;
-  return (double) (*((char*) p) = (char) value);
+  memmove((char*) p, (void*) &value, sizeof(char));
+  return value;
 }
 
 double dderef(double ptr) {
@@ -229,18 +230,25 @@ double dderef(double ptr) {
 
 double dderefset(double ptr, double value) {
   __intptr_t p = ptr;
-  return (*((double*) p) = value);
+  memmove((double*) p, (void*) &value, sizeof(double));
+  return value;
 }
 
 double trap() { 
   __asm("int3");
   return 0;
 }
+
+static int metadata = 0;
+
+double repl_testmetadata(double bit) {
+  int ibit = bit;
+  return (double) !!(metadata&(1<<ibit));
+}
 /* lib code */
 
 int main() {
   // __nlex_load_tagpos();
-  struct sresult res = {0};
   size_t size = 1024000;
   char *s = malloc(size);
   printf("res at %p, s at %p\n", &res, s);
@@ -256,7 +264,7 @@ int main() {
             fprintf(stderr, "Error from read(2): %s", strerror(errno));
             break;
         }
-        if (els == 0) continue;
+        if (els == 0) break;
     }
     s[els - 1] = 0;
     printf("processing - '%s'\n", s);
@@ -269,6 +277,7 @@ int main() {
       printf("%smatch {'%.*s' - %s - %d %s} is%sa stopword\n",
              (res.errc ? "no " : ""), res.length, res.start, res.pos,
              res.length, res.tag, (res.metadata & 1 ? " " : " not "));
+      metadata = res.metadata;
       int dist = __nlex_distance();
       if (res.errc || res.length == 0 || dist == last)
         break;

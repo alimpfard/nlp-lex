@@ -30,5 +30,8 @@ struct BaseModule {
 public:
   llvm::LLVMContext TheContext;
   std::unique_ptr<llvm::Module> TheModule;
+  BaseModule(std::string name = "") : TheContext() {
+    TheModule = std::make_unique<llvm::Module>(name, TheContext);
+  }
 };
 } // namespace nlvm

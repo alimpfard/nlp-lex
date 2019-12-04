@@ -833,6 +833,11 @@ public:
     }
     // Create a stopword remover if any stopwords are present
     if (lexer_stuff.stopwords.size() > 0) {
+      auto isstopword =
+          module.createGlobal(llvm::Type::getInt1Ty(module.TheContext),
+                              (llvm::ConstantInt::getFalse(
+                                  llvm::Type::getInt1Ty(module.TheContext))),
+                              "nlex_is_this_a_stopword", false);
       auto fbb = llvm::BasicBlock::Create(module.TheContext, "_stopword_res",
                                           module.main());
       auto *prev_fbb = module.BBfinalise;
@@ -849,6 +854,9 @@ public:
         builder.CreateRetVoid();
       } else {
         // just set a tag and return with it
+        builder.CreateStore(llvm::ConstantInt::getTrue(
+                                llvm::Type::getInt1Ty(module.TheContext)),
+                            isstopword);
         auto isstopwordv = builder.CreateInBoundsGEP(
             module.main()->arg_begin(),
             {
@@ -866,6 +874,9 @@ public:
         builder.CreateBr(prev_fbb);
       }
       builder.SetInsertPoint(fbb);
+      builder.CreateStore(
+          llvm::ConstantInt::getFalse(llvm::Type::getInt1Ty(module.TheContext)),
+          isstopword);
       builder.CreateStore(
           llvm::ConstantInt::get(llvm::Type::getInt8Ty(module.TheContext), 0),
           builder.CreateInBoundsGEP(

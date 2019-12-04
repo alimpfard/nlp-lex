@@ -281,7 +281,7 @@
         }
       }
       {
-        'match' : '(\\b(?:if|then|else|def|extern|for|in|var|global)\\b)'
+        'match' : '(\\b(?:if|then|else|def|extern|for|in|var|global|while)\\b)'
         'name' : 'keyword.comment.block.preprocessor.NLex'
       }
       {

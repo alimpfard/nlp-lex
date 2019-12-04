@@ -2231,12 +2231,17 @@ void NFANode<T>::transition_to(NFANode<T> *node, AnythingTransitionT c) {
   p->add_transition(t);
 }
 
-template <typename T> void NFANode<T>::epsilon_transition_to(NFANode<T> *node) {
+template <typename T>
+void NFANode<T>::epsilon_transition_to(NFANode<T> *node,
+                                       EpsilonTransitionProperty prop) {
   node = deep_input_end(node);
   auto p = deep_output_end(this);
+  EpsilonTransitionT et = EpsilonTransition;
+  et.properties = prop;
+
   auto t = new Transition<
       NFANode<T>, std::variant<char, EpsilonTransitionT, AnythingTransitionT>>(
-      node, EpsilonTransition);
+      node, et);
   p->add_transition(t);
 }
 

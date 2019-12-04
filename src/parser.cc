@@ -789,7 +789,11 @@ std::string NFANode<T>::gen_dot(
     auto &tl = target_labels[std::make_pair(fid, tid)];
     tl.first.insert(
         std::holds_alternative<EpsilonTransitionT>(tr.input)
-            ? "<Epsilon>"
+            ? string_format("<%sEpsilon>",
+                            std::get<EpsilonTransitionT>(tr.input).properties &
+                                    EpsilonTransitionProperty::ReadForward
+                                ? "RF-"
+                                : "")
             : std::holds_alternative<AnythingTransitionT>(tr.input)
                   ? (std::string{"<"} +
                      (std::get<AnythingTransitionT>(tr.input).inverted
@@ -844,7 +848,9 @@ void NFANode<T>::aggregate_dot(
 template <typename T> void DFANode<T>::print_dot() {
   std::set<DFANode<T> *, DFANodePointerComparer<T>> nodes;
   std::set<DFANode<T> *> anodes;
-  std::unordered_set<CanonicalTransition<DFANode<T>, char>> transitions;
+  std::unordered_set<
+      CanonicalTransition<DFANode<T>, std::variant<char, EpsilonTransitionT>>>
+      transitions;
   aggregate_dot(nodes, anodes, transitions);
   slts.show(Display::Type::MUST_SHOW, "%s\n",
             gen_dot(anodes, transitions).c_str());
@@ -860,7 +866,9 @@ auto print_idxs(std::set<int> idxs) {
 template <typename T>
 std::string DFANode<T>::gen_dot(
     std::set<DFANode<T> *> nodes,
-    std::unordered_set<CanonicalTransition<DFANode<T>, char>> transitions) {
+    std::unordered_set<
+        CanonicalTransition<DFANode<T>, std::variant<char, EpsilonTransitionT>>>
+        transitions) {
   std::ostringstream oss;
   constexpr auto ss_end = "\n\t";
   oss << "digraph finite_state_machine {" << ss_end;
@@ -920,7 +928,10 @@ std::string DFANode<T>::gen_dot(
       tid = nodeids[tr.target];
 
     auto &tl = target_labels[std::make_pair(fid, tid)];
-    tl.first.insert(sanitised(tr.input));
+    if (std::holds_alternative<char>(tr.input))
+      tl.first.insert(sanitised(std::get<char>(tr.input)));
+    else
+      tl.first.insert("<E>");
     tl.second = tr.target;
   }
   for (auto kv : target_labels)
@@ -937,7 +948,9 @@ template <typename T>
 void DFANode<T>::aggregate_dot(
     std::set<DFANode<T> *, DFANodePointerComparer<T>> &nodes,
     std::set<DFANode<T> *> &anodes,
-    std::unordered_set<CanonicalTransition<DFANode<T>, char>> &transitions) {
+    std::unordered_set<
+        CanonicalTransition<DFANode<T>, std::variant<char, EpsilonTransitionT>>>
+        &transitions) {
   if (anodes.count(this))
     return;
   auto pos = nodes.find(this);
@@ -946,11 +959,15 @@ void DFANode<T>::aggregate_dot(
     nodes.insert(this);
     anodes.insert(this);
     for (auto transition : outgoing_transitions) {
-      transitions.insert({this, transition->target, transition->input});
+      transitions.insert(
+          typename std::remove_reference_t<decltype(transitions)>::value_type{
+              this, transition->target, {transition->input}});
       transition->target->aggregate_dot(nodes, anodes, transitions);
     }
     if (default_transition) {
-      transitions.insert({this, default_transition, -1});
+      transitions.insert(
+          typename std::remove_reference_t<decltype(transitions)>::value_type{
+              this, default_transition, {-1}});
       default_transition->aggregate_dot(nodes, anodes, transitions);
     }
     // for (auto transition : incoming_transitions) {
@@ -1033,11 +1050,17 @@ static std::set<NFANode<T> *> get_epsilon_closure(
   return eps_states;
 }
 
-template <typename T> std::set<char> all_alphabet(NFANode<T> *node) {
-  std::set<char> ss;
+template <typename T>
+std::set<std::variant<char, EpsilonTransitionT>>
+all_alphabet(NFANode<T> *node) {
+  std::set<std::variant<char, EpsilonTransitionT>> ss;
   for (auto tr : node->outgoing_transitions) {
-    if (std::holds_alternative<EpsilonTransitionT>(tr->input))
+    if (std::holds_alternative<EpsilonTransitionT>(tr->input)) {
+      if (auto et = std::get<EpsilonTransitionT>(tr->input);
+          et.properties == EpsilonTransitionProperty::ReadForward)
+        ss.insert(et); // pure jumps
       continue;
+    }
     if (std::holds_alternative<AnythingTransitionT>(tr->input))
       slts.show(Display::Type::ERROR,
                 "[ICE] All compound transitions haven't been resolved\n");
@@ -1048,8 +1071,9 @@ template <typename T> std::set<char> all_alphabet(NFANode<T> *node) {
 }
 
 template <typename T>
-std::set<char> all_alphabet(std::set<NFANode<T> *> nodes) {
-  std::set<char> ss;
+std::set<std::variant<char, EpsilonTransitionT>>
+all_alphabet(std::set<NFANode<T> *> nodes) {
+  std::set<std::variant<char, EpsilonTransitionT>> ss;
   for (auto node : nodes) {
     auto al = all_alphabet(node);
     ss.insert(al.begin(), al.end());
@@ -1058,7 +1082,8 @@ std::set<char> all_alphabet(std::set<NFANode<T> *> nodes) {
 }
 
 template <typename T>
-void DFANode<T>::add_transition(Transition<DFANode<T>, char> *tr) {
+void DFANode<T>::add_transition(
+    Transition<DFANode<T>, std::variant<char, EpsilonTransitionT>> *tr) {
   for (auto vtr : outgoing_transitions) {
     if (vtr->input == tr->input) {
       slts.show(Display::Type::ERROR,
@@ -1066,7 +1091,8 @@ void DFANode<T>::add_transition(Transition<DFANode<T>, char> *tr) {
       return;
     }
   }
-  Transition<DFANode<T>, char> tbr{this, tr->input};
+  Transition<DFANode<T>, std::variant<char, EpsilonTransitionT>> tbr{this,
+                                                                     tr->input};
   tr->target->incoming_transitions.insert(new decltype(tbr){tbr});
   outgoing_transitions.insert(tr);
 }
@@ -1162,21 +1188,39 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
     }
 
     auto salphabets = all_alphabet(current);
-    std::vector<char> alphabets{salphabets.begin(), salphabets.end()};
+    std::vector<std::variant<char, EpsilonTransitionT>> alphabets{
+        salphabets.begin(), salphabets.end()};
     std::mutex m;
     std::for_each(
         std::execution::par_unseq, alphabets.begin(), alphabets.end(),
-        [&](auto qq) {
-          slts.show(Display::Type::DEBUG,
-                    "[{<red>}DFAGen{<clean>}] [{<red>}Resolution{<clean>}] "
-                    "{<green>}'%s'{<clean>} :: {<magenta>}%d{<clean>} = ('%c')",
-                    get_name(current).c_str(), qq, qq);
-
+        [&](auto qv) {
           std::set<NFANode<T> *> eps_state;
           DFANode<std::set<NFANode<T> *>> *nextdfanode;
-          {
-            std::lock_guard lg{m};
-            eps_state = get_epsilon_closure(get_states(current, qq), {});
+          if (std::holds_alternative<EpsilonTransitionT>(qv)) {
+            // is this a direct jump?
+            auto qq = std::get<EpsilonTransitionT>(qv);
+            slts.show(
+                Display::Type::DEBUG,
+                "[{<red>}DFAGen{<clean>}] [{<red>}Resolution{<clean>}] "
+                "{<green>}'%s'{<clean>} :: {<magenta>}RF-Epsilon{<clean>}",
+                get_name(current).c_str());
+
+            {
+              std::lock_guard lg{m};
+              eps_state = get_epsilon_closure(get_states(current, qq), {});
+            }
+          } else {
+            char qq = std::get<char>(qv);
+            slts.show(
+                Display::Type::DEBUG,
+                "[{<red>}DFAGen{<clean>}] [{<red>}Resolution{<clean>}] "
+                "{<green>}'%s'{<clean>} :: {<magenta>}%d{<clean>} = ('%c')",
+                get_name(current).c_str(), qq, qq);
+
+            {
+              std::lock_guard lg{m};
+              eps_state = get_epsilon_closure(get_states(current, qq), {});
+            }
           }
           auto epsname = get_name(eps_state);
 
@@ -1187,8 +1231,9 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
                 new DFANode<std::set<NFANode<T> *>>{eps_state};
           }
           dfanode->add_transition(
-              new Transition<DFANode<std::set<NFANode<T> *>>, char>{nextdfanode,
-                                                                    qq});
+              new Transition<DFANode<std::set<NFANode<T> *>>,
+                             std::variant<char, EpsilonTransitionT>>{
+                  nextdfanode, qv});
           if (!visited.count(eps_state))
             remaining.push(eps_state);
         });
@@ -1241,7 +1286,7 @@ void DFACCodeGenerator<T>::generate(
   // generate any choice and add to output_cases
   std::ostringstream output_case;
   for (auto tr : node->outgoing_transitions) {
-    output_case << "case " << (int)tr->input << ":";
+    output_case << "case " << (int)std::get<char>(tr->input) << ":";
     auto node = tr->target;
     if (node->final) {
       // emit tags
@@ -1591,20 +1636,40 @@ void DFANLVMCodeGenerator<T>::generate(
                                                  {}, "readv");
 
   blocks[node] = BB;
-  std::set<char> outgoings;
+  bool has_jdst = false;
+  DFANode<std::set<NFANode<T> *>> *xjdst = nullptr,
+                                  *xdefl = node->default_transition;
   for (auto tr : node->outgoing_transitions) {
-    outgoings.insert(tr->input);
+    if (std::holds_alternative<EpsilonTransitionT>(tr->input)) {
+      if (has_jdst) {
+        slts.show(Display::Type::ERROR,
+                  "[ICE] State has multiple jump destinations");
+        continue;
+      }
+      has_jdst = true;
+      xjdst = tr->target;
+      continue;
+    }
   }
   llvm::BasicBlock *deflBB = nullptr;
-  if (node->default_transition != nullptr) {
-    if (!blocks.count(node->default_transition))
-      generate(node->default_transition, visited, blocks);
-    deflBB = blocks[node->default_transition];
+  if (xdefl != nullptr || has_jdst) {
+    if (has_jdst && xdefl != nullptr) {
+      slts.show(Display::Type::ERROR,
+                "[ICE] State has a jump destination and a default transition");
+      abort();
+    }
+    if (!has_jdst)
+      xjdst = xdefl;
+
+    if (!blocks.count(xjdst))
+      generate(xjdst, visited, blocks);
+    deflBB = blocks[xjdst];
     auto bb_ = BasicBlock::Create(builder.module.TheContext, "",
                                   builder.module.current_main());
     builder.module.Builder.SetInsertPoint(bb_);
     // consume as many chars as needed for a complete unicode codepoint
-    {
+    // only if we're not directly jumping
+    if (!has_jdst) {
       auto bb0 = BasicBlock::Create(builder.module.TheContext, "",
                                     builder.module.current_main());
       auto bb1 = BasicBlock::Create(builder.module.TheContext, "",
@@ -1668,15 +1733,16 @@ void DFANLVMCodeGenerator<T>::generate(
       ibr->addDestination(bb2);    // 1
       ibr->addDestination(bb1);    // 2
       ibr->addDestination(bb0);    // 3
-    }
+    } else
+      builder.module.Builder.CreateBr(deflBB);
     deflBB = bb_;
   }
   builder.module.Builder.SetInsertPoint(BBnode);
-  if (outgoings.size() > 0) {
+  if (node->outgoing_transitions.size() > 0) {
     if (deflBB)
       builder.module.add_value_to_token(readv);
     auto switchinst = builder.module.Builder.CreateSwitch(
-        readv, deflBB ? deflBB : BBend, outgoings.size());
+        readv, deflBB ? deflBB : BBend, node->outgoing_transitions.size());
     if (deflBB) // don't go past the end
       switchinst->addCase(
           ConstantInt::get(IntegerType::get(builder.module.TheContext, 8), "0",
@@ -1692,7 +1758,7 @@ void DFANLVMCodeGenerator<T>::generate(
                                     builder.module.current_main());
       builder.module.Builder.SetInsertPoint(dst);
       if (!deflBB) {
-        builder.module.add_char_to_token(tr->input);
+        builder.module.add_char_to_token(std::get<char>(tr->input));
         increment_(builder.module.chars_since_last_final,
                    builder.module.Builder);
       }
@@ -1700,7 +1766,7 @@ void DFANLVMCodeGenerator<T>::generate(
       builder.module.Builder.SetInsertPoint(BBnode);
       switchinst->addCase(
           ConstantInt::get(IntegerType::get(builder.module.TheContext, 8),
-                           std::to_string((int)tr->input), 10),
+                           std::to_string((int)std::get<char>(tr->input)), 10),
           dst);
     }
   } else {
@@ -1912,8 +1978,9 @@ int main(int argc, char *argv[]) {
                    DFANodePointerComparer<std::set<NFANode<std::string> *>>>
               nodes;
           std::set<DFANode<std::set<NFANode<std::string> *>> *> anodes;
-          std::unordered_set<CanonicalTransition<
-              DFANode<std::set<NFANode<std::string> *>>, char>>
+          std::unordered_set<
+              CanonicalTransition<DFANode<std::set<NFANode<std::string> *>>,
+                                  std::variant<char, EpsilonTransitionT>>>
               transitions;
 
           rootdfa->aggregate_dot(nodes, anodes, transitions);
@@ -2000,7 +2067,8 @@ int main(int argc, char *argv[]) {
           nodes;
       std::set<DFANode<std::set<NFANode<std::string> *>> *> anodes;
       std::unordered_set<
-          CanonicalTransition<DFANode<std::set<NFANode<std::string> *>>, char>>
+          CanonicalTransition<DFANode<std::set<NFANode<std::string> *>>,
+                              std::variant<char, EpsilonTransitionT>>>
           transitions;
 
       rootdfa->aggregate_dot(nodes, anodes, transitions);

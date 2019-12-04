@@ -32,13 +32,15 @@ public:
 
   std::string
   gen_dot(std::set<DFANode<StateInfoT> *> nodes,
-          std::unordered_set<CanonicalTransition<DFANode<StateInfoT>, char>>
+          std::unordered_set<CanonicalTransition<
+              DFANode<StateInfoT>, std::variant<char, EpsilonTransitionT>>>
               transitions);
   void aggregate_dot(
       std::set<DFANode<StateInfoT> *, DFANodePointerComparer<StateInfoT>>
           &nodes,
       std::set<DFANode<StateInfoT> *> &anodes,
-      std::unordered_set<CanonicalTransition<DFANode<StateInfoT>, char>>
+      std::unordered_set<CanonicalTransition<
+          DFANode<StateInfoT>, std::variant<char, EpsilonTransitionT>>>
           &transitions);
 
   bool final = false, start = false, dirty = false, subexpr = false,
@@ -51,9 +53,11 @@ public:
 
   CUDebugInformation debug_info = {0, 0, 0, "<Unknown>"};
 
-  std::set<Transition<DFANode, char> *, TransitionPointerComparer<StateInfoT>>
+  std::set<Transition<DFANode, std::variant<char, EpsilonTransitionT>> *,
+           TransitionPointerComparer<StateInfoT>>
       outgoing_transitions = {};
-  std::set<Transition<DFANode, char> *, TransitionPointerComparer<StateInfoT>>
+  std::set<Transition<DFANode, std::variant<char, EpsilonTransitionT>> *,
+           TransitionPointerComparer<StateInfoT>>
       /* reconstructed before optimisation */ incoming_transitions = {};
 
   DFANode<StateInfoT> *default_transition =
@@ -81,7 +85,8 @@ public:
   // erase_transition_it(
   //     typename std::set<Transition<DFANode, char> *,
   //                       TransitionPointerComparer<StateInfoT>>::iterator);
-  void add_transition(Transition<DFANode, char> *);
+  void
+  add_transition(Transition<DFANode, std::variant<char, EpsilonTransitionT>> *);
   void default_transition_to(DFANode<StateInfoT> *node) {
     if (default_transition != nullptr)
       std::printf("[WARN] redefinition of the default transition for node %p "
@@ -153,7 +158,9 @@ public:
 
   virtual void transition_to(NFANode<StateInfoT> *node, char c);
   virtual void transition_to(NFANode<StateInfoT> *node, AnythingTransitionT c);
-  virtual void epsilon_transition_to(NFANode<StateInfoT> *node);
+  virtual void epsilon_transition_to(
+      NFANode<StateInfoT> *node,
+      EpsilonTransitionProperty props = EpsilonTransitionProperty::Nothing);
   virtual void anything_transition_to(NFANode<StateInfoT> *node);
   virtual std::set<
       Transition<NFANode<StateInfoT>,
@@ -323,8 +330,10 @@ template <typename K> struct TransitionPointerComparer {
 
     return a < b;
   }
-  bool eq(const Transition<DFANode<K>, char> *a,
-          const Transition<DFANode<K>, char> *b) const {
+  bool
+  eq(const Transition<DFANode<K>, std::variant<char, EpsilonTransitionT>> *a,
+     const Transition<DFANode<K>, std::variant<char, EpsilonTransitionT>> *b)
+      const {
     if (a == b)
       return true;
     if (a == nullptr || b == nullptr)
@@ -334,8 +343,10 @@ template <typename K> struct TransitionPointerComparer {
     //   return true;
     return false;
   }
-  bool operator()(const Transition<DFANode<K>, char> *a,
-                  const Transition<DFANode<K>, char> *b) const {
+  bool operator()(
+      const Transition<DFANode<K>, std::variant<char, EpsilonTransitionT>> *a,
+      const Transition<DFANode<K>, std::variant<char, EpsilonTransitionT>> *b)
+      const {
     if (eq(a, b))
       return false;
 

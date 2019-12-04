@@ -2,9 +2,20 @@
 
 #include <functional>
 
-struct EpsilonTransitionT {
-  bool operator==(const EpsilonTransitionT &other) const { return true; }
+enum EpsilonTransitionProperty : uint {
+  Nothing = 0,
+  ReadForward,
 };
+
+struct EpsilonTransitionT {
+public:
+  EpsilonTransitionProperty properties = EpsilonTransitionProperty::Nothing;
+  bool operator==(const EpsilonTransitionT &other) const {
+    return properties == other.properties;
+  }
+  bool operator<(const EpsilonTransitionT &other) const { return false; }
+};
+
 struct AnythingTransitionT {
   bool inverted;
   std::string values;
@@ -12,7 +23,7 @@ struct AnythingTransitionT {
     return other.inverted == inverted && other.values == values;
   }
   bool operator==(char other) const {
-    return values.find(other) != values.npos ^ inverted;
+    return (values.find(other) != values.npos) ^ inverted;
   }
 };
 
@@ -61,15 +72,18 @@ public:
   }
 };
 
-template <typename NodeT> class CanonicalTransition<NodeT, char> {
+template <typename NodeT>
+class CanonicalTransition<NodeT, std::variant<char, EpsilonTransitionT>> {
 public:
   NodeT *source, *target;
-  char input;
+  std::variant<char, EpsilonTransitionT> input;
 
-  CanonicalTransition(NodeT *src, NodeT *dst, char input)
+  CanonicalTransition(NodeT *src, NodeT *dst, decltype(input) input)
       : source(src), target(dst), input(input) {}
 
-  bool operator==(const CanonicalTransition<NodeT, char> &other) const {
+  bool operator==(
+      const CanonicalTransition<NodeT, std::variant<char, EpsilonTransitionT>>
+          &other) const {
     return other.target == target && other.source == source &&
            input == other.input;
   }
