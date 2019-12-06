@@ -98,9 +98,10 @@
     + Toplevel syntax:
         * `\E{ statement-list }` where 
             + `statement-list : expression ';' statement-list | `
-            + `expression : ifexpr | loopexpr | callexpr | number | opexpr`
+            + `expression : ifexpr | loopexpr | wloopexpr | callexpr | number | opexpr`
             + `ifexpr : 'if' expression 'then' expression 'else' expression`
             + `loopexpr : 'for' identifier '=' expression ',' expression (',' expression)? 'in' expression`
+            + `wloopexpr : 'while' expression 'in' expression`
             + `callexpr : identifier '(' arglist ')'`
             + `arglist : expression (',' arglist)? | `
             + `opexpr : operator expression | expression operator expression`
