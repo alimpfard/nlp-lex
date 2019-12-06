@@ -5,3 +5,5 @@ test :: te(s|x)t\E{eputchard(^nlex_get_group_start_ptr(1))}
 #         |                      Demonstrates issue #2                     |
 #                                                                          v
 lookahead :: magic((:)? The Gathering)\E{var length = nlex_get_group_length(2) in (nlex_fed_string = nlex_fed_string - length):(ltoken_length = ltoken_length - length)}
+
+lookbehind :: Hello( there)?, \Kworld

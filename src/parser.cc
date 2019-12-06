@@ -1487,11 +1487,14 @@ void DFANLVMCodeGenerator<T>::generate(
                  llvm::Type::getInt32Ty(builder.module.TheContext), -1)});
   for (auto assertion : node->assertions) {
     switch (assertion) {
+    // 'Set reported beginning of match' means to just remove anything before
+    // this in the token
     case RegexpAssertion::SetPosition: {
-      slts.show(Display::Type::ERROR,
-                "[{<red>}ERR{<clean>}] Unimplemented assertion "
-                "{<magenta>}\\K{<clean>}");
-      abort();
+      // This is not an assertion, it just resets ltoken_length
+      builder.module.Builder.CreateStore(
+          llvm::Constant::getNullValue(
+              builder.module.token_length->getType()->getPointerElementType()),
+          builder.module.token_length);
       break;
     }
     case RegexpAssertion::LineBeginning: {
