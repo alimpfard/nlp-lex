@@ -69,10 +69,22 @@ public:
   llvm::Function *nlex_get_utf8_length;
   llvm::Function *nlex_skip;
 
+  llvm::Function *nlex_get_group_start_ptr = nullptr;
+  llvm::Function *nlex_get_group_end_ptr = nullptr;
+  llvm::Function *nlex_get_group_length = nullptr;
+
+  /// Stores the start of this match
   llvm::GlobalVariable *nlex_match_start;
+  /// Stores the value of the proceeding token
   llvm::GlobalVariable *token_value;
+  /// Stores the valid length of token_value
   llvm::GlobalVariable *token_length;
+  /// Stores the subject string
   llvm::GlobalVariable *nlex_fed_string;
+  /// Stores the capture indices
+  /// [i0_start, i0_end, i1_start, i1_end] (start = i*2, end = i*2+1)
+  /// exists only if `option capture_groups on`
+  llvm::GlobalVariable *nlex_capture_indices = nullptr;
 
   llvm::Function *_main = nullptr;
   llvm::BasicBlock *main_entry, *BBfinalise = nullptr;
@@ -432,6 +444,7 @@ public:
   llvm::raw_ostream *outputv = nullptr;
   llvm::BasicBlock *first_root = nullptr;
   bool issubexp = false;
+  bool do_capture_groups = false;
 
   Builder(std::string mname, llvm::raw_ostream *o)
       : outputv(o), module(mname, o) {}
@@ -553,6 +566,164 @@ public:
   void prepare(const GenLexer &&lexer_stuff) {
     // create global values & normalisation logic
     module.emitLocation((DFANode<NFANode<std::nullptr_t> *> *)NULL);
+
+    // record capture groups if set
+    if (get(lexer_stuff.options, "capturing_groups")) {
+      do_capture_groups = true;
+      auto arrty =
+          llvm::ArrayType::get(llvm::Type::getInt8PtrTy(module.TheContext),
+                               (lexer_stuff.total_capturing_groups + 1) * 2);
+      module.nlex_capture_indices =
+          module.createGlobal(arrty, llvm::ConstantArray::getNullValue(arrty),
+                              "capturing_group_indices");
+
+      // create lib functions that require this option
+      auto iptrt = llvm::FunctionType::get(
+          llvm::Type::getInt8PtrTy(module.TheContext),
+          {llvm::Type::getDoubleTy(module.TheContext)}, false);
+      auto iit = llvm::FunctionType::get(
+          llvm::Type::getInt32Ty(module.TheContext),
+          {llvm::Type::getDoubleTy(module.TheContext)}, false);
+      module.nlex_get_group_start_ptr = llvm::Function::Create(
+          iptrt, llvm::GlobalValue::LinkageTypes::InternalLinkage,
+          "nlex_get_group_start_ptr", *module.TheModule);
+      module.nlex_get_group_end_ptr = llvm::Function::Create(
+          iptrt, llvm::GlobalValue::LinkageTypes::InternalLinkage,
+          "nlex_get_group_end_ptr", *module.TheModule);
+      module.nlex_get_group_length = llvm::Function::Create(
+          iit, llvm::GlobalValue::LinkageTypes::InternalLinkage,
+          "nlex_get_group_length", *module.TheModule);
+
+      auto total_groups =
+          llvm::ConstantInt::get(llvm::Type::getInt32Ty(module.TheContext),
+                                 lexer_stuff.total_capturing_groups);
+      llvm::IRBuilder<> builder{module.TheContext};
+
+      // get start ptr
+      {
+        auto bb0 = llvm::BasicBlock::Create(module.TheContext, "",
+                                            module.nlex_get_group_start_ptr);
+        auto bb1 = llvm::BasicBlock::Create(module.TheContext, "",
+                                            module.nlex_get_group_start_ptr);
+        auto bb2 = llvm::BasicBlock::Create(module.TheContext, "",
+                                            module.nlex_get_group_start_ptr);
+
+        builder.SetInsertPoint(bb0);
+        auto arg =
+            builder.CreateFPToSI(module.nlex_get_group_start_ptr->arg_begin(),
+                                 llvm::Type::getInt32Ty(module.TheContext));
+        builder.CreateCondBr(builder.CreateICmpSGT(arg, total_groups), bb2,
+                             bb1);
+        builder.SetInsertPoint(bb1);
+        auto phiout0 = builder.CreateLoad(builder.CreateInBoundsGEP(
+            module.nlex_capture_indices,
+            {llvm::ConstantInt::get(llvm::Type::getInt64Ty(module.TheContext),
+                                    0),
+             builder.CreateSExt(builder.CreateShl(arg,
+                                                  llvm::APInt(32, 1, false), "",
+                                                  false, true),
+                                llvm::Type::getInt64Ty(module.TheContext))}));
+        builder.CreateBr(bb2);
+        builder.SetInsertPoint(bb2);
+        llvm::PHINode *phi =
+            builder.CreatePHI(llvm::Type::getInt8PtrTy(module.TheContext), 2);
+        phi->addIncoming(llvm::Constant::getNullValue(
+                             llvm::Type::getInt8PtrTy(module.TheContext)),
+                         bb0);
+        phi->addIncoming(phiout0, bb1);
+        builder.CreateRet(phi);
+      }
+
+      // get end ptr
+      {
+        auto bb0 = llvm::BasicBlock::Create(module.TheContext, "",
+                                            module.nlex_get_group_end_ptr);
+        auto bb1 = llvm::BasicBlock::Create(module.TheContext, "",
+                                            module.nlex_get_group_end_ptr);
+        auto bb2 = llvm::BasicBlock::Create(module.TheContext, "",
+                                            module.nlex_get_group_end_ptr);
+
+        builder.SetInsertPoint(bb0);
+        auto arg =
+            builder.CreateFPToSI(module.nlex_get_group_end_ptr->arg_begin(),
+                                 llvm::Type::getInt32Ty(module.TheContext));
+        builder.CreateCondBr(builder.CreateICmpSGT(arg, total_groups), bb2,
+                             bb1);
+        builder.SetInsertPoint(bb1);
+        auto phiout0 = builder.CreateLoad(builder.CreateInBoundsGEP(
+            module.nlex_capture_indices,
+            {llvm::ConstantInt::get(llvm::Type::getInt64Ty(module.TheContext),
+                                    0),
+             builder.CreateSExt(
+                 builder.CreateOr(builder.CreateShl(arg,
+                                                    llvm::APInt(32, 1, false),
+                                                    "", false, true),
+                                  1),
+                 llvm::Type::getInt64Ty(module.TheContext))}));
+        builder.CreateBr(bb2);
+        builder.SetInsertPoint(bb2);
+        llvm::PHINode *phi =
+            builder.CreatePHI(llvm::Type::getInt8PtrTy(module.TheContext), 2);
+        phi->addIncoming(llvm::Constant::getNullValue(
+                             llvm::Type::getInt8PtrTy(module.TheContext)),
+                         bb0);
+        phi->addIncoming(phiout0, bb1);
+        builder.CreateRet(phi);
+      }
+
+      // get length
+      {
+        auto bb0 = llvm::BasicBlock::Create(module.TheContext, "",
+                                            module.nlex_get_group_length);
+        auto bb1 = llvm::BasicBlock::Create(module.TheContext, "",
+                                            module.nlex_get_group_length);
+        auto bb2 = llvm::BasicBlock::Create(module.TheContext, "",
+                                            module.nlex_get_group_length);
+
+        builder.SetInsertPoint(bb0);
+        auto arg =
+            builder.CreateFPToSI(module.nlex_get_group_length->arg_begin(),
+                                 llvm::Type::getInt32Ty(module.TheContext));
+        builder.CreateCondBr(builder.CreateICmpSGT(arg, total_groups), bb2,
+                             bb1);
+        builder.SetInsertPoint(bb1);
+        auto a0 = builder.CreateLoad(builder.CreateBitCast(
+            builder.CreateInBoundsGEP(
+                module.nlex_capture_indices,
+                {llvm::ConstantInt::get(
+                     llvm::Type::getInt64Ty(module.TheContext), 0),
+                 builder.CreateSExt(
+                     builder.CreateShl(arg, llvm::APInt(32, 1, false), "",
+                                       false, true),
+                     llvm::Type::getInt64Ty(module.TheContext))}),
+            llvm::Type::getInt64PtrTy(module.TheContext)));
+        auto a1 = builder.CreateLoad(builder.CreateBitCast(
+            builder.CreateInBoundsGEP(
+                module.nlex_capture_indices,
+                {llvm::ConstantInt::get(
+                     llvm::Type::getInt64Ty(module.TheContext), 0),
+                 builder.CreateSExt(
+                     builder.CreateOr(
+                         builder.CreateShl(arg, llvm::APInt(32, 1, false), "",
+                                           false, true),
+                         1),
+                     llvm::Type::getInt64Ty(module.TheContext))}),
+            llvm::Type::getInt64PtrTy(module.TheContext)));
+        auto phiout0 =
+            builder.CreateTrunc(builder.CreateSub(a1, a0),
+                                llvm::Type::getInt32Ty(module.TheContext));
+        builder.CreateBr(bb2);
+        builder.SetInsertPoint(bb2);
+        llvm::PHINode *phi =
+            builder.CreatePHI(llvm::Type::getInt32Ty(module.TheContext), 2);
+        phi->addIncoming(llvm::Constant::getNullValue(
+                             llvm::Type::getInt32Ty(module.TheContext)),
+                         bb0);
+        phi->addIncoming(phiout0, bb1);
+        builder.CreateRet(phi);
+      }
+    }
+
     {
       auto nlex_fed_string = module.nlex_fed_string = module.createGlobal(
           llvm::PointerType::get(llvm::Type::getInt8Ty(module.TheContext), 0),

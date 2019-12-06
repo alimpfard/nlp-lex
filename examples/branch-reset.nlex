@@ -1,0 +1,3 @@
+option capturing_groups on
+
+test :: te(?|(s)|(x))t\E{eprintd(nlex_get_group_length(1))}

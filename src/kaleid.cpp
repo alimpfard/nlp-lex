@@ -1141,13 +1141,19 @@ Value *CallExprAST::codegen() {
                          .c_str());
 
   std::vector<Value *> ArgsV;
+  // auto farg = CalleeF->arg_begin();
   for (unsigned i = 0, e = Args.size(); i != e; ++i) {
+    // if (farg == CalleeF->arg_end())
     ArgsV.push_back(Args[i]->codegen());
+    // else {
+    // ArgsV.push_back(castfromdbl(Args[i]->codegen(), farg->getType()));
+    // farg++;
+    // }
     if (!ArgsV.back())
       return nullptr;
   }
 
-  return (*Builder).CreateCall(CalleeF, ArgsV, "calltmp");
+  return cast2dbl((*Builder).CreateCall(CalleeF, ArgsV, "calltmp"));
 }
 
 Value *IfExprAST::codegen() {

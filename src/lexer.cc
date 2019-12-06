@@ -1427,27 +1427,112 @@ std::optional<Regexp> NLexer::regexp_expression() {
   // parenthesised expression
   if (c == '(') {
     nested_index++;
+    std::optional<int> reset_branch{};
+    int branch = 0;
+    if (!branch_reset_indices.empty()) {
+      reset_branch = nested_index;
+      nested_index = branch = branch_reset_indices.top();
+      branch_reset_indices.pop();
+    }
     advance(1);
     c = *source_p;
     if (c == '?') {
       // (?imIM:subexpr) -> set option
+      // (?#...) -> comment
+      // (?|...) -> branch reset
       advance(1);
       c = *source_p;
+      if (c == '#') {
+        // comments' parens also count towards the index number
+        bool seen_newline = false;
+        while (c != ')') {
+          advance(1);
+          c = *source_p;
+          if (c == '\n') {
+            // not allowed inside an expression
+            seen_newline = true;
+            advance(-1);
+            break;
+          }
+        }
+        advance(1); // consume ')'
+        if (seen_newline) {
+          const Token &mtoken = error_token();
+          lexer_error(*this, Errors::InvalidRegexpSyntax, mtoken,
+                      ErrorPosition::On,
+                      "Expression terminates before comment terminates");
+          if (reset_branch.has_value()) {
+            nested_index = *reset_branch;
+            branch_reset_indices.push(branch);
+          }
+          return {};
+        }
+        return regexp_expression(); // continue parsing expression
+      }
+      if (c == '|') {
+        // this one is gonna sting
+        // we need to tell the alternative groups
+        // what _this_ index is
+        branch_reset_indices.push(nested_index);
+        auto reg = regexp();
+        if (reset_branch.has_value()) {
+          nested_index = *reset_branch;
+          branch_reset_indices.push(branch);
+        }
+        if (!reg.has_value())
+          return reg;
+        auto &rv = reg.value();
+        c = *source_p;
+        if (c != ')') {
+          const Token &mtoken = error_token();
+          lexer_error(*this, Errors::InvalidRegexpSyntax, mtoken,
+                      ErrorPosition::On, "Unbalanced parenthesis");
+          return {};
+        }
+        advance(1);
+        auto reg_ = Regexp{std::string{"(?|"} + rv.str + ")",
+                           RegexpType::Nested, new Regexp{rv},
+                           regexp_debug_info(this, "?:", rv.str.size() + 3)};
+        branch_reset_indices.pop(); // cleanup
+        return reg_;
+      }
       if (strchr("imIM", c) != NULL) {
         const Token &mtoken = error_token();
         lexer_error(*this, Errors::RegexpUnsupported, mtoken, ErrorPosition::On,
                     "Subexpr options are not supported");
+        if (reset_branch.has_value()) {
+          nested_index = *reset_branch;
+          branch_reset_indices.push(branch);
+        }
         return {};
       }
       if (c == '<' || c == '=') {
         const Token &mtoken = error_token();
         lexer_error(*this, Errors::RegexpUnsupported, mtoken, ErrorPosition::On,
                     "Lookarounds are not supported");
+        if (reset_branch.has_value()) {
+          nested_index = *reset_branch;
+          branch_reset_indices.push(branch);
+        }
+        return {};
+      }
+      if (c == '>') {
+        const Token &mtoken = error_token();
+        lexer_error(*this, Errors::RegexpUnsupported, mtoken, ErrorPosition::On,
+                    "All groups are atomic, this is not needed");
+        if (reset_branch.has_value()) {
+          nested_index = *reset_branch;
+          branch_reset_indices.push(branch);
+        }
         return {};
       }
       if (c == ':') {
         // (?:...) shy group, set index -1, but increment index count anyway
         auto reg = regexp();
+        if (reset_branch.has_value()) {
+          nested_index = *reset_branch;
+          branch_reset_indices.push(branch);
+        }
         if (!reg.has_value())
           return reg;
         auto &rv = reg.value();
@@ -1468,6 +1553,10 @@ std::optional<Regexp> NLexer::regexp_expression() {
     }
     auto my_index = nested_index;
     auto reg = regexp();
+    if (reset_branch.has_value()) {
+      nested_index = *reset_branch;
+      branch_reset_indices.push(branch);
+    }
     if (!reg.has_value())
       return reg;
     auto &rv = reg.value();
@@ -2039,6 +2128,7 @@ Regexp::compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
     nfa->epsilon_transition_to(te);
 
     tl->subexpr_idx = index;
+    te->subexpr_end_idx = index;
     tl->named_rule = namef;
     te->named_rule = namef;
     tl = new PseudoNFANode<std::string>{"S" + mangle(), tl, te};

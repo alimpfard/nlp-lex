@@ -20,4 +20,5 @@ struct GenLexer {
   std::map<std::string, std::string> normalisations;
   std::map<std::string, std::vector<std::string>> literal_tags;
   std::optional<TagPosSpecifier> tagpos;
+  int total_capturing_groups;
 };

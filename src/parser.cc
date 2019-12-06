@@ -753,7 +753,10 @@ std::string NFANode<T>::gen_dot(
                                 print_asserts(node->assertions).c_str())
                 : "")
         << (node->subexpr_idx > -1
-                ? string_format(" [index %d]", node->subexpr_idx)
+                ? string_format(" [starts index %d]", node->subexpr_idx)
+                : "")
+        << (node->subexpr_end_idx > -1
+                ? string_format(" [ends index %d]", node->subexpr_end_idx)
                 : "")
         << (node->subexpr_call > -1
                 ? string_format(" [calls %d]", node->subexpr_call)
@@ -890,9 +893,15 @@ std::string DFANode<T>::gen_dot(
                   : "")
           << (node->subexpr_idxs.size() > 0
                   ? string_format(
-                        " [ind%s %s]",
+                        " [starts ind%s %s]",
                         (node->subexpr_idxs.size() > 1 ? "ices" : "ex"),
                         print_idxs(node->subexpr_idxs).c_str())
+                  : "")
+          << (node->subexpr_end_idxs.size() > 0
+                  ? string_format(
+                        " [ends ind%s %s]",
+                        (node->subexpr_end_idxs.size() > 1 ? "ices" : "ex"),
+                        print_idxs(node->subexpr_end_idxs).c_str())
                   : "")
           << (node->subexpr_call > -1
                   ? string_format(" [calls %d]", node->subexpr_call)
@@ -1102,6 +1111,7 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
   std::map<std::string, DFANode<std::set<NFANode<T> *>> *> dfa_map;
 
   std::set<NFANode<T> *> init = get_epsilon_closure(this, {});
+  int max_seen_capture_group = -1;
 
   std::queue<std::set<NFANode<T> *>> remaining;
   remaining.push(init);
@@ -1153,6 +1163,12 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
       }
       if (s->subexpr_idx > -1) {
         dfanode->subexpr_idxs.insert(s->subexpr_idx);
+        max_seen_capture_group = max_seen_capture_group < s->subexpr_idx
+                                     ? s->subexpr_idx
+                                     : max_seen_capture_group;
+      }
+      if (s->subexpr_end_idx > -1) {
+        dfanode->subexpr_end_idxs.insert(s->subexpr_end_idx);
       }
       if (s->subexpr_call > -1) {
         if (dfanode->subexpr_call > -1 &&
@@ -1269,7 +1285,7 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
         remaining.push(eps_state);
     }
   }
-
+  dfa_root->metadata.total_capturing_groups = max_seen_capture_group;
   return dfa_root;
 }
 
@@ -1558,6 +1574,43 @@ void DFANLVMCodeGenerator<T>::generate(
     }
     }
   }
+  // store the ending captures if any exist
+  if (builder.do_capture_groups)
+    if (node->subexpr_end_idxs.size()) {
+      for (auto i : node->subexpr_end_idxs) {
+        int idx = i * 2 + 1;
+        builder.module.Builder.CreateStore(
+            tnext,
+            llvm::ConstantExpr::getInBoundsGetElementPtr(
+                builder.module.nlex_capture_indices->getType()
+                    ->getPointerElementType(),
+                builder.module.nlex_capture_indices,
+                llvm::ArrayRef<llvm::Constant *>({
+                    llvm::ConstantInt::get(
+                        llvm::Type::getInt32Ty(builder.module.TheContext), 0),
+                    llvm::ConstantInt::get(
+                        llvm::Type::getInt32Ty(builder.module.TheContext), idx),
+                })));
+      }
+    }
+  if (builder.do_capture_groups)
+    if (node->subexpr_idxs.size()) {
+      for (auto i : node->subexpr_idxs) {
+        int idx = i * 2;
+        builder.module.Builder.CreateStore(
+            tnext,
+            llvm::ConstantExpr::getInBoundsGetElementPtr(
+                builder.module.nlex_capture_indices->getType()
+                    ->getPointerElementType(),
+                builder.module.nlex_capture_indices,
+                llvm::ArrayRef<llvm::Constant *>({
+                    llvm::ConstantInt::get(
+                        llvm::Type::getInt32Ty(builder.module.TheContext), 0),
+                    llvm::ConstantInt::get(
+                        llvm::Type::getInt32Ty(builder.module.TheContext), idx),
+                })));
+      }
+    }
   if (finalm) {
     // store the tag and string position upon getting here
     auto em = false;
@@ -2000,7 +2053,8 @@ int main(int argc, char *argv[]) {
                  parser.gen_lexer_literal_tags,
                  parser.hastagpos
                      ? std::optional<TagPosSpecifier>(parser.tagpos)
-                     : std::optional<TagPosSpecifier>{}});
+                     : std::optional<TagPosSpecifier>{},
+                 rootdfa->metadata.total_capturing_groups});
 
             nlvmg.generate(rootdfa);
             nlvmg.output();
@@ -2014,7 +2068,8 @@ int main(int argc, char *argv[]) {
                parser.gen_lexer_ignores, parser.gen_lexer_normalisations,
                parser.gen_lexer_literal_tags,
                parser.hastagpos ? std::optional<TagPosSpecifier>{parser.tagpos}
-                                : std::optional<TagPosSpecifier>{}});
+                                : std::optional<TagPosSpecifier>{},
+               rootdfa->metadata.total_capturing_groups});
 
           nlvmg.generate(rootdfa);
           nlvmg.output();
@@ -2085,7 +2140,8 @@ int main(int argc, char *argv[]) {
            parser.gen_lexer_ignores, parser.gen_lexer_normalisations,
            parser.gen_lexer_literal_tags,
            parser.hastagpos ? std::optional<TagPosSpecifier>{parser.tagpos}
-                            : std::optional<TagPosSpecifier>{}});
+                            : std::optional<TagPosSpecifier>{},
+           rootdfa->metadata.total_capturing_groups});
 
       nlvmg.generate(rootdfa);
       nlvmg.output();

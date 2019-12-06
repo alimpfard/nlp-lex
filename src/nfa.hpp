@@ -29,6 +29,9 @@ enum class RegexpAssertion {
 template <typename StateInfoT> class DFANode {
 public:
   std::optional<StateInfoT> state_info = {};
+  struct {
+    int total_capturing_groups = -1;
+  } metadata;
 
   std::string
   gen_dot(std::set<DFANode<StateInfoT> *> nodes,
@@ -44,7 +47,7 @@ public:
           &transitions);
 
   bool final = false, start = false, dirty = false, subexpr = false,
-       reference_node = false;
+       subexpr_end = false, reference_node = false;
   int max_opt_steps = 50;
   int opt_step = max_opt_steps;
 
@@ -66,6 +69,7 @@ public:
 
   std::vector<RegexpAssertion> assertions = {};
   std::set<int> subexpr_idxs = {};
+  std::set<int> subexpr_end_idxs = {};
   int subexpr_call = -1;
 
   std::optional<std::string> named_rule;
@@ -119,7 +123,7 @@ public:
           &transitions);
 
   bool final = false, start = false, dirty = false, subexpr = false,
-       reference_node = false;
+       subexpr_end = false, reference_node = false;
   int max_opt_steps = 50;
   int opt_step = max_opt_steps;
 
@@ -141,6 +145,7 @@ public:
   std::optional<std::string> named_rule = {};
   std::vector<RegexpAssertion> assertions = {};
   int subexpr_idx = -1;
+  int subexpr_end_idx = -1;
   int subexpr_call = -1;
 
   NFANode(StateInfoT s) : state_info(s) {}
@@ -256,6 +261,7 @@ template <typename K> struct NFANodePointerComparer {
       return false;
     if (a->start == b->start && a->final == b->final &&
         a->assertions == b->assertions && a->subexpr_idx == b->subexpr_idx &&
+        a->subexpr_end_idx == b->subexpr_end_idx &&
         a->subexpr_call == b->subexpr_call && /*
 a->state_info == b->state_info && a->named_rule == b->named_rule*/
         1) {
