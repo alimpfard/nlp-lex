@@ -89,7 +89,9 @@
 10. Capture groups (indexing only)
 
     + `(...)` is a capture group and its index is the number of open-parens since the beginning of the regexp (unique)
-
+    + `(?|...)` branch reset group: all alternative captures inside this group will start with the same group index
+    + `(?#...)` inline comment: text inside this 'group' is ignored by the engine (the starting paren still increments the next capture index)
+    
 11. Embedded Rule Actions (WIP)
     + Appears as an escaped entity `\E{...}`, and acts on its own
     + Is run after the subexpression before it is successfully matched
@@ -109,8 +111,8 @@
 
 | support         | '+' quantifier | Nested character classes | Non-greedy quantifiers | Non-capturing groups | Recursion      | Lookahead      | Lookbehind     | Backreferences | Indexable captures | Directives         | Conditionals       | Atomic Groups      | Named Captures     | Comments           | Embedded code      | Unicode Property   | Balancing Groups   | Variable length lookbehind |
 | :-------------  | :------------- | :-------------           | :-------------         | :-------------       | :------------- | :------------- | :------------- | :------------- | :-------------     | :-------------     | :-------------     | :-------------     | :-------------     | :-------------     | :-------------     | :-------------     | :-------------     | :-------------             |
-| Current support | Yes            | No                       | Yes                    | Yes                  | WIP              | No             | No             | No             | Yes                | No                 | No                 | Yes                | No                 | No                 | Yes                | Partial            | No                 | No                         |
-| Planned support | -              | No                       | -                      | -                    | Yes              | Yes            | Yes            | Yes            | -                  | Yes                | No                 | -                  | No                 | No                 | WIP                | Yes                | No                 | No                         |
+| Current support | Yes            | No                       | Yes                    | Yes                  | WIP              | No             | No             | No             | Yes                | No                 | No                 | Yes                | No                 | Yes                | Yes                | Partial            | No                 | No                         |
+| Planned support | -              | No                       | -                      | -                    | Yes              | Yes            | Yes            | Yes            | -                  | Yes                | No                 | -                  | No                 | Yes                | WIP                | Yes                | No                 | No                         |
 
 
 ## API features
