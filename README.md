@@ -80,6 +80,7 @@ currently significant options:
 | `pure_normaliser`   | creates a function `__nlex_pure_normalise` that returns the next normalised character in the stream | `off` |
 | `unsafe_normaliser`   | disable the length check on normalised values | `off` |
 | `skip_on_error`       | skip unmatchable characters | `off` |
+| `capturing_groups`    | enables group captures and generates the functions `nlex_get_group_{{start,end}_ptr,length}` | `off` |
 | `log_{verbose,warning,debug}` | set log level (verbose \< warning \< debug) | (unset) |
 
 ### Regular Expressions
@@ -112,6 +113,7 @@ the regex engine is currently very limited in what it supports, however here is 
 - [X] not-simple quantifiers (?)
 - [X] insane quantifiers (??)
 - [X] rule actions
+- [X] Regex captures (start-end)
 - [ ] backreferences
 - [X] recursive matching
 
