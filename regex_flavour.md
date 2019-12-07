@@ -61,7 +61,7 @@
     + `\B`     non-word boundary
     + `\A`     True beginning of string
     + `\G`     beginning of match
-    + `\K`     start next match here
+    + `\K`     set reported start of match
 
 6. Character Classes (Note: Alternation of character classes merges them together)
 
