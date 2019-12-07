@@ -1499,7 +1499,7 @@ void DFANLVMCodeGenerator<T>::generate(
     }
     case RegexpAssertion::LineBeginning: {
       BBnode = BasicBlock::Create(builder.module.TheContext,
-                                  "assertPass(^)::" /*+
+                                  "assertPass(^)" /*+
                                       get_name(node->state_info.value())*/
                                   ,
                                   builder.module.current_main());
@@ -1507,9 +1507,9 @@ void DFANLVMCodeGenerator<T>::generate(
       // or last character (fed_string-1) is \n
       builder.module.Builder.CreateCondBr(
           builder.module.Builder.CreateOr(
-              builder.module.Builder.CreateICmpEQ(tprev, tstart),
+              builder.module.Builder.CreateICmpEQ(tnext, tstart),
               builder.module.Builder.CreateICmpEQ(
-                  builder.module.Builder.CreateLoad(tprev),
+                  builder.module.Builder.CreateLoad(tnext),
                   llvm::ConstantInt::get(
                       llvm::Type::getInt8Ty(builder.module.TheContext),
                       (int)'\n'))),
@@ -1523,7 +1523,7 @@ void DFANLVMCodeGenerator<T>::generate(
     }
     case RegexpAssertion::LineEnd: {
       BBnode = BasicBlock::Create(builder.module.TheContext,
-                                  "assertPass($)::" /*+
+                                  "assertPass($)" /*+
                                       get_name(node->state_info.value())*/
                                   ,
                                   builder.module.current_main());
@@ -1551,13 +1551,13 @@ void DFANLVMCodeGenerator<T>::generate(
     }
     case RegexpAssertion::TrueBeginning: {
       BBnode = BasicBlock::Create(builder.module.TheContext,
-                                  "assertPass(A)::" /*+
+                                  "assertPass(A)" /*+
                                       get_name(node->state_info.value())*/
                                   ,
                                   builder.module.current_main());
       // check if we're at the beginning of the string (fed_string==true_start)
       builder.module.Builder.CreateCondBr(
-          builder.module.Builder.CreateICmpEQ(tprev, tstart)
+          builder.module.Builder.CreateICmpEQ(tnext, tstart)
           /* assert pass */
           ,
           BBnode
@@ -1569,10 +1569,25 @@ void DFANLVMCodeGenerator<T>::generate(
       break;
     }
     case RegexpAssertion::MatchBeginning: {
-      slts.show(Display::Type::ERROR,
-                "[{<red>}ERR{<clean>}] Unimplemented assertion "
-                "{<magenta>}\\G{<clean>}");
-      abort();
+      BBnode = BasicBlock::Create(builder.module.TheContext,
+                                  "assertPass(G)" /*+
+                                      get_name(node->state_info.value())*/
+                                  ,
+                                  builder.module.current_main());
+      // check if we're at the beginning of the subject (fed_string ==
+      // match_start)
+      builder.module.Builder.CreateCondBr(
+          builder.module.Builder.CreateICmpEQ(
+              tnext, builder.module.Builder.CreateLoad(
+                         builder.module.nlex_match_start))
+          /* assert pass */
+          ,
+          BBnode
+          /* assert fail */
+          ,
+          BBend);
+      builder.module.Builder.SetInsertPoint(BBnode);
+      // BB = BBnode;
       break;
     }
     }
