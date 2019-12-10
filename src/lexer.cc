@@ -847,6 +847,11 @@ std::optional<Regexp> NLexer::_regexp() {
     break;
   } while (1);
   advance(-1);
+  // reset capture indices
+  nested_index = 0;
+  while (branch_reset_indices.size())
+    branch_reset_indices.pop();
+
   return regexp();
 }
 
