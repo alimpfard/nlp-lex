@@ -1637,11 +1637,8 @@ void KaleidInitialise(std::string startup_code, nlvm::BaseModule *module) {
   KaleidFeed(startup_code);
 
   // Initialize the target registry etc.
-  InitializeAllTargetInfos();
-  InitializeAllTargets();
-  InitializeAllTargetMCs();
-  InitializeAllAsmParsers();
-  InitializeAllAsmPrinters();
+  InitializeNativeTarget();
+  InitializeNativeTargetAsmPrinter();
 
   auto TargetTriple = sys::getDefaultTargetTriple();
   (mModule->TheModule)->setTargetTriple(TargetTriple);
