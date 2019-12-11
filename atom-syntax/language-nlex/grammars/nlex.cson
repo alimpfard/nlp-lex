@@ -413,6 +413,39 @@
   'regularExpression' : {
     'patterns' : [
       {
+        'match' : '(\\(\\?\\#)([^\\x{0029}]*)(\\))'
+        'captures' : {
+          '1' : {
+            'name' : 'string.regexp.NLex'
+          }
+          '2' : {
+            'name' : 'comment.NLex'
+          }
+          '3' : {
+            'name' : 'string.regexp.NLex'
+          }
+        }
+      }
+      {
+        'begin' : '(\\(\\?.)'
+        'beginCaptures' : {
+          '1' : {
+            'name' : 'string.regexp.NLex'
+          }
+        }
+        'patterns' : [
+          {
+            'include' : '#regularExpression'
+          }
+        ]
+        'end' : '(^|\\)|\\])'
+        'endCaptures' : {
+          '1' : {
+            'name' : 'string.regexp.NLex'
+          }
+        }
+      }
+      {
         'begin' : '(\\()'
         'beginCaptures' : {
           '1' : {
