@@ -58,7 +58,7 @@ inline static const int utf8_encode(char *out, uint32_t utf) {
 
 inline static CUDebugInformation
 regexp_debug_info(NLexer *lexer, std::string name, int length) {
-  return {lexer->lineno, lexer->offset - length, length, name};
+  return {lexer->lineno, lexer->offset - length + 2, length, name};
 }
 
 char const *NLexer::errors[Errors::LAST] = {
@@ -1018,15 +1018,16 @@ std::optional<Regexp> NLexer::regexp_expression() {
                     backrefnum, nested_index);
         backrefnum = nested_index - 2;
       }
-      auto reg = Regexp{std::string{source_p - len, len}, RegexpType::Escape,
-                        '\\', regexp_debug_info(this, std::string{'\\'}, 1)};
+      auto reg = Regexp{
+          std::string{source_p - len, len}, RegexpType::Escape, '\\',
+          regexp_debug_info(this, std::string{source_p - len, len}, len)};
       reg.index = backrefnum;
       return reg;
     }
     if (strchr("?+*{}()[]\\|.^$", c) != NULL)
       // switch to literal
       return Regexp{std::string{source_p - 2, 2}, RegexpType::Literal, c,
-                    regexp_debug_info(this, std::string{c}, 1)};
+                    regexp_debug_info(this, "\\" + std::string{c}, 2)};
 
     // magic escapes
     switch (c) {
@@ -1078,6 +1079,7 @@ std::optional<Regexp> NLexer::regexp_expression() {
                     regexp_debug_info(this, "\\v", 2)};
     case 'E': {
       char pc = *source_p;
+      char *startp = source_p - 3;
       if (pc != '{')
         lexer_error(*this, Errors::InvalidRegexpSyntax, error_token(),
                     ErrorPosition::On,
@@ -1096,7 +1098,7 @@ std::optional<Regexp> NLexer::regexp_expression() {
       *bufv++ = 0;
       return Regexp{std::string{source_p - length - 6, length + 4},
                     RegexpType::Code, bf,
-                    regexp_debug_info(this, "inline_code", 11)};
+                    regexp_debug_info(this, "inline_code", source_p - startp)};
     }
     case 'p':
     case 'P': {
@@ -1256,16 +1258,13 @@ std::optional<Regexp> NLexer::regexp_expression() {
       \]                               # ]]]
     */
     int length = 0;
-    int rlength = 0;
     bool inverted = false;
+    char *startp = source_p; // at '['
     advance(1);
-    rlength++;
     if (*source_p == '^')
       inverted = true;
-    else {
+    else
       advance(-1);
-      rlength--;
-    }
     if (inverted) {
       buffer[length++] = ']'; // TODO: get a decent way of specifying inversion
     }
@@ -1274,7 +1273,6 @@ std::optional<Regexp> NLexer::regexp_expression() {
     c = 0;
     do {
       advance(1);
-      rlength++;
       lc = c;
       c = *source_p;
       if (c == '\\') {
@@ -1292,18 +1290,15 @@ std::optional<Regexp> NLexer::regexp_expression() {
           int range_end_skip = 0;
           // specify range (a[buf]-.Z -> a-[buf+(a+1)...Z]Z.)
           advance(1);
-          rlength++;
           c = *source_p;
           auto end_s = source_p;
           static char buf[6];
           if (c == '\\') {
             advance(1);
-            rlength++;
             c = *source_p;
             if (c == 'u') {
               int len = 0;
               advance(1);
-              rlength++;
               c = *source_p;
               c = tolower(c);
               while (isxdigit(c)) {
@@ -1311,12 +1306,10 @@ std::optional<Regexp> NLexer::regexp_expression() {
                   break;
                 buf[len++] = c;
                 advance(1);
-                rlength++;
                 c = *source_p;
                 c = tolower(c);
               }
               advance(-1);
-              rlength--;
               if (len < 3) {
                 lexer_error(*this, Errors::InvalidRegexpSyntax, error_token(),
                             ErrorPosition::On,
@@ -1390,7 +1383,6 @@ std::optional<Regexp> NLexer::regexp_expression() {
           for (uint32_t x = start + 1; x < end + 1; x++)
             length += utf8_encode(buffer + length, x);
           advance(range_end_skip - 1);
-          rlength += range_end_skip - 1;
           continue;
         }
       }
@@ -1425,9 +1417,9 @@ std::optional<Regexp> NLexer::regexp_expression() {
       }
       buffer[length++] = c;
     } while (1);
-    return Regexp{"[" + std::string{source_p - rlength, rlength - 1} + "]",
+    return Regexp{std::string{startp, source_p - startp},
                   RegexpType::CharacterClass, std::string{buffer, length},
-                  regexp_debug_info(this, "\\u", rlength + 3)};
+                  regexp_debug_info(this, "<charclass>", source_p - startp)};
   }
   // parenthesised expression
   if (c == '(') {
@@ -1497,7 +1489,7 @@ std::optional<Regexp> NLexer::regexp_expression() {
         advance(1);
         auto reg_ = Regexp{std::string{"(?|"} + rv.str + ")",
                            RegexpType::Nested, new Regexp{rv},
-                           regexp_debug_info(this, "?:", rv.str.size() + 3)};
+                           regexp_debug_info(this, "?:", rv.str.size() + 4)};
         branch_reset_indices.pop(); // cleanup
         return reg_;
       }

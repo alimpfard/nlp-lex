@@ -170,7 +170,10 @@ void NParser::parse() {
         statestack.pop();
         goto doitagain;
       }
-      gen_lexer_ignores.insert(std::get<std::string>(token.value));
+      gen_lexer_ignores.insert(
+          {std::get<std::string>(token.value),
+           {lexer->lineno,
+            lexer->offset - std::get<std::string>(token.value).size() - 1}});
       break;
     case ParserState::Stopword:
       if (token.type != TokenType::TOK_LITSTRING &&
@@ -183,7 +186,10 @@ void NParser::parse() {
         slts.show(Display::Type::MUST_SHOW, "file string not yet supported\n");
         break;
       }
-      gen_lexer_stopwords.insert(std::get<std::string>(token.value));
+      gen_lexer_stopwords.insert(
+          {std::get<std::string>(token.value),
+           {lexer->lineno,
+            lexer->offset - std::get<std::string>(token.value).size() - 1}});
       break;
     case ParserState::Literal:
       if (token.type != TokenType::TOK_LITSTRING &&

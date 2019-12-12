@@ -117,6 +117,15 @@ public:
         llvm::DebugLoc::get(node ? node->debug_info.lineno : 0,
                             node ? node->debug_info.offset : 0, Scope));
   }
+  void emitLocation(debug_offset_info offset_info, llvm::IRBuilder<> &builder) {
+    llvm::DIScope *Scope;
+    if (LexicalDebugBlocks.empty())
+      Scope = TheCU;
+    else
+      Scope = LexicalDebugBlocks.back();
+    builder.SetCurrentDebugLocation(
+        llvm::DebugLoc::get(offset_info.line, offset_info.offset, Scope));
+  }
   template <typename T> void emitLocation(T *node) {
     emitLocation(node, Builder);
   }
@@ -1012,9 +1021,9 @@ public:
       auto fbb = llvm::BasicBlock::Create(module.TheContext, "_stopword_res",
                                           module.main());
       auto *prev_fbb = module.BBfinalise;
-      WordTree<std::string> wtree{lexer_stuff.stopwords};
+      WordTree<std::string, debug_offset_info> wtree{lexer_stuff.stopwords};
       llvm::IRBuilder<> builder{module.TheContext};
-      module.emitLocation((DFANode<NFANode<std::nullptr_t> *> *)NULL, builder);
+      module.emitLocation(lexer_stuff.stopwords.begin()->second, builder);
 
       auto tcabb = llvm::BasicBlock::Create(module.TheContext, "_exit_stopword",
                                             module.main());
@@ -1112,7 +1121,7 @@ public:
       auto fbb = llvm::BasicBlock::Create(module.TheContext, "_ignore_res",
                                           module.main());
       auto *prev_fbb = module.BBfinalise;
-      WordTree<std::string> wtree{lexer_stuff.stopwords};
+      WordTree<std::string, debug_offset_info> wtree{lexer_stuff.stopwords};
       llvm::IRBuilder<> builder{module.TheContext};
       module.emitLocation((DFANode<NFANode<std::nullptr_t> *> *)NULL, builder);
 
@@ -1128,9 +1137,10 @@ public:
       auto ptag = builder.CreatePtrToInt(
           tag, llvm::Type::getInt64Ty(module.TheContext));
       llvm::BasicBlock *nextbb;
-      for (auto ign : lexer_stuff.ignores) {
+      for (auto [ign, dbg] : lexer_stuff.ignores) {
         nextbb = llvm::BasicBlock::Create(module.TheContext,
                                           "__ignore_res_" + ign, module.main());
+        module.emitLocation(dbg, builder);
         builder.CreateCondBr(
             builder.CreateICmpEQ(get_or_create_tag_constint(ign), ptag), tcabb,
             nextbb);

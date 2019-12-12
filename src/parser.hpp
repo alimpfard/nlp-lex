@@ -62,8 +62,8 @@ class NParser {
 public:
   std::stack<ParserState> statestack;
   std::map<std::string, bool> gen_lexer_options;
-  std::set<std::string> gen_lexer_stopwords;
-  std::set<std::string> gen_lexer_ignores;
+  std::set<std::pair<std::string, debug_offset_info>> gen_lexer_stopwords;
+  std::set<std::pair<std::string, debug_offset_info>> gen_lexer_ignores;
   std::map<std::string, std::string> gen_lexer_normalisations;
   std::map<std::string, std::vector<std::string>> gen_lexer_literal_tags;
 

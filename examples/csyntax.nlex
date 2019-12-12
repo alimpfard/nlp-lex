@@ -1,13 +1,13 @@
-cstring :: "([^"]|\\"|\\.)*"
-cchar :: '([^']|\\.)'
-bcomment :: /\*(.|\n)*\*/
-lcomment :: (//.*)\n
-space :: [\u000a 	]+
-number :: [0-9]+[lL]?|[0-9]*\.[0-9]+[df]?
-ident :: [A-Za-z_][A-Za-z_0-9]*
-operator :: (->|[*+/?:%#!~^&(),.|]|\[|\]|-|[=<>])
-semicolon :: ;
-cbrace :: \}
-obrace :: \{
-
+cstring ::"([^"]|\\"|\\.)*"
+cchar ::'([^']|\\.)'
+bcomment ::/\*(.|\n)*\*/
+lcomment ::(//.*)\n
+space ::[\u000a 	]+
+number ::[0-9]+[lL]?|[0-9]*\.[0-9]+[df]?
+ident ::[A-Za-z_][A-Za-z_0-9]*
+operator ::(->|[*+/?:%#!~^&(),.|]|\[|\]|-|[=<>])
+semicolon ::;
+cbrace ::\}
+obrace ::\{
+#
 ignore [space]

@@ -12,6 +12,7 @@ struct store_value_tag {};
 
 template <typename StringT, typename MetadataT = int,
           typename CollectionT = std::set<StringT>,
+          typename PairCollectionT = std::set<std::pair<StringT, MetadataT>>,
           typename _CharT = typename StringT::value_type>
 
 class WordTree {
@@ -43,6 +44,11 @@ public:
     root_node = std::make_shared<WordTreeNode>();
     for (auto word : words)
       insert(word, word);
+  }
+  WordTree(const PairCollectionT &words) {
+    root_node = std::make_shared<WordTreeNode>();
+    for (auto [word, tag] : words)
+      insert(word, tag);
   }
   WordTree() { root_node = std::make_shared<WordTreeNode>(); }
 
