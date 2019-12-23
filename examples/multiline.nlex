@@ -1,0 +1,5 @@
+test :: Test\E{\
+    dprintdf(2, "Test")\
+}
+# This one should have the right line number
+random_stuff :: random stuff
