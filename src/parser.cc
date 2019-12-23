@@ -2109,16 +2109,29 @@ int main(int argc, char *argv[]) {
   else {
     char *data = read_file(filename);
     char *tok = strtok(data, "\n");
+    int next_lineno = parser.lexer->lineno + 1;
     while (tok) {
+      next_lineno = parser.lexer->lineno + 1;
       if (strlen(tok) == 0) {
         parser.lexer->lineno++;
         tok = strtok(NULL, "\n");
         continue;
       }
+      checkagain:;
+      int len = strlen(tok);
+      if (tok[len - 1] == '\\') {
+        tok[len - 1] = ' ';
+        tok[len] = ' ';
+        strtok(NULL, "\n"); // read next line
+        next_lineno++;
+        goto checkagain;  
+      }
       parser.repl_feed(tok);
       parser.statestack = {};
       parser.statestack.push(ParserState::Toplevel);
       parser.parse();
+      if (next_lineno > parser.lexer->lineno)
+        parser.lexer->lineno = next_lineno;
       tok = strtok(NULL, "\n");
     }
     root = parser.compile();
