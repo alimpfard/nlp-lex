@@ -13,13 +13,13 @@ tag pos with delimiter SentenceDelimiter{*}
 # pos tagging not supported yet
 # every 2 tokens from "/home/Test/Documents/nlp-lex/wrapper/python/nlex/model.dat"
 #
-word    :: [آائبپتثجچحخدذرزژسشصضطظعغفقکكلمنوهي\u200c]+
-enword  :: [A-z]+
-number  :: [0123456789۰۱۲۳۴۵۶۷۸۹]+
-Punc     ::[،,:;'()*%~:؛«»/\u002da#$%^&_]+
+PersianWord       :: [آائبپتثجچحخدذرزژسشصضطظعغفقکكلمنوهی\u200c]+
+EnglishWord       :: [A-z]+
+Number            :: [0123456789۰۱۲۳۴۵۶۷۸۹]+
+Punc              :: [،,:;'()*%~:؛«»/\u002da#$%^&_]+
 SentenceDelimiter :: [.؟!?]
-Space   :: [ 	\u000a]+
-Mention :: @[A-z][A-z_0-9]{4,}
+Space             :: [ 	\u000a]+
+Mention           :: @[A-z][A-z_0-9]{4,}
 #
 # \uc{RGI} is the set of all RGI emojis
 emoji   -- "\uc{RGI}"
@@ -97,13 +97,13 @@ normalise {ڞ} to ﺽ
 normalise {ڟ} to ﻁ
 normalise {ڠ ۼ} to ﻍ
 normalise {ڣ ڦ ڡ ڢ ڥ ڤ} to ﻑ
-normalise {ػ ګ ؼ ڮ ڭ ڪ ڬ ﮎ} to ك
+normalise {ػ ګ ؼ ڮ ڭ ڪ ڬ ﮎ} to ک
 normalise {ڴ ڰ ڲ ﮒ ڱ ڳ} to ﮒ
 normalise {ڸ ڷ ڶ ڵ} to ﻝ
 normalise {ڹ ڻ ں ڼ ڽ} to ﻥ
 normalise {ە ۂ ہ ۀ ۃ ھ ۿ ﻩ} to ه
 normalise {۽} to ﻉ
 normalise {ۜ ۩ ۡ ۖ ۬ ۣ ۢ ۞ ۠ ۚ ۥ ۤ ۛ ۝ ۧ ۘ ۦ ۭ ۗ ۫ ۨ ۟ ۪ ۙ} to _
-normalise {ی ۍ ې ے ۓ ێ ؽ ﻱ ؠ ۑ ؾ ؿ ٸ ﻯ ﺉ ي ﯼ} to ي
+normalise {ی ۍ ې ے ۓ ێ ؽ ﻱ ؠ ۑ ؾ ؿ ٸ ﻯ ﺉ ي ﯼ ي} to ی
 normalise {ـ} to _
 #
