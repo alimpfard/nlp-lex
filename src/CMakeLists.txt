@@ -24,7 +24,7 @@ add_executable(nlex
 
 llvm_config(nlex USE_SHARED core)
 
-target_compile_options(nlex PRIVATE -Wno-narrowing -Wno-write-strings -pthread)
+target_compile_options(nlex PRIVATE -Wno-narrowing -Wno-write-strings -pthread -g)
 
 target_link_libraries(nlex PRIVATE
     ${TBB_IMPORTED_TARGETS}

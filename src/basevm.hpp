@@ -9,7 +9,7 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
-#include "llvm/IR/PassManager.h"
+#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/TargetSelect.h"
@@ -30,6 +30,8 @@ struct BaseModule {
 public:
   llvm::LLVMContext TheContext;
   std::unique_ptr<llvm::Module> TheModule;
+  std::unique_ptr<llvm::legacy::PassManager> TheMPM;
+  // std::unique_ptr<llvm::ModuleAnalysisManager> TheMAM;
   BaseModule(std::string name = "") : TheContext() {
     TheModule = std::make_unique<llvm::Module>(name, TheContext);
   }

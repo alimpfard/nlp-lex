@@ -235,7 +235,7 @@ double dderefset(double ptr, double value) {
 }
 
 double trap() { 
-  __asm("int3");
+  __builtin_trap();
   return 0;
 }
 

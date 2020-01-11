@@ -29,6 +29,10 @@
 #include <mutex>
 
 #include "unicode/emojis.hpp"
+#include "target_triple.hpp"
+
+std::string output_file_name = "";
+nlvm::TargetTriple targetTriple;
 
 constexpr EpsilonTransitionT EpsilonTransition{};
 Display::SingleLineTermStatus slts;
@@ -1902,13 +1906,36 @@ std::string exec(const char *cmd, const bool &run) {
 }
 
 static const char m_help[] = R"(
-./a.out [args] [filename|-]
+./a.out [args] [filename]
 ARGS:
     -h  This help
     -g  generate graph
     -r  dry run (no compilation)
     -o [file]
         set output filename [default: stdout]
+
+  The following arguments modify the output format
+
+  arch = cpu-sub
+  cpu = x86, arm, thumb, mips, etc.
+  sub = for ex. on ARM: v5, v6m, v7a, v7m, etc.
+  vendor = pc, apple, nvidia, ibm, etc.
+  sys = none, linux, win32, darwin, cuda, etc.
+
+    --target-arch <arch>
+        set target architecture
+    --target-vendor <vendor>
+        set target vendor
+    --target-sys <sys>
+        set target system
+    
+    --object-format <format-name>
+      set output object file format
+        
+        -OR-
+
+    --emit-llvm
+      output llvm IR instead of object file
 )";
 void parse_commandline(int argc, char *argv[], /* out */ char **filename,
                        /* out */ bool *generate_graph,
@@ -1941,13 +1968,62 @@ void parse_commandline(int argc, char *argv[], /* out */ char **filename,
       *compile = false;
       continue;
     }
+    if (strcmp(arg, "--emit-llvm") == 0) {
+      if (targetTriple._cross) {
+        slts.show(Display::Type::ERROR,
+                  "{<magenta>}--object-format{<clean>} and {<magenta>}--emit-llvm{<clean>} are mutually exclusive");
+        continue;
+      }
+      targetTriple._write_ll = true;
+      continue;
+    }
     if (strcmp(arg, "-o") == 0) {
       if (i == argc - 1) {
         slts.show(Display::Type::ERROR,
                   "argument {<magenta>}-o{clean>} expects a parameter");
         continue;
       }
-      *outname = argv[++i];
+      output_file_name = argv[++i];
+      continue;
+    }
+#define TARGET_X_COMPARE(x, y) \
+    if (strcmp(arg, "--target-" #x) == 0) { \
+      if (i == argc - 1) { \
+        slts.show(Display::Type::ERROR, \
+                  "argument {<magenta>}--target-" #x "{<clean>} expects a parameter"); \
+        continue; \
+      } \
+      targetTriple.triple.set ## y ## Name (argv[++i]); \
+      targetTriple._cross |= argv[i] != "unknown"; \
+      continue; \
+    }
+
+    TARGET_X_COMPARE(arch, Arch)
+    TARGET_X_COMPARE(vendor, Vendor)
+    TARGET_X_COMPARE(sys, OS)
+#undef TARGET_X_COMPARE
+    if (strcmp(arg, "--object-format") == 0) {
+      if (targetTriple._write_ll) {
+        slts.show(Display::Type::ERROR,
+                  "{<magenta>}--object-format{<clean>} and {<magenta>}--emit-llvm{<clean>} are mutually exclusive");
+        continue;
+      }
+      if (i == argc - 1) {
+        slts.show(Display::Type::ERROR,
+                  "argument {<magenta>}--object-format{<clean>} expects a parameter");
+        continue;
+      }
+      targetTriple.triple.setObjectFormat(([](std::string s) {
+        using O = llvm::Triple::ObjectFormatType;
+        if (s == "pe" || s == "coff") return O::COFF;
+        if (s == "elf") return O::ELF;
+        if (s == "macho" || s == "mach" || s == "mach-o") return O::MachO;
+        if (s == "wasm") return O::Wasm;
+        if (s == "xcoff") return O::XCOFF;
+        
+        return llvm::Triple::ObjectFormatType::UnknownObjectFormat;
+      })(argv[++i]));
+      targetTriple._cross = true;
       continue;
     }
     if (strcmp(arg, "--") == 0) {
@@ -1988,6 +2064,8 @@ int main(int argc, char *argv[]) {
   bool compile = false;
   char *outname = "";
   NParser parser;
+  targetTriple.triple = llvm::Triple(llvm::sys::getDefaultTargetTriple());
+
   parse_commandline(argc - 1, argv + 1, &filename, &parser.generate_graph,
                     &compile, &outname);
   int fromstdin = 0, tostdout = 0;
@@ -2000,15 +2078,7 @@ int main(int argc, char *argv[]) {
   parser.lexer = std::make_unique<NLexer>(filename);
   NFANode<std::string> *root;
   DFACCodeGenerator<std::string> cg;
-  std::error_code ec;
-  llvm::raw_fd_ostream of(outname, ec);
-  if (ec) {
-    slts.show(Display::Type::ERROR, "Error writing to output '%s': %s", outname,
-              ec.message().c_str());
-    exit(1);
-  }
-  DFANLVMCodeGenerator<std::string> nlvmg(filename,
-                                          tostdout ? &llvm::errs() : &of);
+  DFANLVMCodeGenerator<std::string> nlvmg(filename, &llvm::errs());
   nlvmg.builder.begin(nlvmg.builder.module.main(), false,
                       parser.gen_lexer_options["skip_on_error"]);
   nlvmg.builder.module._cmain = nlvmg.builder.module._main;

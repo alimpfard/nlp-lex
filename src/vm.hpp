@@ -4,6 +4,8 @@
 #include "genlexer.hpp"
 #include "termdisplay.hpp"
 #include "wordtree.hpp"
+#include "target_triple.hpp"
+
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/DebugInfo/DIContext.h"
@@ -13,12 +15,25 @@
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IRReader/IRReader.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/TargetSelect.h"
+#include "llvm/Passes/PassBuilder.h"
+#include "llvm/Support/TargetRegistry.h"
+#include "llvm/Support/TargetSelect.h"
+#include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetOptions.h"
+#include "llvm/Transforms/InstCombine/InstCombine.h"
+#include "llvm/Transforms/Scalar.h"
+#include "llvm/Transforms/Scalar/GVN.h"
+#include "llvm/IR/LegacyPassManager.h"
+#include "llvm/Support/SourceMgr.h"
+#include "llvm/Linker/Linker.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
@@ -39,6 +54,8 @@ typename T::mapped_type get(T value, typename T::key_type key) {
 }
 
 extern Display::SingleLineTermStatus slts;
+extern std::string output_file_name;
+extern nlvm::TargetTriple targetTriple;
 
 namespace nlvm {
 static llvm::AllocaInst *createEntryBlockAlloca(llvm::Function *TheFunction,
@@ -355,13 +372,46 @@ public:
     TheModule->getGlobalList().push_back(res);
     return res;
   }
+
+  std::unique_ptr<llvm::Module> RTSModule;
+
   Module(std::string name, llvm::raw_ostream *os)
       : BaseModule(), Builder(TheContext), outputv(os) {
+    llvm::SMDiagnostic ed;
+    
+    // #define unsigned const
+    #include "test_bc.h"
+    // #undef unsigned
+
+    static llvm::StringRef mLibraryBitcode = llvm::StringRef((const char*) test_bc, test_bc_len);
+    RTSModule = llvm::parseIR(llvm::MemoryBufferRef(mLibraryBitcode, "test_bc"), ed, TheContext);
+
+    if (!RTSModule)
+        ed.print(name.c_str(), *os);
+    assert(RTSModule.get() != nullptr && "RTS compilation failed");
+
     TheModule = std::make_unique<llvm::Module>(name, TheContext);
+
     TheModule->addModuleFlag(llvm::Module::Warning, "Dwarf Version",
                              llvm::dwarf::DWARF_VERSION);
     TheModule->addModuleFlag(llvm::Module::Warning, "Debug Info Version",
                              llvm::DEBUG_METADATA_VERSION);
+
+    TheMPM = std::make_unique<llvm::legacy::PassManager>();
+
+    TheMPM->add(llvm::createInstructionCombiningPass());
+    TheMPM->add(llvm::createReassociatePass());
+    TheMPM->add(llvm::createGVNPass());
+    // TheMPM->add(llvm::createCFGSimplificationPass());
+    TheMPM->add(llvm::createLICMPass());
+    TheMPM->add(llvm::createAggressiveDCEPass());
+    TheMPM->add(llvm::createConstantPropagationPass());
+    // TheMPM->add(llvm::createTailCallEliminationPass());
+    TheMPM->add(llvm::createInstructionCombiningPass());
+    // TheMPM->add(llvm::createSinkingPass());
+    // TheMPM->add(llvm::createCFGSimplificationPass());
+
+    // TheMAM = std::make_unique<llvm::ModuleAnalysisManager>();
 
     DBuilder = new llvm::DIBuilder(*TheModule.get());
     char buf[PATH_MAX];
@@ -454,9 +504,32 @@ public:
   llvm::BasicBlock *first_root = nullptr;
   bool issubexp = false;
   bool do_capture_groups = false;
+  llvm::TargetMachine *TheTargetMachine;
 
   Builder(std::string mname, llvm::raw_ostream *o)
-      : outputv(o), module(mname, o) {}
+      : outputv(o), module(mname, o) {
+        using namespace llvm;
+        InitializeNativeTarget();
+        InitializeNativeTargetAsmPrinter();
+      
+        auto TargetTriple = sys::getDefaultTargetTriple();
+        if (targetTriple._cross) 
+            TargetTriple = targetTriple.triple.str();
+        module.TheModule->setTargetTriple(TargetTriple);
+      
+        std::string Error;
+        auto Target = TargetRegistry::lookupTarget(TargetTriple, Error);
+        auto CPU = "generic";
+        auto Features = "";
+
+        llvm::TargetOptions opt;
+        auto RM = llvm::Optional<Reloc::Model>();
+        TheTargetMachine =
+            Target->createTargetMachine(TargetTriple, CPU, Features, opt, RM);
+
+        module.TheModule->setDataLayout(TheTargetMachine->createDataLayout());
+        module.TheModule->setTargetTriple(TargetTriple);
+      }
 
   void begin(llvm::Function *fn, bool cleanup_if_fail = false,
              bool skip_on_error = true) {
@@ -1294,10 +1367,37 @@ public:
     }
   }
   void end() {
+    using namespace llvm;
     // finish the function
     module.DBuilder->finalize();
     llvm::verifyFunction(*module.main());
-    module.TheModule->print(*outputv, nullptr);
+
+    auto Composite = std::make_unique<llvm::Module>(module.TheModule->getName(), module.TheContext);
+    llvm::Linker L(*Composite);
+
+    L.linkInModule(std::move(module.RTSModule));
+    L.linkInModule(std::move(module.TheModule));
+
+    module.TheMPM->run(*Composite);
+
+    legacy::PassManager pass;
+    auto FileType = LLVMTargetMachine::CodeGenFileType::CGFT_ObjectFile;
+    std::error_code EC;
+    if (output_file_name == "")
+        output_file_name = std::string{Composite->getName()} + ".o";
+    raw_fd_ostream dest(output_file_name, EC, sys::fs::OF_None);
+
+    if (EC) {
+      errs() << "Could not open file: " << EC.message();
+      return;
+    }
+    if (!targetTriple._write_ll) {
+        if (TheTargetMachine->addPassesToEmitFile(pass, dest, nullptr, FileType)) {
+             // todo error
+        }
+        pass.run(*Composite);
+    } else
+        Composite->print(dest, nullptr);
   }
 
   llvm::Constant *mk_string(llvm::Module *M, llvm::LLVMContext &Context,
