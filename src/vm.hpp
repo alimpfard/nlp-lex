@@ -292,7 +292,7 @@ public:
     llvm::FunctionType *ncf = llvm::FunctionType::get(
         llvm::Type::getVoidTy(TheContext), nullary ? nnargs : args, false);
 
-    _main = llvm::Function::Create(ncf, llvm::Function::ExternalLinkage, name,
+    _main = llvm::Function::Create(ncf, llvm::Function::LinkageTypes::ExternalLinkage, name,
                                    TheModule.get());
     auto main_entry = llvm::BasicBlock::Create(TheContext, "", _main);
     if (!toplevels)
@@ -523,9 +523,8 @@ public:
         auto Features = "";
 
         llvm::TargetOptions opt;
-        auto RM = llvm::Optional<Reloc::Model>();
         TheTargetMachine =
-            Target->createTargetMachine(TargetTriple, CPU, Features, opt, RM);
+            Target->createTargetMachine(TargetTriple, CPU, Features, opt, targetTriple.reloc_model);
 
         module.TheModule->setDataLayout(TheTargetMachine->createDataLayout());
         module.TheModule->setTargetTriple(TargetTriple);

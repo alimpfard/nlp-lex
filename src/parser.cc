@@ -1929,6 +1929,9 @@ ARGS:
     --target-sys <sys>
         set target system
     
+    --relocation-model <reloc-model>
+      set output object file relocation model
+
     --object-format <format-name>
       set output object file format
         
@@ -2026,6 +2029,28 @@ void parse_commandline(int argc, char *argv[], /* out */ char **filename,
       targetTriple._cross = true;
       continue;
     }
+    if (strcmp(arg, "--relocation-model") == 0) {
+      if (i == argc - 1) {
+        slts.show(Display::Type::ERROR,
+                  "argument {<magenta>}--relocation-model{<clean>} expects a parameter");
+        continue;
+      }
+      targetTriple.reloc_model = ([](std::string s) {
+        using M= llvm::Reloc::Model;
+        if (s == "ropi_rwpi")    return M::ROPI_RWPI; 	
+        if (s == "rwpi")         return M::RWPI;
+        if (s == "ropi")         return M::ROPI; 
+        if (s == "dynamic")      return M::DynamicNoPIC; 
+        if (s == "pic")          return M::PIC_; 
+        if (s == "static")       return M::Static; 
+
+        slts.show(Display::Type::ERROR,
+          "Unknown relocation model '{<red>}%s{<clean>}', assuming {<magenta>}static{<clean>}", s.c_str());
+        
+        return M::Static;
+      })(argv[++i]);
+      continue;
+    }
     if (strcmp(arg, "--") == 0) {
       split++;
       continue;
@@ -2065,6 +2090,7 @@ int main(int argc, char *argv[]) {
   char *outname = "";
   NParser parser;
   targetTriple.triple = llvm::Triple(llvm::sys::getDefaultTargetTriple());
+  targetTriple.reloc_model = llvm::Reloc::Model::Static;
 
   parse_commandline(argc - 1, argv + 1, &filename, &parser.generate_graph,
                     &compile, &outname);

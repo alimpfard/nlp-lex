@@ -13,7 +13,7 @@ struct sresult {
   unsigned char metadata; // bit 0: stopword, bit 1: sentence_delimiter
   char const *pos;
   int allocd;
-} res = {0};
+};
 extern void __nlex_root(struct sresult *);
 extern void __nlex_feed(char const *p);
 extern int __nlex_distance();
@@ -248,6 +248,7 @@ double repl_testmetadata(double bit) {
 /* lib code */
 
 int main() {
+  struct sresult res = {0};
   // __nlex_load_tagpos();
   size_t size = 1024000;
   char *s = malloc(size);
