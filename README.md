@@ -157,5 +157,10 @@ To target other OSs/architectures/etc, use the appropriate --target-_option_ and
 For instance, to create an object file for x86_64 windows, use
 
 ```sh
-$ build/nlex -o output_object.obj --target-arch x86_64 --target-sys windows --object-format coff ../examples/test.nlex
+$ build/nlex \
+    -o output_object.obj \
+    --target-arch x86_64 \
+    --target-sys windows \
+    --object-format coff \
+    ../examples/test.nlex
 ```
