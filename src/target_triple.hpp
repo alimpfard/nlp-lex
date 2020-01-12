@@ -9,5 +9,6 @@ namespace nlvm {
         llvm::Reloc::Model reloc_model;
         bool _cross = false;
         bool _write_ll = false;
+        bool library = false;
     };
 }

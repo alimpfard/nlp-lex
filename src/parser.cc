@@ -1914,6 +1914,9 @@ ARGS:
     -o [file]
         set output filename [default: stdout]
 
+    --library
+        generate a pure library with no dependency
+
   The following arguments modify the output format
 
   arch = cpu-sub
@@ -2045,10 +2048,14 @@ void parse_commandline(int argc, char *argv[], /* out */ char **filename,
         if (s == "static")       return M::Static; 
 
         slts.show(Display::Type::ERROR,
-          "Unknown relocation model '{<red>}%s{<clean>}', assuming {<magenta>}static{<clean>}", s.c_str());
+          "Unknown relocation model '{<red>}%s{<clean>}', assuming {<magentag>}static{<clean>}", s.c_str());
         
         return M::Static;
       })(argv[++i]);
+      continue;
+    }
+    if (strcmp(arg, "--library") == 0) {
+      targetTriple.library = true;
       continue;
     }
     if (strcmp(arg, "--") == 0) {

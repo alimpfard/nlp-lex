@@ -1374,7 +1374,9 @@ public:
     auto Composite = std::make_unique<llvm::Module>(module.TheModule->getName(), module.TheContext);
     llvm::Linker L(*Composite);
 
-    L.linkInModule(std::move(module.RTSModule));
+    if (!targetTriple.library)
+        L.linkInModule(std::move(module.RTSModule)); // RTS only needed for executable build
+        
     L.linkInModule(std::move(module.TheModule));
 
     module.TheMPM->run(*Composite);
