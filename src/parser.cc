@@ -28,8 +28,8 @@
 #include "termdisplay.hpp"
 #include <mutex>
 
-#include "unicode/emojis.hpp"
 #include "target_triple.hpp"
+#include "unicode/emojis.hpp"
 
 std::string output_file_name = "";
 nlvm::TargetTriple targetTriple;
@@ -1977,7 +1977,8 @@ void parse_commandline(int argc, char *argv[], /* out */ char **filename,
     if (strcmp(arg, "--emit-llvm") == 0) {
       if (targetTriple._cross) {
         slts.show(Display::Type::ERROR,
-                  "{<magenta>}--object-format{<clean>} and {<magenta>}--emit-llvm{<clean>} are mutually exclusive");
+                  "{<magenta>}--object-format{<clean>} and "
+                  "{<magenta>}--emit-llvm{<clean>} are mutually exclusive");
         continue;
       }
       targetTriple._write_ll = true;
@@ -1992,17 +1993,17 @@ void parse_commandline(int argc, char *argv[], /* out */ char **filename,
       output_file_name = argv[++i];
       continue;
     }
-#define TARGET_X_COMPARE(x, y) \
-    if (strcmp(arg, "--target-" #x) == 0) { \
-      if (i == argc - 1) { \
-        slts.show(Display::Type::ERROR, \
-                  "argument {<magenta>}--target-" #x "{<clean>} expects a parameter"); \
-        continue; \
-      } \
-      targetTriple.triple.set ## y ## Name (argv[++i]); \
-      targetTriple._cross |= argv[i] != "unknown"; \
-      continue; \
-    }
+#define TARGET_X_COMPARE(x, y)                                                 \
+  if (strcmp(arg, "--target-" #x) == 0) {                                      \
+    if (i == argc - 1) {                                                       \
+      slts.show(Display::Type::ERROR, "argument {<magenta>}--target-" #x       \
+                                      "{<clean>} expects a parameter");        \
+      continue;                                                                \
+    }                                                                          \
+    targetTriple.triple.set##y##Name(argv[++i]);                               \
+    targetTriple._cross |= argv[i] != "unknown";                               \
+    continue;                                                                  \
+  }
 
     TARGET_X_COMPARE(arch, Arch)
     TARGET_X_COMPARE(vendor, Vendor)
@@ -2011,22 +2012,29 @@ void parse_commandline(int argc, char *argv[], /* out */ char **filename,
     if (strcmp(arg, "--object-format") == 0) {
       if (targetTriple._write_ll) {
         slts.show(Display::Type::ERROR,
-                  "{<magenta>}--object-format{<clean>} and {<magenta>}--emit-llvm{<clean>} are mutually exclusive");
+                  "{<magenta>}--object-format{<clean>} and "
+                  "{<magenta>}--emit-llvm{<clean>} are mutually exclusive");
         continue;
       }
       if (i == argc - 1) {
-        slts.show(Display::Type::ERROR,
-                  "argument {<magenta>}--object-format{<clean>} expects a parameter");
+        slts.show(
+            Display::Type::ERROR,
+            "argument {<magenta>}--object-format{<clean>} expects a parameter");
         continue;
       }
       targetTriple.triple.setObjectFormat(([](std::string s) {
         using O = llvm::Triple::ObjectFormatType;
-        if (s == "pe" || s == "coff") return O::COFF;
-        if (s == "elf") return O::ELF;
-        if (s == "macho" || s == "mach" || s == "mach-o") return O::MachO;
-        if (s == "wasm") return O::Wasm;
-        if (s == "xcoff") return O::XCOFF;
-        
+        if (s == "pe" || s == "coff")
+          return O::COFF;
+        if (s == "elf")
+          return O::ELF;
+        if (s == "macho" || s == "mach" || s == "mach-o")
+          return O::MachO;
+        if (s == "wasm")
+          return O::Wasm;
+        if (s == "xcoff")
+          return O::XCOFF;
+
         return llvm::Triple::ObjectFormatType::UnknownObjectFormat;
       })(argv[++i]));
       targetTriple._cross = true;
@@ -2035,21 +2043,30 @@ void parse_commandline(int argc, char *argv[], /* out */ char **filename,
     if (strcmp(arg, "--relocation-model") == 0) {
       if (i == argc - 1) {
         slts.show(Display::Type::ERROR,
-                  "argument {<magenta>}--relocation-model{<clean>} expects a parameter");
+                  "argument {<magenta>}--relocation-model{<clean>} expects a "
+                  "parameter");
         continue;
       }
       targetTriple.reloc_model = ([](std::string s) {
-        using M= llvm::Reloc::Model;
-        if (s == "ropi_rwpi")    return M::ROPI_RWPI; 	
-        if (s == "rwpi")         return M::RWPI;
-        if (s == "ropi")         return M::ROPI; 
-        if (s == "dynamic")      return M::DynamicNoPIC; 
-        if (s == "pic")          return M::PIC_; 
-        if (s == "static")       return M::Static; 
+        using M = llvm::Reloc::Model;
+        if (s == "ropi_rwpi")
+          return M::ROPI_RWPI;
+        if (s == "rwpi")
+          return M::RWPI;
+        if (s == "ropi")
+          return M::ROPI;
+        if (s == "dynamic")
+          return M::DynamicNoPIC;
+        if (s == "pic")
+          return M::PIC_;
+        if (s == "static")
+          return M::Static;
 
         slts.show(Display::Type::ERROR,
-          "Unknown relocation model '{<red>}%s{<clean>}', assuming {<magentag>}static{<clean>}", s.c_str());
-        
+                  "Unknown relocation model '{<red>}%s{<clean>}', assuming "
+                  "{<magentag>}static{<clean>}",
+                  s.c_str());
+
         return M::Static;
       })(argv[++i]);
       continue;
@@ -2220,14 +2237,14 @@ int main(int argc, char *argv[]) {
         tok = strtok(NULL, "\n");
         continue;
       }
-      checkagain:;
+    checkagain:;
       int len = strlen(tok);
       if (tok[len - 1] == '\\') {
         tok[len - 1] = ' ';
         tok[len] = ' ';
         strtok(NULL, "\n"); // read next line
         next_lineno++;
-        goto checkagain;  
+        goto checkagain;
       }
       parser.repl_feed(tok);
       parser.statestack = {};

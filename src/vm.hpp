@@ -2,9 +2,9 @@
 
 #include "basevm.hpp"
 #include "genlexer.hpp"
+#include "target_triple.hpp"
 #include "termdisplay.hpp"
 #include "wordtree.hpp"
-#include "target_triple.hpp"
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/STLExtras.h"
@@ -15,14 +15,16 @@
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
-#include "llvm/IRReader/IRReader.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Verifier.h"
-#include "llvm/Support/TargetSelect.h"
+#include "llvm/IRReader/IRReader.h"
+#include "llvm/Linker/Linker.h"
 #include "llvm/Passes/PassBuilder.h"
+#include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
@@ -30,14 +32,12 @@
 #include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Scalar/GVN.h"
-#include "llvm/IR/LegacyPassManager.h"
-#include "llvm/Support/SourceMgr.h"
-#include "llvm/Linker/Linker.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <map>
 #include <memory>
 #include <queue>
@@ -292,8 +292,9 @@ public:
     llvm::FunctionType *ncf = llvm::FunctionType::get(
         llvm::Type::getVoidTy(TheContext), nullary ? nnargs : args, false);
 
-    _main = llvm::Function::Create(ncf, llvm::Function::LinkageTypes::ExternalLinkage, name,
-                                   TheModule.get());
+    _main = llvm::Function::Create(
+        ncf, llvm::Function::LinkageTypes::ExternalLinkage, name,
+        TheModule.get());
     auto main_entry = llvm::BasicBlock::Create(TheContext, "", _main);
     if (!toplevels)
       return _main;
@@ -378,16 +379,18 @@ public:
   Module(std::string name, llvm::raw_ostream *os)
       : BaseModule(), Builder(TheContext), outputv(os) {
     llvm::SMDiagnostic ed;
-    
-    // #define unsigned const
-    #include "test_bc.h"
+
+// #define unsigned const
+#include "test_bc.h"
     // #undef unsigned
 
-    static llvm::StringRef mLibraryBitcode = llvm::StringRef((const char*) test_bc, test_bc_len);
-    RTSModule = llvm::parseIR(llvm::MemoryBufferRef(mLibraryBitcode, "test_bc"), ed, TheContext);
+    static llvm::StringRef mLibraryBitcode =
+        llvm::StringRef((const char *)test_bc, test_bc_len);
+    RTSModule = llvm::parseIR(llvm::MemoryBufferRef(mLibraryBitcode, "test_bc"),
+                              ed, TheContext);
 
     if (!RTSModule)
-        ed.print(name.c_str(), *os);
+      ed.print(name.c_str(), *os);
     assert(RTSModule.get() != nullptr && "RTS compilation failed");
 
     TheModule = std::make_unique<llvm::Module>(name, TheContext);
@@ -508,27 +511,27 @@ public:
 
   Builder(std::string mname, llvm::raw_ostream *o)
       : outputv(o), module(mname, o) {
-        using namespace llvm;
-        InitializeNativeTarget();
-        InitializeNativeTargetAsmPrinter();
-      
-        auto TargetTriple = sys::getDefaultTargetTriple();
-        if (targetTriple._cross) 
-            TargetTriple = targetTriple.triple.str();
-        module.TheModule->setTargetTriple(TargetTriple);
-      
-        std::string Error;
-        auto Target = TargetRegistry::lookupTarget(TargetTriple, Error);
-        auto CPU = "generic";
-        auto Features = "";
+    using namespace llvm;
+    InitializeNativeTarget();
+    InitializeNativeTargetAsmPrinter();
 
-        llvm::TargetOptions opt;
-        TheTargetMachine =
-            Target->createTargetMachine(TargetTriple, CPU, Features, opt, targetTriple.reloc_model);
+    auto TargetTriple = sys::getDefaultTargetTriple();
+    if (targetTriple._cross)
+      TargetTriple = targetTriple.triple.str();
+    module.TheModule->setTargetTriple(TargetTriple);
 
-        module.TheModule->setDataLayout(TheTargetMachine->createDataLayout());
-        module.TheModule->setTargetTriple(TargetTriple);
-      }
+    std::string Error;
+    auto Target = TargetRegistry::lookupTarget(TargetTriple, Error);
+    auto CPU = "generic";
+    auto Features = "";
+
+    llvm::TargetOptions opt;
+    TheTargetMachine = Target->createTargetMachine(
+        TargetTriple, CPU, Features, opt, targetTriple.reloc_model);
+
+    module.TheModule->setDataLayout(TheTargetMachine->createDataLayout());
+    module.TheModule->setTargetTriple(TargetTriple);
+  }
 
   void begin(llvm::Function *fn, bool cleanup_if_fail = false,
              bool skip_on_error = true) {
@@ -1371,12 +1374,29 @@ public:
     module.DBuilder->finalize();
     llvm::verifyFunction(*module.main());
 
-    auto Composite = std::make_unique<llvm::Module>(module.TheModule->getName(), module.TheContext);
+    // if we're targeting windows in library mode, add an empty
+    // _DllMainCRTStartup because windows
+    if (targetTriple.library && targetTriple.triple.getOSName() == "windows") {
+      llvm::IRBuilder<> Builder(module.TheContext);
+      llvm::Function *x_dll = llvm::Function::Create(
+          llvm::FunctionType::get(llvm::Type::getVoidTy(module.TheContext),
+                                  false),
+          llvm::GlobalValue::LinkageTypes::ExternalLinkage,
+          "_DllMainCRTStartup", *module.TheModule);
+      // and return
+      auto bb = llvm::BasicBlock::Create(module.TheContext, "", x_dll);
+      Builder.SetInsertPoint(bb);
+      Builder.CreateRetVoid();
+    }
+
+    auto Composite = std::make_unique<llvm::Module>(module.TheModule->getName(),
+                                                    module.TheContext);
     llvm::Linker L(*Composite);
 
     if (!targetTriple.library)
-        L.linkInModule(std::move(module.RTSModule)); // RTS only needed for executable build
-        
+      L.linkInModule(
+          std::move(module.RTSModule)); // RTS only needed for executable build
+
     L.linkInModule(std::move(module.TheModule));
 
     module.TheMPM->run(*Composite);
@@ -1385,7 +1405,7 @@ public:
     auto FileType = LLVMTargetMachine::CodeGenFileType::CGFT_ObjectFile;
     std::error_code EC;
     if (output_file_name == "")
-        output_file_name = std::string{Composite->getName()} + ".o";
+      output_file_name = std::string{Composite->getName()} + ".o";
     raw_fd_ostream dest(output_file_name, EC, sys::fs::OF_None);
 
     if (EC) {
@@ -1393,12 +1413,46 @@ public:
       return;
     }
     if (!targetTriple._write_ll) {
-        if (TheTargetMachine->addPassesToEmitFile(pass, dest, nullptr, FileType)) {
-             // todo error
+      if (TheTargetMachine->addPassesToEmitFile(pass, dest, nullptr,
+                                                FileType)) {
+        // todo error
+      }
+      pass.run(*Composite);
+
+      // if we're targeting windows and building a library, export a module
+      // definition
+      if (targetTriple.library &&
+          targetTriple.triple.getOSName() == "windows") {
+        auto path = std::filesystem::path{output_file_name}
+                        .replace_extension(".def")
+                        .string();
+        raw_fd_ostream def_dest(path, EC, sys::fs::OF_None);
+        if (EC) {
+          errs() << "Could not open file: " << EC.message();
+          return;
         }
-        pass.run(*Composite);
+        def_dest << "LIBRARY " << std::filesystem::path{output_file_name}.stem()
+                 << "\n";
+        def_dest << "EXPORTS\n";
+
+        for (const auto &glob : Composite->globals())
+          if (glob.getLinkage() ==
+              llvm::GlobalValue::LinkageTypes::ExternalLinkage)
+            def_dest << "\t" << glob.getName() << "\n";
+        for (const auto &fun : Composite->functions())
+          if (fun.getLinkage() ==
+                  llvm::GlobalValue::LinkageTypes::ExternalLinkage &&
+              !fun.isIntrinsic())
+            def_dest << "\t" << fun.getName() << "\n";
+
+        slts.show(Display::Type::MUST_SHOW,
+                  "also generated a module-definition file "
+                  "{<magenta>}%s{<clean>}, use it to export functions for the "
+                  "dll:\n\tlink.exe /dll /def:%s %s",
+                  path.c_str(), path.c_str(), output_file_name.c_str());
+      }
     } else
-        Composite->print(dest, nullptr);
+      Composite->print(dest, nullptr);
   }
 
   llvm::Constant *mk_string(llvm::Module *M, llvm::LLVMContext &Context,

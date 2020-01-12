@@ -164,6 +164,9 @@ $ build/nlex \
     --target-sys windows \
     --object-format coff \
     ../examples/test.nlex
+
+# to create dll for windows
+$ link /dll /def:output_object.def output_object.obj
 ```
 
 _Note_: Generating executables for windows is currently not supported (RTS issues)
