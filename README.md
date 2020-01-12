@@ -151,3 +151,11 @@ $ clang -static -lc output_object.o -o tokenise       # link it as a static exec
 $ build/nlex -o output_object.o --relocation-model pic ../examples/test.nlex
 $ clang -shared -lc output_object.o -o libtokenise.so
 ```
+
+To target other OSs/architectures/etc, use the appropriate --target-_option_ and --object-format parameters
+
+For instance, to create an object file for x86_64 windows, use
+
+```sh
+$ build/nlex -o output_object.obj --target-arch x86_64 --target-sys windows --object-format coff ../examples/test.nlex
+```
