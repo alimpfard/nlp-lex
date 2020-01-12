@@ -133,7 +133,9 @@ how to build:
 ```sh
 $ git clone https://github.com/alimpfard/nlp-lex
 $ cd nlp-lex
-$ make
+$ mkdir build && cd build && cmake ..
+$ cd ..
+$ make -C build
 ```
 
 ## Using the Compiler 
@@ -141,9 +143,11 @@ $ make
 This is still in alpha stages, so a multistep procedure is used to produce binaries and libraries:
 
 ```sh
-$ src/a.out -o src/playground/ll.ll path/to/nlex
-$ cd src/playground # the runtime system is here (will be moved out later)
-$ sh run.sh
-```
+# To create an executable (mostly for test)
+$ build/nlex -o output_object.o ../examples/test.nlex # create an object file
+$ clang -static -lc output_object.o -o tokenise       # link it as a static executable
 
-which will generate a binary (`./a.out`) and a shared library (`all.so`) which can be used with the wrappers
+# To create a shared library
+$ build/nlex -o output_object.o --relocation-model pic ../examples/test.nlex
+$ clang -shared -lc output_object.o -o libtokenise.so
+```
