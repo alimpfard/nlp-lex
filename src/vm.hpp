@@ -512,8 +512,9 @@ public:
   Builder(std::string mname, llvm::raw_ostream *o)
       : outputv(o), module(mname, o) {
     using namespace llvm;
-    InitializeNativeTarget();
-    InitializeNativeTargetAsmPrinter();
+    InitializeAllTargets();
+    InitializeAllTargetMCs();
+    InitializeAllAsmPrinters();
 
     auto TargetTriple = sys::getDefaultTargetTriple();
     if (targetTriple._cross)
@@ -522,8 +523,15 @@ public:
 
     std::string Error;
     auto Target = TargetRegistry::lookupTarget(TargetTriple, Error);
-    auto CPU = "generic";
-    auto Features = "";
+    if (!Target) {
+      slts.show(Display::Type::ERROR,
+                "Invalid or unsupported compilation target "
+                "'%s':\n\t{<red>}%s{<clean>}",
+                TargetTriple.c_str(), Error.c_str());
+      exit(1);
+    }
+    auto CPU = targetTriple.cpu;
+    auto Features = targetTriple.features;
 
     llvm::TargetOptions opt;
     TheTargetMachine = Target->createTargetMachine(

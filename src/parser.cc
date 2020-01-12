@@ -1931,6 +1931,14 @@ ARGS:
         set target vendor
     --target-sys <sys>
         set target system
+    --target-env <env>
+        set target environment
+
+        -OR-
+
+    --target <triple>
+        set the target triple
+
     
     --relocation-model <reloc-model>
       set output object file relocation model
@@ -1942,6 +1950,14 @@ ARGS:
 
     --emit-llvm
       output llvm IR instead of object file
+
+  The following arguments can be used to specify a target CPU and its features
+
+    -mcpu <cpu>
+        Set target CPU family
+
+    --features <features>
+        Set target CPU features
 )";
 void parse_commandline(int argc, char *argv[], /* out */ char **filename,
                        /* out */ bool *generate_graph,
@@ -1974,13 +1990,26 @@ void parse_commandline(int argc, char *argv[], /* out */ char **filename,
       *compile = false;
       continue;
     }
-    if (strcmp(arg, "--emit-llvm") == 0) {
-      if (targetTriple._cross) {
-        slts.show(Display::Type::ERROR,
-                  "{<magenta>}--object-format{<clean>} and "
-                  "{<magenta>}--emit-llvm{<clean>} are mutually exclusive");
+    if (strcmp(arg, "-mcpu") == 0) {
+        if (i == argc - 1) {
+            slts.show(Display::Type::ERROR,
+                      "argument {<magenta>}-mcpu{clean>} expects a parameter");
+            continue;
+        }
+        targetTriple.cpu = argv[++i];
         continue;
-      }
+    }
+    if (strcmp(arg, "--features") == 0) {
+        if (i == argc - 1) {
+            slts.show(Display::Type::ERROR,
+                      "argument {<magenta>}-features{clean>} expects a parameter");
+            continue;
+        }
+        targetTriple.features = argv[++i];
+        continue;
+    }
+
+    if (strcmp(arg, "--emit-llvm") == 0) {
       targetTriple._write_ll = true;
       continue;
     }
@@ -2008,14 +2037,20 @@ void parse_commandline(int argc, char *argv[], /* out */ char **filename,
     TARGET_X_COMPARE(arch, Arch)
     TARGET_X_COMPARE(vendor, Vendor)
     TARGET_X_COMPARE(sys, OS)
+    TARGET_X_COMPARE(env, Environment)
 #undef TARGET_X_COMPARE
-    if (strcmp(arg, "--object-format") == 0) {
-      if (targetTriple._write_ll) {
+    if (strcmp(arg, "--target") == 0) {
+      if (i == argc - 1) {
         slts.show(Display::Type::ERROR,
-                  "{<magenta>}--object-format{<clean>} and "
-                  "{<magenta>}--emit-llvm{<clean>} are mutually exclusive");
+                  "argument {<magenta>}--target{<clean>} expects a parameter");
         continue;
       }
+      targetTriple.triple = llvm::Triple(argv[++i]);
+      targetTriple._cross = true;
+      continue;
+    }
+
+    if (strcmp(arg, "--object-format") == 0) {
       if (i == argc - 1) {
         slts.show(
             Display::Type::ERROR,

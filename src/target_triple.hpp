@@ -7,6 +7,7 @@ namespace nlvm {
 struct TargetTriple {
   llvm::Triple triple;
   llvm::Reloc::Model reloc_model;
+  std::string cpu = "", features = "";
   bool _cross = false;
   bool _write_ll = false;
   bool library = false;
