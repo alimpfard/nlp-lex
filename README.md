@@ -158,9 +158,12 @@ For instance, to create an object file for x86_64 windows, use
 
 ```sh
 $ build/nlex \
+    --library \
     -o output_object.obj \
     --target-arch x86_64 \
     --target-sys windows \
     --object-format coff \
     ../examples/test.nlex
 ```
+
+_Note_: Generating executables for windows is currently not supported (RTS issues)
