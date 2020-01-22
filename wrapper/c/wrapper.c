@@ -30,6 +30,33 @@ char *getf(char *p, char **e) {
   return string;
 }
 
+char *escape(char* str, int len) {
+    static char buffer[10240];
+    int bi = 0;
+    for (int i = 0; i < len; i++) {
+        char c = str[i];
+        switch (c) {
+            case '"':
+                buffer[i++] = '\\';
+                buffer[i++] = '"';
+                break;
+            case '\\':
+                buffer[i++] = '\\';
+                buffer[i++] = '\\';
+                break;
+            case '\n':
+                buffer[i++] = '\\';
+                buffer[i++] = 'n';
+                break;
+            default:
+                buffer[i++] = c;
+                break;
+        }
+    }
+    buffer[bi] = 0;
+    return buffer;
+}
+
 /*
 char *paths[] = {
     "/home/Test/shits/sample100150", "/home/Test/shits/sample10001",
@@ -158,6 +185,7 @@ char *paths[] = {
 int main(int argc, char *argv[]) {
   int start_of_paths = 1;
   int json = 0;
+  char *output_file = "/dev/stdout";
   for (int i = 1; i < argc; i++) {
     start_of_paths = i + 1;
     if (strcmp("--", argv[i]) == 0) {
@@ -170,10 +198,14 @@ int main(int argc, char *argv[]) {
         json = 1;
         continue;
       }
+      if (strcmp(arg + 1, "-output") == 0) {
+        output_file = argv[++i];
+        continue;
+      }
       if (strcmp(arg + 1, "h") == 0) {
         puts("nlex wrapper interface\n  wrap [options] -- "
              "input_file...\n\n[OPTIONS]\n\t--json : generate json "
-             "output\n\t-h : print this help and exit");
+             "output\n\t-h : print this help and exit\n\t--output [output file] : write output to `output file' (default: /dev/stdout)");
         exit(0);
       }
       printf("Error: unknown argument '%s'", arg);
@@ -183,13 +215,14 @@ int main(int argc, char *argv[]) {
       break;
     }
   }
+  FILE* fp = fopen(output_file, "w+");
   int y = 0;
   struct sresult res = {0};
   if (json)
-    printf("{\"description\": \"nlex\", \"documents\": [");
+    fprintf(fp, "{\"description\": \"nlex\", \"documents\": [");
   for (char **x = &argv[start_of_paths]; *x; x++) {
     if (json)
-      printf("\n\t{\"filename\": \"%s\", \"tokens\": [", *x);
+      fprintf(fp, "\n\t{\"filename\": \"%s\", \"tokens\": [", *x);
     char *end;
     char *s = getf(*x, &end);
     __nlex_feed(s);
@@ -214,13 +247,15 @@ int main(int argc, char *argv[]) {
       if (res.errc) {
         break;
       }
-      if (json)
-        printf("%s\n\t\t{\"id\": %d, \"is_stopword\": %s, \"token\": \"%.*s\", "
+      if (json) {
+          char *presv = escape(res.start, res.length);
+        fprintf(fp, "%s\n\t\t{\"id\": %d, \"is_stopword\": %s, \"token\": \"%s\", "
                "\"type\": \"%s\"}",
                (first ? "" : ","), id * 10, res.metadata & 1 ? "true" : "false",
-               res.length, res.start, res.tag);
+               presv, res.tag);
+      }
       else
-        printf("%smatch {'%.*s' %d %s} is%sa stopword\n",
+        fprintf(fp, "%smatch {'%.*s' %d %s} is%sa stopword\n",
                (res.errc ? "no " : ""), res.length, res.start, res.length,
                res.tag, (res.metadata & 1 ? " " : " not "));
       if (first)
@@ -228,12 +263,14 @@ int main(int argc, char *argv[]) {
     }
     free(s);
     if (json)
-      printf("\n\t]}");
+      fprintf(fp, "\n\t]}");
     if (json && x[1])
-      printf(",");
+      fprintf(fp, ",");
   }
   if (json)
-    printf("\n]}");
+    fprintf(fp, "\n]}");
   if (!json)
-    printf("\n%d\n", y);
+    fprintf(fp, "\n%d\n", y);
+
+  fclose(fp);
 }
