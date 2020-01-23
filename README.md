@@ -62,7 +62,7 @@ to completely omit the result of a rule (discard its match), use the `ignore` st
 
 for example `ignore [space punct]` will omit all the tokens that would've matched either of the rules `space` or `punct`
 
-Comments span from the character `#` until the end of line except inside regex rules, wherein there are no comments available (`(?#...)` might be an option later)
+Comments span from the character `#` until the end of line except inside regex rules, wherein you can use a comment group `(# foobar)`
 
 ```
     # Hi, I am a comment
@@ -93,7 +93,7 @@ the regex engine is currently very limited in what it supports, however here is 
 - [X] helper functions codegen
 - [X] normalisation codegen
 - [X] stopword codegen
-- [X] normalisation declarations (`c <= abcd`)
+- [X] normalisation declarations (`normalise {abcd} to c`)
 - [X] stopword declarations (`stopwords "stop" "word"`)
 - [X] normal literal character matching
 - [X] sequence matching (/ab/ -> match a, match b)
