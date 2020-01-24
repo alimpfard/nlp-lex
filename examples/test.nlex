@@ -14,7 +14,7 @@ tag pos with delimiter SentenceDelimiter{*}
 # every 2 tokens from "/home/Test/Documents/nlp-lex/wrapper/python/nlex/model.dat"
 #
 PersianWord       :: [آائبپتثجچحخدذرزژسشصضطظعغفقکكلمنوهی\u200c]+
-EnglishWord       :: [A-z]+
+EnglishWord       :: [A-Za-z]+
 Number            :: [0123456789۰۱۲۳۴۵۶۷۸۹]+
 Punc              :: [،,:;'()*%~:؛«»/\u002da#$%^&_]+
 SentenceDelimiter :: [.؟!?]

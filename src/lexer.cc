@@ -235,6 +235,7 @@ inline Token NLexer::_next() {
       const Token &mtoken = error_token();
       lexer_error(*this, Errors::ExpectedValue, mtoken, ErrorPosition::After,
                   "Expected an identifier");
+      state = LexerState::Name; // Ah well, assume no name
       return mtoken;
     }
 
@@ -249,6 +250,7 @@ inline Token NLexer::_next() {
     if (c != 'p' || strncmp(source_p, "os", 2) != 0) {
       lexer_error(*this, Errors::Unexpected, mtoken, ErrorPosition::On,
                   "Expected 'pos' after 'tag'");
+      state = LexerState::Toplevel;
       return mtoken;
     }
     advance(2);
@@ -291,6 +293,7 @@ inline Token NLexer::_next() {
     if (!vstr.has_value()) {
       lexer_error(*this, Errors::ExpectedValue, mtoken, ErrorPosition::After,
                   "Expected a string after `tag pos ... from'");
+      state = LexerState::Toplevel;
       return mtoken;
     }
     state = LexerState::TagPOS;
@@ -369,6 +372,7 @@ inline Token NLexer::_next() {
       // ...
       lexer_error(*this, Errors::ExpectedValue, mtoken, ErrorPosition::After,
                   "Expected an rule identifier after `delimiter'");
+      state = LexerState::Toplevel;
       return mtoken;
     }
     state = LexerState::TagPOSDelimiterValue;
@@ -471,6 +475,7 @@ inline Token NLexer::_next() {
     if (c != ':' && c != '-') {
       lexer_error(*this, Errors::Unexpected, mtoken, ErrorPosition::On,
                   "Expected `::', `:-' or `--'");
+      state = LexerState::Define; // assume '::'
       return mtoken;
     }
     if (c == ':') {
@@ -487,6 +492,7 @@ inline Token NLexer::_next() {
       }
       lexer_error(*this, Errors::Unexpected, mtoken, ErrorPosition::After,
                   "Expected either `::' or `:-'");
+      state = LexerState::Define; // assume '::'
       return mtoken;
     } else {
       if (strncmp("-", source_p, 1) == 0) {
@@ -496,6 +502,7 @@ inline Token NLexer::_next() {
       }
       lexer_error(*this, Errors::Unexpected, mtoken, ErrorPosition::After,
                   "Expected `--'");
+      state = LexerState::Literal; // assume --
       return mtoken;
     }
     break;
@@ -532,6 +539,7 @@ inline Token NLexer::_next() {
       const Token &mtoken = error_token();
       lexer_error(*this, Errors::Unexpected, mtoken, ErrorPosition::On,
                   "Expected either `on' or `off'");
+      state = LexerState::Toplevel;
       return mtoken;
     }
 
@@ -546,6 +554,7 @@ inline Token NLexer::_next() {
       const Token &mtoken = error_token();
       lexer_error(*this, Errors::Unexpected, mtoken, ErrorPosition::On,
                   "Expected an open bracket '['");
+      state = LexerState::IgnoreBrac;
       return mtoken;
     }
     state = LexerState::IgnoreBrac;
@@ -628,6 +637,7 @@ inline Token NLexer::_next() {
         lexer_error(
             *this, Errors::InvalidRegexp, mtoken, ErrorPosition::On,
             "Expected a valid regex (see above for possible diagnosis)");
+        state = LexerState::Toplevel;
         return mtoken;
       }
       Regexp regex = opt.value();
@@ -635,6 +645,7 @@ inline Token NLexer::_next() {
         errtok.length = regex.str.size();
         lexer_error(*this, Errors::InvalidRegexp, errtok, ErrorPosition::After,
                     "Malformed Regular expression");
+        state = LexerState::Toplevel;
         return errtok;
       }
       state = LexerState::Toplevel;
@@ -648,6 +659,7 @@ inline Token NLexer::_next() {
       const Token &mtoken = error_token();
       lexer_error(*this, Errors::ExpectedValue, mtoken, ErrorPosition::After,
                   "Expected a string");
+      state = LexerState::Toplevel;
       return {TOK_ERROR, lineno, offset, 0, empty_string};
     }
     std::string str = vstr.value();
@@ -663,6 +675,7 @@ inline Token NLexer::_next() {
                   ErrorPosition::On,
                   "Expected normalisation source to be in braces (e.g. "
                   "'normalise {abc} ...')");
+      state = LexerState::Toplevel;
     }
     c = *source_p;
     advance(1);
@@ -807,6 +820,7 @@ inline Token NLexer::_next() {
     const Token &mtoken = error_token();
     lexer_error(*this, Errors::ExpectedValue, mtoken, ErrorPosition::On,
                 "Expected 'to' after the first section of normalise");
+    state = LexerState::Toplevel;
     return mtoken;
   }
   case LexerState::Define: {
@@ -818,6 +832,7 @@ inline Token NLexer::_next() {
       const Token &mtoken = error_token();
       lexer_error(*this, Errors::InvalidRegexp, mtoken, ErrorPosition::On,
                   "Expected a valid regex (see above for possible diagnosis)");
+      state = LexerState::Toplevel;
       return mtoken;
     }
     Regexp regex = opt.value();
@@ -825,6 +840,7 @@ inline Token NLexer::_next() {
       errtok.length = regex.str.size();
       lexer_error(*this, Errors::InvalidRegexp, errtok, ErrorPosition::After,
                   "Malformed Regular expression");
+      state = LexerState::Toplevel;
       return errtok;
     }
     state = LexerState::Toplevel;

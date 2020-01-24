@@ -95,6 +95,22 @@ std::vector<std::string> handle_unicodes(std::string str) {
   return {str};
 }
 
+char *strtok(char *string, char const *delimiter) {
+  static char *source = NULL;
+  char *p, *ret = 0;
+  if (string != NULL)
+    source = string;
+  if (source == NULL)
+    return NULL;
+
+  if ((p = strpbrk(source, delimiter)) != NULL) {
+    *p = 0;
+    ret = source;
+    source = ++p;
+  }
+  return ret;
+}
+
 void NParser::parse() {
   bool failing = false;
   std::variant<std::string, int, TagPosSpecifier> persist;
@@ -2007,22 +2023,22 @@ void parse_commandline(int argc, char *argv[], /* out */ char **filename,
       continue;
     }
     if (strcmp(arg, "-mcpu") == 0) {
-        if (i == argc - 1) {
-            slts.show(Display::Type::ERROR,
-                      "argument {<magenta>}-mcpu{<clean>} expects a parameter");
-            continue;
-        }
-        targetTriple.cpu = argv[++i];
+      if (i == argc - 1) {
+        slts.show(Display::Type::ERROR,
+                  "argument {<magenta>}-mcpu{<clean>} expects a parameter");
         continue;
+      }
+      targetTriple.cpu = argv[++i];
+      continue;
     }
     if (strcmp(arg, "--features") == 0) {
-        if (i == argc - 1) {
-            slts.show(Display::Type::ERROR,
-                      "argument {<magenta>}-features{<clean>} expects a parameter");
-            continue;
-        }
-        targetTriple.features = argv[++i];
+      if (i == argc - 1) {
+        slts.show(Display::Type::ERROR,
+                  "argument {<magenta>}-features{<clean>} expects a parameter");
         continue;
+      }
+      targetTriple.features = argv[++i];
+      continue;
     }
 
     if (strcmp(arg, "--emit-llvm") == 0) {
