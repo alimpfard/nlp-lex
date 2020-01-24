@@ -62,7 +62,7 @@ to completely omit the result of a rule (discard its match), use the `ignore` st
 
 for example `ignore [space punct]` will omit all the tokens that would've matched either of the rules `space` or `punct`
 
-Comments span from the character `#` until the end of line except inside regex rules, wherein there are no comments available (`(?#...)` might be an option later)
+Comments span from the character `#` until the end of line except inside regex rules, wherein you can use a comment group `(# foobar)`
 
 ```
     # Hi, I am a comment
@@ -93,7 +93,7 @@ the regex engine is currently very limited in what it supports, however here is 
 - [X] helper functions codegen
 - [X] normalisation codegen
 - [X] stopword codegen
-- [X] normalisation declarations (`c <= abcd`)
+- [X] normalisation declarations (`normalise {abcd} to c`)
 - [X] stopword declarations (`stopwords "stop" "word"`)
 - [X] normal literal character matching
 - [X] sequence matching (/ab/ -> match a, match b)
@@ -170,3 +170,47 @@ $ link /dll /def:output_object.def output_object.obj
 ```
 
 _Note_: Generating executables for windows is currently not supported (RTS issues)
+
+
+## Compiler Options
+<details><summary> Expand for commandline options</summary>
+
+```
+-h
+    Shows a descriptions of commandline arguments
+
+-g
+    Generates a graph for what the lexer is supposed to do
+
+-r
+    Dry run (only perform syntax and semantic checks)
+
+-o [file]
+    sets the output filename
+    if the target is a binary file, it will be placed next to the source if this option is not provided
+ 
+--library
+    Builds a pure library (standalone, no libc dependency)
+
+--target[-option] <value>
+    if 'option' is not provided, set the target triple (behaves like clang's -target option)
+    otherwise, replaces parts of the native target with the provided value
+
+--relocation-model <model>
+    Sets the relocation model
+    linking the output to a binary will likely require this to be 'pie'
+
+--object-format <format>
+    Output a specific kind of object file (default is ELF)
+
+--emit-llvm
+    If specified, will output llvm IR instead of an object file
+
+-mcpu <cpu>
+    Sets target CPU family (the default is generic)
+
+--features <features>
+    Sets target CPU features (no extra features are assumed to exist by default)
+```
+
+</details>
