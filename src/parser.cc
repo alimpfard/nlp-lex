@@ -1908,9 +1908,14 @@ std::string exec(const char *cmd, const bool &run) {
 static const char m_help[] = R"(
 ./a.out [args] [filename]
 ARGS:
-    -h  This help
-    -g  generate graph
-    -r  dry run (no compilation)
+    -h
+        This help
+    -g
+        generate graph
+    --gout [graph_file]
+        output the generated graph to the mentioned file (implies -g)
+    -r
+        dry run (no compilation)
     -o [file]
         set output filename [default: stdout]
 
@@ -1961,7 +1966,8 @@ ARGS:
 )";
 void parse_commandline(int argc, char *argv[], /* out */ char **filename,
                        /* out */ bool *generate_graph,
-                       /* out */ bool *compile, /* out */ char **outname) {
+                       /* out */ bool *compile, /* out */ char **outname,
+                       /* out */ char **output_graph) {
   int i = 0;
   int split = 0;
   int file = 0;
@@ -1986,6 +1992,16 @@ void parse_commandline(int argc, char *argv[], /* out */ char **filename,
       *generate_graph = true;
       continue;
     }
+    if (strcmp(arg, "--gout") == 0) {
+      if (i == argc - 1) {
+        slts.show(Display::Type::ERROR,
+                  "argument {<magenta>}--gout{<clean>} expects a parameter");
+        continue;
+      }
+      *generate_graph = true;
+      *output_graph = argv[++i];
+      continue;
+    }
     if (strcmp(arg, "-r") == 0) {
       *compile = false;
       continue;
@@ -1993,7 +2009,7 @@ void parse_commandline(int argc, char *argv[], /* out */ char **filename,
     if (strcmp(arg, "-mcpu") == 0) {
         if (i == argc - 1) {
             slts.show(Display::Type::ERROR,
-                      "argument {<magenta>}-mcpu{clean>} expects a parameter");
+                      "argument {<magenta>}-mcpu{<clean>} expects a parameter");
             continue;
         }
         targetTriple.cpu = argv[++i];
@@ -2002,7 +2018,7 @@ void parse_commandline(int argc, char *argv[], /* out */ char **filename,
     if (strcmp(arg, "--features") == 0) {
         if (i == argc - 1) {
             slts.show(Display::Type::ERROR,
-                      "argument {<magenta>}-features{clean>} expects a parameter");
+                      "argument {<magenta>}-features{<clean>} expects a parameter");
             continue;
         }
         targetTriple.features = argv[++i];
@@ -2016,7 +2032,7 @@ void parse_commandline(int argc, char *argv[], /* out */ char **filename,
     if (strcmp(arg, "-o") == 0) {
       if (i == argc - 1) {
         slts.show(Display::Type::ERROR,
-                  "argument {<magenta>}-o{clean>} expects a parameter");
+                  "argument {<magenta>}-o{<clean>} expects a parameter");
         continue;
       }
       output_file_name = argv[++i];
@@ -2147,12 +2163,13 @@ int main(int argc, char *argv[]) {
   char *filename = "";
   bool compile = false;
   char *outname = "";
+  char *graphpath = nullptr;
   NParser parser;
   targetTriple.triple = llvm::Triple(llvm::sys::getDefaultTargetTriple());
   targetTriple.reloc_model = llvm::Reloc::Model::Static;
 
   parse_commandline(argc - 1, argv + 1, &filename, &parser.generate_graph,
-                    &compile, &outname);
+                    &compile, &outname, &graphpath);
   int fromstdin = 0, tostdout = 0;
   if (strlen(filename) == 0 || strcmp(filename, "-") == 0) {
     fromstdin = 1;
@@ -2301,12 +2318,12 @@ int main(int argc, char *argv[]) {
           std::variant<char, EpsilonTransitionT, AnythingTransitionT>>>
           transitions;
       root->aggregate_dot(nodes, anodes, transitions);
-
-      std::string name = std::tmpnam(nullptr);
+      std::string name = graphpath ?: std::tmpnam(nullptr);
       auto fp = std::fopen(name.c_str(), "w+");
       std::fprintf(fp, "%s\n", root->gen_dot(anodes, transitions).c_str());
       std::fclose(fp);
-      exec(("../tools/wm '" + name + "'").c_str(), true);
+      if (graphpath == nullptr)
+        exec(("../tools/wm '" + name + "'").c_str(), true);
     }
     if (parser.generate_graph) {
       std::set<DFANode<std::set<NFANode<std::string> *>> *,
@@ -2320,11 +2337,12 @@ int main(int argc, char *argv[]) {
 
       rootdfa->aggregate_dot(nodes, anodes, transitions);
 
-      std::string name = std::tmpnam(nullptr);
+      std::string name = graphpath ?: std::tmpnam(nullptr);
       auto fp = std::fopen(name.c_str(), "w+");
       std::fprintf(fp, "%s\n", rootdfa->gen_dot(anodes, transitions).c_str());
       std::fclose(fp);
-      exec(("../tools/wm '" + name + "'").c_str(), true);
+      if (graphpath == nullptr)
+        exec(("../tools/wm '" + name + "'").c_str(), true);
     }
     if (compile) {
       nlvmg.builder.prepare(

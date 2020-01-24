@@ -1,4 +1,4 @@
 option unsafe_normaliser on
-normalise {t} to ا
+normalise {t} to x
 
-root :: (ا)+
+root :
