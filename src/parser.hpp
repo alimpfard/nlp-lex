@@ -51,6 +51,28 @@ struct SymbolDebugInformation {
   std::string definition_string;
 };
 
+enum class ParserErrors {
+  InvalidToken = 11,
+  FeatureUnsupported,
+  ExpectedToken,
+  SymbolRedefined,
+  NormaliseLengtheningError,
+  NormalisationAlreadyRegistered,
+  TagPOSAlreadySpecified,
+  ExpectedToFollow,
+  ICESymbolLeftInTree,
+  NotImplemented,
+  TagPOSUsageError,
+  DelimiterUnsupported,
+  UndefinedReference,
+  NonexistentModelFile,
+  ExpressionConflict,
+  ICEMultipleJumpDests,
+  ICEMultipleJumpDestsAndDefault,
+  MetaStringClassNotUnderstood,
+  LAST
+};
+
 class NParser {
   std::map<std::string, std::tuple<SymbolType, SymbolDebugInformation,
                                    std::variant<std::string, Regexp *>>>

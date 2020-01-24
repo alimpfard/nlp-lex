@@ -37,6 +37,50 @@ nlvm::TargetTriple targetTriple;
 constexpr EpsilonTransitionT EpsilonTransition{};
 Display::SingleLineTermStatus slts;
 
+inline static void parser_error_impl(char const *fmt, va_list arg) {
+  std::vprintf(fmt, arg);
+}
+
+char *parser_errors[(int)ParserErrors::LAST - 10] = {
+    [(int)ParserErrors::InvalidToken - 11] = "Invalid token",
+    [(int)ParserErrors::FeatureUnsupported - 11] = "Unsupported feature",
+    [(int)ParserErrors::ExpectedToken - 11] = "Expected token",
+    [(int)ParserErrors::SymbolRedefined - 11] = "Redefined symbol",
+    [(int)ParserErrors::NormaliseLengtheningError - 11] =
+        "Normalisation lengthens input",
+    [(int)ParserErrors::NormalisationAlreadyRegistered - 11] =
+        "Normalisation already defined",
+    [(int)ParserErrors::TagPOSAlreadySpecified - 11] =
+        "Tag POS already defined",
+    [(int)ParserErrors::ExpectedToFollow - 11] = "Expected a following token",
+    [(int)ParserErrors::ICESymbolLeftInTree - 11] = "[ICE] Symbol left in tree",
+    [(int)ParserErrors::NotImplemented - 11] = "Not implemented",
+    [(int)ParserErrors::TagPOSUsageError - 11] = "Invalid Tag POS usage",
+    [(int)ParserErrors::DelimiterUnsupported - 11] =
+        "Unsupported Delimiter format",
+    [(int)ParserErrors::UndefinedReference - 11] = "Undefined reference",
+    [(int)ParserErrors::NonexistentModelFile - 11] = "Nonexistent model file",
+    [(int)ParserErrors::ExpressionConflict - 11] = "Expressions conflict",
+    [(int)ParserErrors::ICEMultipleJumpDests - 11] =
+        "[ICE] multiple jump destinations",
+    [(int)ParserErrors::ICEMultipleJumpDestsAndDefault - 11] =
+        "[ICE] multiple jump destinations and a default",
+    [(int)ParserErrors::MetaStringClassNotUnderstood - 11] =
+        "Meta string class not understood",
+};
+
+void parser_error(ParserErrors errn, const Token &tok, ErrorPosition pos,
+                  char const *fmt...) {
+  char buf[1024];
+  std::sprintf(buf, "[E%04d] %s - (line %d offset %d length %d) - %s\n", errn,
+               parser_errors[(int)errn - 11], tok.lineno, tok.offset,
+               tok.length, fmt);
+  va_list arg;
+  va_start(arg, fmt);
+  parser_error_impl(buf, arg);
+  va_end(arg);
+}
+
 NFANode<std::string> *NParser::compile(std::string code) {
   lexer = std::make_unique<NLexer>(code);
   return compile();
@@ -88,9 +132,7 @@ std::vector<std::string> handle_unicodes(std::string str) {
     return sv;
   }
   if (str.find("\\uc{") != std::string::npos) {
-    slts.show(Display::Type::ERROR, "Meta string class '%s' was not understood",
-              str);
-    return {str};
+    return {};
   }
   return {str};
 }
@@ -110,6 +152,7 @@ char *strtok(char *string, char const *delimiter) {
   }
   return ret;
 }
+bool display_colours_in_output = true;
 
 void NParser::parse() {
   bool failing = false;
@@ -152,7 +195,8 @@ void NParser::parse() {
       break;
     case ParserState::Option:
       if (token.type != TokenType::TOK_NAME) {
-        slts.show(Display::Type::MUST_SHOW, "invalid token\n");
+        parser_error(ParserErrors::InvalidToken, token, ErrorPosition::On,
+                     "Expected a Name");
         failing = true;
         break;
       }
@@ -161,7 +205,8 @@ void NParser::parse() {
       break;
     case ParserState::OptionName:
       if (token.type != TokenType::TOK_BOOL) {
-        slts.show(Display::Type::MUST_SHOW, "invalid token\n");
+        parser_error(ParserErrors::InvalidToken, token, ErrorPosition::On,
+                     "Expected a Boolean");
         failing = true;
         break;
       }
@@ -203,7 +248,8 @@ void NParser::parse() {
       }
       if (token.type == TokenType::TOK_FILESTRING) {
         failing = true;
-        slts.show(Display::Type::MUST_SHOW, "file string not yet supported\n");
+        parser_error(ParserErrors::FeatureUnsupported, token, ErrorPosition::On,
+                     "Filestrings not supported yet");
         break;
       }
       gen_lexer_stopwords.insert(
@@ -219,11 +265,20 @@ void NParser::parse() {
       }
       if (token.type == TokenType::TOK_FILESTRING) {
         failing = true;
-        slts.show(Display::Type::MUST_SHOW, "file string not yet supported\n");
+        parser_error(ParserErrors::FeatureUnsupported, token, ErrorPosition::On,
+                     "Filestrings not supported yet");
         break;
       }
-      for (auto t : handle_unicodes(std::get<std::string>(token.value)))
-        gen_lexer_literal_tags[std::get<std::string>(persist)].push_back(t);
+      {
+        auto vec = handle_unicodes(std::get<std::string>(token.value));
+        if (vec.size() == 0)
+          parser_error(ParserErrors::MetaStringClassNotUnderstood, token,
+                       ErrorPosition::On,
+                       "the metastring(s) in '%s' must be any of: RGI",
+                       std::get<std::string>(token.value).c_str());
+        for (auto t : vec)
+          gen_lexer_literal_tags[std::get<std::string>(persist)].push_back(t);
+      }
       break;
     case ParserState::Name:
       if (token.type == TokenType::TOK_OPCONST) {
@@ -241,16 +296,17 @@ void NParser::parse() {
         break;
       }
       failing = true;
-      slts.show(Display::Type::MUST_SHOW,
-                "expected normalisation, const, or define, invalid token\n");
+      parser_error(ParserErrors::ExpectedToken, token, ErrorPosition::On,
+                   "Expected any of `:-', `::' or `--', not '%s'",
+                   reverse_token_type[token.type]);
       break;
     case ParserState::Define: {
       if (token.type != TOK_REGEX) {
         failing = true;
-        slts.show(Display::Type::MUST_SHOW,
-                  "expected regex, invalid token %s - %s\n",
-                  reverse_token_type[token.type],
-                  std::get<std::string>(token.value).c_str());
+        parser_error(ParserErrors::ExpectedToken, token, ErrorPosition::On,
+                     "expected regex, invalid token %s - %s\n",
+                     reverse_token_type[token.type],
+                     std::get<std::string>(token.value).c_str());
         break;
       }
       std::string name = std::get<std::string>(persist);
@@ -260,10 +316,9 @@ void NParser::parse() {
       if (values.count(name) != 0) {
         failing = true;
         auto entry = std::get<1>(values[name]);
-        slts.show(
-            Display::Type::MUST_SHOW,
-            "symbol '%s' has been previously defined at line %d, offset %d\n",
-            name.c_str(), entry.lineno, entry.offset);
+        parser_error(ParserErrors::SymbolRedefined, token, ErrorPosition::On,
+                     "(%d, %d) symbol already defined: '%s'\n", entry.lineno,
+                     entry.offset, name.c_str());
         break;
       }
       Regexp reg = std::get<Regexp>(token.value);
@@ -288,10 +343,9 @@ void NParser::parse() {
         if (values.count(name) != 0) {
           failing = true;
           auto entry = std::get<1>(values[name]);
-          slts.show(
-              Display::Type::MUST_SHOW,
-              "symbol '%s' has been previously defined at line %d, offset %d\n",
-              name.c_str(), entry.lineno, entry.offset);
+          parser_error(ParserErrors::SymbolRedefined, token, ErrorPosition::On,
+                       "(%d, %d) symbol already defined: '%s'\n", entry.lineno,
+                       entry.offset, name.c_str());
           break;
         }
         Regexp reg = std::get<Regexp>(token.value);
@@ -308,10 +362,10 @@ void NParser::parse() {
         break;
       } else if (token.type != TOK_LITSTRING && token.type != TOK_FILESTRING) {
         failing = true;
-        slts.show(Display::Type::MUST_SHOW,
-                  "expected a string, invalid token %s - %s\n",
-                  reverse_token_type[token.type],
-                  std::get<std::string>(token.value).c_str());
+        parser_error(ParserErrors::ExpectedToken, token, ErrorPosition::On,
+                     "expected a string, invalid token %s - %s\n",
+                     reverse_token_type[token.type],
+                     std::get<std::string>(token.value).c_str());
         break;
       }
       std::string name = std::get<std::string>(persist);
@@ -321,10 +375,9 @@ void NParser::parse() {
       if (values.count(name) != 0) {
         failing = true;
         auto entry = std::get<1>(values[name]);
-        slts.show(
-            Display::Type::MUST_SHOW,
-            "symbol '%s' has been previously defined at line %d, offset %d\n",
-            name.c_str(), entry.lineno, entry.offset);
+        parser_error(ParserErrors::SymbolRedefined, token, ErrorPosition::On,
+                     "(%d, %d) symbol already defined: '%s'\n", entry.lineno,
+                     entry.offset, name.c_str());
         break;
       }
       std::string s = std::get<std::string>(token.value);
@@ -341,11 +394,11 @@ void NParser::parse() {
     case ParserState::Normal: {
       if (token.type != TOK_LITSTRING) {
         failing = true;
-        slts.show(Display::Type::MUST_SHOW,
-                  "expected a normal statement (normalise {...}). "
-                  "invalid token %s - %s\n",
-                  reverse_token_type[token.type],
-                  std::get<std::string>(token.value).c_str());
+        parser_error(ParserErrors::ExpectedToken, token, ErrorPosition::On,
+                     "expected a normal statement (normalise {...}). "
+                     "invalid token %s - %s\n",
+                     reverse_token_type[token.type],
+                     std::get<std::string>(token.value).c_str());
         break;
       }
       persist = std::get<std::string>(token.value);
@@ -365,14 +418,14 @@ void NParser::parse() {
         if (!gen_lexer_options["unsafe_normaliser"] &&
             Codepoints::getlength(cp.c_str()) <
                 Codepoints::getlength(ns.c_str())) {
-          slts.show_c(
-              Display::Type::ERROR,
-              "[{<red>}Normalise{<clean>}] normalisation of "
-              "[{<magenta>}U+%08x{<clean>}] to [{<magenta>}U+%08x{<clean>}] is "
-              "not permitted (defined in line %d, at codepoint %d of normalise "
+          parser_error(
+              ParserErrors::NormaliseLengtheningError, token, ErrorPosition::On,
+              "(line %d, codepoint %d): normalisation of "
+              "[U+%08x] to [U+%08x] is "
+              "not permitted (defined in aforementioned position of normalise "
               "clause) as lengthening "
               "the input string is not supported at the moment (%d > %d)",
-              to_cp(cp.c_str()), to_cp(ns.c_str()), token.lineno, idx,
+              token.lineno, idx, to_cp(cp.c_str()), to_cp(ns.c_str()),
               Codepoints::getlength(cp.c_str()),
               Codepoints::getlength(ns.c_str()));
           continue;
@@ -383,8 +436,9 @@ void NParser::parse() {
                     cp.c_str());
           gen_lexer_normalisations[cp] = ns;
         } else if (gen_lexer_normalisations[cp] != cp)
-          slts.show(
-              Display::Type::INFO,
+          parser_error(
+              ParserErrors::NormalisationAlreadyRegistered, token,
+              ErrorPosition::After,
               "a normalisation of '%s' has already been registered for '%s'\n",
               gen_lexer_normalisations[cp].c_str(), cp.c_str());
       }
@@ -393,12 +447,13 @@ void NParser::parse() {
     }
     case ParserState::Tag: {
       if (token.type != TOK_TAGPOS) {
-        slts.show(Display::Type::ERROR, "Expected `pos' to follow `tag'");
+        parser_error(ParserErrors::ExpectedToFollow, token,
+                     ErrorPosition::After, "Expected `pos' to follow `tag'");
         goto error;
       }
       if (hastagpos) {
-        slts.show(Display::Type::ERROR,
-                  "Tag POS has already been specified once");
+        parser_error(ParserErrors::TagPOSAlreadySpecified, token,
+                     ErrorPosition::On, "Tag POS already specified");
         statestack.pop();
         break;
       }
@@ -411,9 +466,9 @@ void NParser::parse() {
       case TOK_TAGPOSEVERY: {
         TagPosSpecifier &tpos = std::get<TagPosSpecifier>(persist);
         if (tpos.gram_set) {
-          slts.show(Display::Type::ERROR,
-                    "`tag pos ... every %d tokens' already specified",
-                    tpos.gram);
+          parser_error(
+              ParserErrors::TagPOSAlreadySpecified, token, ErrorPosition::On,
+              "`tag pos ... every %d tokens' already specified", tpos.gram);
           break;
         }
         tpos.gram_set = true;
@@ -423,9 +478,9 @@ void NParser::parse() {
       case TOK_TAGPOSFROM: {
         TagPosSpecifier &tpos = std::get<TagPosSpecifier>(persist);
         if (tpos.from_set) {
-          slts.show(Display::Type::ERROR,
-                    "`tag pos ... from \"%s\"' already specified",
-                    tpos.from.c_str());
+          parser_error(
+              ParserErrors::TagPOSAlreadySpecified, token, ErrorPosition::On,
+              "`tag pos ... from \"%s\"' already specified", tpos.from.c_str());
           break;
         }
         tpos.from_set = true;
@@ -438,9 +493,10 @@ void NParser::parse() {
       case TOK_TAGPOSDELIM: {
         TagPosSpecifier &tpos = std::get<TagPosSpecifier>(persist);
         if (tpos.rule_set) {
-          slts.show(Display::Type::ERROR,
-                    "`tag pos ... with delimiter %s{...}' already specified",
-                    tpos.rule.c_str());
+          parser_error(ParserErrors::TagPOSAlreadySpecified, token,
+                       ErrorPosition::On,
+                       "`tag pos ... with delimiter %s{...}' already specified",
+                       tpos.rule.c_str());
           break;
         }
         tpos.rule_set = true;
@@ -449,9 +505,10 @@ void NParser::parse() {
           goto error;
         tpos.rule = std::get<std::string>(tok.value);
         if (tpos.tval_set) {
-          slts.show(Display::Type::ERROR,
-                    "`tag pos ... with delimiter %s{%s}' already specified",
-                    tpos.rule.c_str(), tpos.tval.c_str());
+          parser_error(ParserErrors::TagPOSAlreadySpecified, token,
+                       ErrorPosition::On,
+                       "`tag pos ... with delimiter %s{%s}' already specified",
+                       tpos.rule.c_str(), tpos.tval.c_str());
           break;
         }
         tpos.tval_set = true;
@@ -2183,6 +2240,9 @@ int main(int argc, char *argv[]) {
   NParser parser;
   targetTriple.triple = llvm::Triple(llvm::sys::getDefaultTargetTriple());
   targetTriple.reloc_model = llvm::Reloc::Model::Static;
+
+  if (!isatty(STDOUT_FILENO))
+    display_colours_in_output = false;
 
   parse_commandline(argc - 1, argv + 1, &filename, &parser.generate_graph,
                     &compile, &outname, &graphpath);

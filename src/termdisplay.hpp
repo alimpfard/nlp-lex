@@ -7,6 +7,8 @@
 #include <sys/ioctl.h> //ioctl() and TIOCGWINSZ
 #include <utility>
 
+extern bool display_colours_in_output;
+
 namespace Display {
 enum class Type : int {
   MUST_SHOW = 0,
@@ -98,10 +100,14 @@ public:
       return;
     refresh_size();
 
-    findAndReplaceAll(str, "{<clean>}", "\033[0m");
-    findAndReplaceAll(str, "{<green>}", "\033[32m");
-    findAndReplaceAll(str, "{<red>}", "\033[31m");
-    findAndReplaceAll(str, "{<magenta>}", "\033[35m");
+    findAndReplaceAll(str, "{<clean>}",
+                      display_colours_in_output ? "\033[0m" : "");
+    findAndReplaceAll(str, "{<green>}",
+                      display_colours_in_output ? "\033[32m" : "");
+    findAndReplaceAll(str, "{<red>}",
+                      display_colours_in_output ? "\033[31m" : "");
+    findAndReplaceAll(str, "{<magenta>}",
+                      display_colours_in_output ? "\033[35m" : "");
 
     std::printf(
         (std::string(cleanup ? "\033[11;1H\033[J" : "") + "%s\n").c_str(),
