@@ -132,10 +132,9 @@ how to build:
 
 ```sh
 $ git clone https://github.com/alimpfard/nlp-lex
-$ cd nlp-lex
+$ cd nlp-lex/src
 $ mkdir build && cd build && cmake ..
-$ cd ..
-$ make -C build
+$ make
 ```
 
 ## Using the Compiler 
