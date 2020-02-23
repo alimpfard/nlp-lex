@@ -1,5 +1,3 @@
-import inotify.adapters
-import argparse
 from subprocess import Popen
 import subprocess
 import re
@@ -7,22 +5,9 @@ import os
 import tempfile
 import threading
 
-import gi
-gi.require_version('Gtk', '3.0')
-
-from gi.repository import Gtk
-import xdot
 
 nlex_path = '../src/build/nlex'
 mx = re.compile(r' \(line (\d+) offset (\d+) length (\d+)\) ')
-
-class DotWindow(xdot.DotWindow):
-    def __init__(self):
-        xdot.DotWindow.__init__(self)
-        self.dotwidget.connect('clicked', self.on_clicked)
-
-    def on_clicked(self, widget, url, event):
-        return True
 
 dot_window = None
 
@@ -73,13 +58,13 @@ def display_errors(err):
             error['kind'],
             error['message']))
 
-def compile_once(path, options):
+def compile_once(path, options, nlex_path=nlex_path):
     output = {
             'errors': [],
             'warnings': [],
             'infos': []
     }
-    p = Popen([nlex_path, *options], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    p = Popen([nlex_path, *options, path], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     out,err = p.communicate()
     lines = out.split(b'\n')
     for line in lines:
@@ -126,16 +111,33 @@ def rundot():
     dot_window.connect('delete-event', Gtk.main_quit)
     Gtk.main()
 
-parser = argparse.ArgumentParser(description='Watch and compile nlex files')
-parser.add_argument('--compiler-path', help='set compiler path', default=nlex_path)
-parser.add_argument('-g', action='store_true', help='show a graph for successful compilations')
-parser.add_argument('path', metavar='P', type=str, help='input nlex file')
-parser.add_argument('ARGS', metavar='AS', nargs='*', help='arguments to pass to nlex compiler')
-
-args = parser.parse_args()
-nlex_path = args.compiler_path
 
 if __name__ == '__main__':
+    import inotify.adapters
+    import argparse
+    import gi
+    gi.require_version('Gtk', '3.0')
+
+    from gi.repository import Gtk
+    import xdot
+
+    class DotWindow(xdot.DotWindow):
+        def __init__(self):
+            xdot.DotWindow.__init__(self)
+            self.dotwidget.connect('clicked', self.on_clicked)
+
+        def on_clicked(self, widget, url, event):
+            return True
+
+
+    parser = argparse.ArgumentParser(description='Watch and compile nlex files')
+    parser.add_argument('--compiler-path', help='set compiler path', default=nlex_path)
+    parser.add_argument('-g', action='store_true', help='show a graph for successful compilations')
+    parser.add_argument('path', metavar='P', type=str, help='input nlex file')
+    parser.add_argument('ARGS', metavar='AS', nargs='*', help='arguments to pass to nlex compiler')
+
+    args = parser.parse_args()
+    nlex_path = args.compiler_path
     if args.g:
         dot_window = DotWindow()
         threading.Thread(target=rundot).start()
