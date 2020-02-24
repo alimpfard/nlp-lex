@@ -33,6 +33,10 @@
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Scalar/GVN.h"
 
+#include <direct.h>
+
+#define PATH_MAX 1024
+
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
@@ -42,7 +46,6 @@
 #include <memory>
 #include <queue>
 #include <string>
-#include <unistd.h>
 #include <vector>
 
 template <typename T>
@@ -247,7 +250,7 @@ public:
         llvm::DISubprogram::toSPFlags(true, true, true, 0, fn == _main));
     for (llvm::Argument &arg : fn->args()) {
       llvm::DILocalVariable *D = DBuilder->createParameterVariable(
-          SP, arg.getName(), arg.getArgNo(), DIFile, LineNo,
+          SP, arg.getName(), arg.getArgNo() + 1, DIFile, LineNo,
           getInputStructDiType(), true);
 
       DBuilder->insertDeclare(&arg, D, DBuilder->createExpression(),
@@ -407,7 +410,7 @@ public:
     TheMPM->add(llvm::createGVNPass());
     // TheMPM->add(llvm::createCFGSimplificationPass());
     TheMPM->add(llvm::createLICMPass());
-    TheMPM->add(llvm::createAggressiveDCEPass());
+    // TheMPM->add(llvm::createAggressiveDCEPass()); // breaks in llvm 9?
     TheMPM->add(llvm::createConstantPropagationPass());
     // TheMPM->add(llvm::createTailCallEliminationPass());
     TheMPM->add(llvm::createInstructionCombiningPass());
@@ -840,12 +843,12 @@ public:
       auto nlex_injected_length =
           module.createGlobal(llvm::Type::getInt32Ty(module.TheContext),
                               llvm::Constant::getNullValue(
-                                  llvm::Type::getInt8Ty(module.TheContext)),
+                                  llvm::Type::getInt32Ty(module.TheContext)),
                               "nlex_injected_length");
       auto nlex_injected_length_diff =
           module.createGlobal(llvm::Type::getInt32Ty(module.TheContext),
                               llvm::Constant::getNullValue(
-                                  llvm::Type::getInt8Ty(module.TheContext)),
+                                  llvm::Type::getInt32Ty(module.TheContext)),
                               "nlex_injected_length_diff");
 
       // create "library" functions
@@ -1439,7 +1442,7 @@ public:
           errs() << "Could not open file: " << EC.message();
           return;
         }
-        def_dest << "LIBRARY " << std::filesystem::path{output_file_name}.stem()
+        def_dest << "LIBRARY " << std::filesystem::path{output_file_name}.stem().string()
                  << "\n";
         def_dest << "EXPORTS\n";
 

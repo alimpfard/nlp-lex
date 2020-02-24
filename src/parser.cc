@@ -18,7 +18,6 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <unistd.h>
 
 #include <algorithm>
 #include <execution>
@@ -30,6 +29,16 @@
 
 #include "target_triple.hpp"
 #include "unicode/emojis.hpp"
+
+#include <stdio.h>
+#include <io.h>
+
+#define STDOUT_FILENO 0
+#define STDIN_FILENO 1
+#define STDERR_FILENO 2
+
+#define pclose _pclose
+#define popen _popen
 
 std::string output_file_name = "";
 nlvm::TargetTriple targetTriple;
@@ -2214,22 +2223,9 @@ void parse_commandline(int argc, char *argv[], /* out */ char **filename,
 }
 
 char *read_file(const char *path) {
-  int fd = open(path, 0, O_RDONLY);
-  if (fd == -1) {
-    slts.show(Display::Type::ERROR,
-              "failed to read referenced file '{<magenta>}%s{<clean>}': "
-              "{<red>}%s{<clean>}",
-              path, strerror(errno));
-    return "";
-  }
-  int len = lseek(fd, 0, SEEK_END);
-  int amt = len;
-  lseek(fd, 0, SEEK_SET);
-  char *contents = (char *)malloc(len * sizeof(char));
-  while ((amt -= read(fd, contents, amt)) > 0)
-    ;
-  close(fd);
-  return contents;
+    std::ifstream t(path);
+    std::string str((std::istreambuf_iterator<char>(t)), std::istreambuf_iterator<char>());
+    return strdup(str.c_str());
 }
 #ifdef TEST
 int main(int argc, char *argv[]) {

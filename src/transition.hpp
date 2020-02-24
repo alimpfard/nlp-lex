@@ -2,7 +2,7 @@
 
 #include <functional>
 
-enum EpsilonTransitionProperty : uint {
+enum EpsilonTransitionProperty : unsigned int {
   Nothing = 0,
   ReadForward,
 };

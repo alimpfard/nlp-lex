@@ -1,14 +1,37 @@
-all: rts
+TBB_PREFIX = F:\Pwogwam\TBB
+LLVM_PREFIX = F:\Pwogwam\LLVM
+SHELL := powershell
 
-lexer:
-	g++ -ggdb3 -Wmaybe-uninitialized -Wuninitialized -Wall -Wno-narrowing -Wno-write-strings kaleid.cpp lexer.cc parser.cc `llvm-config --cxxflags --ldflags --system-libs --libs core` -std=c++17 -ltcl -pthread -fopenmp -ltbb -fexceptions
+kaleid.o:
+	clang++ -std=c++17 -Wno-narrowing -Wwrite-strings -Wno-non-pod-varargs\
+		-I${LLVM_PREFIX}/include -I${TBB_PREFIX}/include\
+		-L${LLVM_PREFIX}/lib -L${TBB_PREFIX}/lib\
+		kaleid.cc\
+		D_MD -D_DEBUG -D_DLL -c -g
 
-format:
-	clang-format -i *.{hpp,cc,tcc,cpp}
+lexer.o:
+	clang++ -std=c++17 -Wno-narrowing -Wwrite-strings -Wno-non-pod-varargs\
+		-I${LLVM_PREFIX}/include -I${TBB_PREFIX}/include\
+		-L${LLVM_PREFIX}/lib -L${TBB_PREFIX}/lib\
+		lexer.cc\
+		D_MD -D_DEBUG -D_DLL -c -g
 
-rts:
-	clang -S -static -O3 -g -emit-llvm rts.c
-	llvm-as rts.ll
-	mv rts.bc test.bc
-	xxd -i test.bc > test_bc.h
-	
+parser.o:
+	clang++ -std=c++17 -Wno-narrowing -Wwrite-strings -Wno-non-pod-varargs\
+		-I${LLVM_PREFIX}/include -I${TBB_PREFIX}/include\
+		-L${LLVM_PREFIX}/lib -L${TBB_PREFIX}/lib\
+		parser.cc\
+		D_MD -D_DEBUG -D_DLL -c -g
+
+link: kaleid.o lexer.o parser.o
+	clang++ -std=c++17 -Wno-narrowing -Wwrite-strings -Wno-non-pod-varargs\
+		-I${LLVM_PREFIX}\include -I${TBB_PREFIX}/include -L${LLVM_PREFIX}\lib\
+		-L${TBB_PREFIX}\lib\
+		.\kaleid.o .\lexer.o .\parser.o\
+		-ltbb\
+		$$($$(${LLVM_PREFIX}\bin\llvm-config.exe --libs).Split() | % {"-l" + $_.Split(".")[0] })\
+		-D_MD -D_DEBUG -D_DLL -lmsvcrtd -lmsvcprtd
+
+compile: kaleid.o lexer.o parser.o
+
+ALL: link

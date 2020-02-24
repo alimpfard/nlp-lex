@@ -13,6 +13,11 @@ inline static void lexer_error_impl(char const *fmt, va_list arg) {
   std::vprintf(fmt, arg);
 }
 
+inline static int m_isspace(char c) {
+    // windows' m_isspace checks range...for whatever reason
+    return (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\b');
+}
+
 void lexer_error(const NLexer &lexer, int errn, const Token &tok,
                  ErrorPosition pos, char const *fmt...) {
   char buf[1024];
@@ -173,7 +178,7 @@ inline Token NLexer::_next() {
       continue;
     }
 
-    if (isspace(c) || commentl)
+    if (m_isspace(c) || commentl)
       continue;
     break;
   } while (1);
@@ -181,7 +186,7 @@ inline Token NLexer::_next() {
   switch (state) {
   case LexerState::Toplevel: {
     if (c == 'o' && strncmp("ption", source_p, strlen("ption")) == 0 &&
-        isspace(*(source_p + strlen("ption")))) {
+        m_isspace(*(source_p + strlen("ption")))) {
       state = LexerState::Option;
       advance(strlen("ption"));
       return Token{TOK_OPTION, lineno, offset - strlen("option"),
@@ -224,7 +229,7 @@ inline Token NLexer::_next() {
         break;
       buffer[length++] = c;
       offset++;
-    } while (!isspace(c));
+    } while (!m_isspace(c));
     buffer[length--] = 0;
     offset--;
     if (length == 0) {
@@ -317,7 +322,7 @@ inline Token NLexer::_next() {
           "Likely invalid gram size (%d) for `tag pos ... every %d tokens'",
           gram, gram);
 
-    while (isspace(c)) {
+    while (m_isspace(c)) {
       if (c == '\n')
         break;
       advance(1);
@@ -362,7 +367,7 @@ inline Token NLexer::_next() {
       if (!c || c == '{')
         break;
       buffer[length++] = c;
-    } while (!isspace(c));
+    } while (!m_isspace(c));
     buffer[length] = 0;
     advance(-1);
     if (length == 0) {
@@ -513,7 +518,7 @@ inline Token NLexer::_next() {
       c = *(source_p++);
       buffer[++length] = c;
       offset++;
-    } while (!isspace(c));
+    } while (!m_isspace(c));
     buffer[length] = 0;
     offset--;
 
@@ -526,12 +531,12 @@ inline Token NLexer::_next() {
   case LexerState::OptionBool: {
     bool truth;
     if (c == 'o' && strncmp("ff", source_p, 2) == 0 &&
-        isspace(*(source_p + 2))) {
+        m_isspace(*(source_p + 2))) {
       advance(2);
       length = 3;
       truth = false;
     } else if (c == 'o' && strncmp("n", source_p, 1) == 0 &&
-               (!*(source_p + 1) || isspace(*(source_p + 1)))) {
+               (!*(source_p + 1) || m_isspace(*(source_p + 1)))) {
       advance(1);
       length = 2;
       truth = true;
@@ -570,7 +575,7 @@ inline Token NLexer::_next() {
       c = *(source_p++);
       buffer[++length] = c;
       offset++;
-    } while (!isspace(c) && c != ']');
+    } while (!m_isspace(c) && c != ']');
 
     buffer[length] = 0;
     offset--;
@@ -858,7 +863,7 @@ std::optional<Regexp> NLexer::_regexp() {
   do {
     char c = *source_p;
     advance(1);
-    if (isspace(c))
+    if (m_isspace(c))
       continue;
     break;
   } while (1);
@@ -1712,7 +1717,7 @@ Regexp Regexp::concat(const Regexp &other) {
         if (ch->type != RegexpType::CharacterClass) {
           yes = false;
           break;
-        } else if ((std::get<std::string>(ch->inner)[0] == '[' ^ glinv)) {
+        } else if (((std::get<std::string>(ch->inner)[0] == '[') ^ glinv)) {
           yes = false;
           break;
         }

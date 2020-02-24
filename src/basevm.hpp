@@ -21,8 +21,6 @@
 #include <memory>
 #include <queue>
 #include <string>
-#include <unistd.h>
-#include <utility>
 #include <vector>
 
 namespace nlvm {

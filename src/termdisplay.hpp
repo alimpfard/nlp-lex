@@ -4,7 +4,6 @@
 #include <stdarg.h>
 #include <string.h>
 #include <string>
-#include <sys/ioctl.h> //ioctl() and TIOCGWINSZ
 #include <utility>
 
 extern bool display_colours_in_output;
@@ -71,7 +70,6 @@ void findAndReplaceAll(std::string &data, std::string toSearch,
   }
 }
 class SingleLineTermStatus {
-  struct winsize tsize, oldtsize;
   struct Position {
     int x;
     int y;
@@ -82,11 +80,6 @@ public:
 
   bool dirty = false;
   void refresh_size() {
-    oldtsize = tsize;
-    ioctl(1, TIOCGWINSZ, &tsize);
-    if (!dirty && oldtsize.ws_col != tsize.ws_col)
-      // resized to a different width redraw everything
-      dirty = true;
   }
 
 public:
@@ -98,7 +91,6 @@ public:
   void display(std::string str, bool cleanup) {
     if (cleanup)
       return;
-    refresh_size();
 
     findAndReplaceAll(str, "{<clean>}",
                       display_colours_in_output ? "\033[0m" : "");
