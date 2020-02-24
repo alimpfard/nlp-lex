@@ -121,21 +121,25 @@ read [regex_flavour](regex_flavour.md) for further details on the specific flavo
 
 ## Building
 
-To build the compiler the following libraries are required:
+Building the compiler in windows requires you to build LLVM from source, so set aside a few hours, and prepare some hundred cups of tea.
 
-+ LLVM (\>= 8)
-+ TCL  (soft dependency, will be removed later)
-+ Intel TBB
-+ OpenMP + pthread
-
-how to build:
-
-```sh
-$ git clone https://github.com/alimpfard/nlp-lex
-$ cd nlp-lex/src
-$ mkdir build && cd build && cmake ..
-$ make
-```
+instructions:
+- install CMake
+- Download LLVM's source from http://releases.llvm.org/download.html (version >= 8)
+- Extract said tarball somewhere (we will assume it's in F:\Pwogwam\LLVM-src)
+- use CMake GUI and build LLVM (http://llvm.org/docs/CMake.html#quick-start can be of help)
+- Install LLVM somewhere (we'll assume it's installed in F:\Pwogwam\LLVM)
+- Clone and build Intel TBB (https://github.com/wjakob/tbb)
+	- `cd F:\Pwogwam`
+	- `git clone --recursive https://github.com/wjakob/tbb tbb-src`
+	- `mkdir tbb-build && cd tbb-build`
+	- `cmake ../tbb-src -G 'Visual Studio 16 2019' -DCMAKE_INSTALL_PREFIX=F:\Pwogwam\TBB`
+	- Open the TBB.sln solution and build the INSTALL target (This will install TBB into `F:\Pwogwam\TBB`, subst the `CMAKE_INSTALL_PREFIX` from the previous step to install it somewhere you want)
+- recursive clone this repository (`git clone --recursive https://github.com/alimpfard/nlp-lex`)
+- open a terminal (Powershell is probably best)
+- `cd nlp-lex/src`
+- `powershell compile.ps1`
+- if everything goes well, you should have a `a.exe` in the current directory, which is the compiler.
 
 ## Using the Compiler 
 
