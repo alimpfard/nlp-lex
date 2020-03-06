@@ -30,7 +30,7 @@ public:
   virtual void
   generate(DFANode<std::set<NFANode<NFATypeT> *>> *node,
            std::set<DFANode<std::set<NFANode<NFATypeT> *>> *> visited = {});
-  virtual std::string output();
+  virtual std::string output(const GenLexer &&lexer_stuff = {});
   // virtual void generate(Regexp *exp);
 
   void run(NFANode<NFATypeT> *node);
@@ -56,7 +56,7 @@ public:
   virtual void
   generate(DFANode<std::set<NFANode<T> *>> *node,
            std::set<DFANode<std::set<NFANode<T> *>> *> visited = {});
-  virtual std::string output();
+  virtual std::string output(const GenLexer &&lexer_stuff = {});
 };
 template <typename T> struct DFANLVMCodeGenerator : public CodeGenerator<T> {
 public:
@@ -83,5 +83,5 @@ public:
       DFANode<std::set<NFANode<T> *>> *node,
       std::set<DFANode<std::set<NFANode<T> *>> *> visited,
       std::map<DFANode<std::set<NFANode<T> *>> *, llvm::BasicBlock *> &blocks);
-  virtual std::string output();
+  virtual std::string output(const GenLexer &&lexer_stuff = {});
 };

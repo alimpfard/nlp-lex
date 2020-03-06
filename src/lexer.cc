@@ -216,6 +216,11 @@ inline Token NLexer::_next() {
       return Token{TOK_OPNORMAL, lineno, offset - strlen("normalise"),
                    strlen("normalise"), empty_string};
     }
+    if (c == 'd' && strncmp("efine", source_p, strlen("efine")) == 0 && !isalnum(*(source_p + strlen("efine")))) {
+      state = LexerState::KaliedDefine;
+      advance(strlen("efine"));
+      return Token{TOK_KDEFINE, lineno, offset - strlen("define"), strlen("define"), empty_string};
+    }
     length = 0;
     buffer[length++] = c;
     do {
@@ -600,6 +605,18 @@ inline Token NLexer::_next() {
     std::string str = vstr.value();
     return Token{isfile ? TOK_FILESTRING : TOK_LITSTRING, lineno,
                  offset - str.size(), str.size(), str};
+  }
+  case LexerState::KaliedDefine: {
+    static char kbuf[10240];
+    int kbuf_idx = 0;
+    while (c != '\n' && c != 0) {
+      kbuf[kbuf_idx++] = c;
+      c = *source_p;
+      advance(1);
+    }
+    kbuf[kbuf_idx] = 0;
+    state = LexerState::Toplevel;
+    return Token{TOK_KDEFINE_CODE, lineno, offset - kbuf_idx + 1, kbuf_idx - 1, std::string{kbuf}};
   }
   case LexerState::Stopword: {
     if (c != '-' && c != '"') {

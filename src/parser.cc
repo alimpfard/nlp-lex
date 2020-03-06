@@ -186,6 +186,9 @@ void NParser::parse() {
       case TokenType::TOK_OPNORMAL:
         statestack.push(ParserState::Normal);
         break;
+      case TokenType::TOK_KDEFINE:
+        statestack.push(ParserState::KDefine);
+        break;
       error:
       case TOK_ERROR:
       default:
@@ -279,6 +282,16 @@ void NParser::parse() {
         for (auto t : vec)
           gen_lexer_literal_tags[std::get<std::string>(persist)].push_back(t);
       }
+      break;
+    case ParserState::KDefine:
+      if (token.type != TokenType::TOK_KDEFINE_CODE) {
+        statestack.pop(); // KDefine
+        failing = true;
+        parser_error(ParserErrors::ExpectedToFollow, token, ErrorPosition::On, "Expected code to follow `define', but got %s", reverse_token_type[token.type]);
+        break;
+      }
+      gen_lexer_kdefines.push_back(std::get<std::string>(token.value));
+      statestack.pop(); // KDefine
       break;
     case ParserState::Name:
       if (token.type == TokenType::TOK_OPCONST) {
@@ -1420,7 +1433,7 @@ void DFACCodeGenerator<T>::generate(
         "root", get_name(node->state_info.value(), false, true)));
 }
 
-template <typename T> std::string DFACCodeGenerator<T>::output() {
+template <typename T> std::string DFACCodeGenerator<T>::output(const GenLexer &&lexer_stuff) {
   std::ostringstream oss;
   auto root = output_cases.front();
   output_cases.pop_front();
@@ -1782,7 +1795,7 @@ void DFANLVMCodeGenerator<T>::generate(
   if (node->inline_code.has_value()) {
     std::string code = node->inline_code.value();
     if (code != "") {
-      KaleidCompile(code, builder.module.Builder);
+      KaleidCompile(code, builder.module.Builder, true);
     }
   }
   builder.module.Builder.CreateCall(builder.module.nlex_next, {});
@@ -1939,13 +1952,13 @@ void DFANLVMCodeGenerator<T>::generate(
   builder.module.exitScope();
 }
 
-template <typename T> std::string DFANLVMCodeGenerator<T>::output() {
+template <typename T> std::string DFANLVMCodeGenerator<T>::output(const GenLexer &&lexer_stuff) {
   builder.first_root = this->root_bb;
-  builder.end();
+  builder.end(lexer_stuff);
   return "";
 }
 
-template <typename T> std::string CodeGenerator<T>::output() { __asm("int3"); }
+template <typename T> std::string CodeGenerator<T>::output(const GenLexer &&lexer_stuff) { __asm("int3"); }
 
 template <typename T>
 void CodeGenerator<T>::generate(
@@ -2322,14 +2335,20 @@ int main(int argc, char *argv[]) {
             nlvmg.builder.prepare(
                 {parser.gen_lexer_options, parser.gen_lexer_stopwords,
                  parser.gen_lexer_ignores, parser.gen_lexer_normalisations,
-                 parser.gen_lexer_literal_tags,
+                 parser.gen_lexer_literal_tags, parser.gen_lexer_kdefines,
                  parser.hastagpos
                      ? std::optional<TagPosSpecifier>(parser.tagpos)
                      : std::optional<TagPosSpecifier>{},
                  rootdfa->metadata.total_capturing_groups});
 
             nlvmg.generate(rootdfa);
-            nlvmg.output();
+            nlvmg.output({parser.gen_lexer_options, parser.gen_lexer_stopwords,
+                 parser.gen_lexer_ignores, parser.gen_lexer_normalisations,
+                 parser.gen_lexer_literal_tags, parser.gen_lexer_kdefines,
+                 parser.hastagpos
+                     ? std::optional<TagPosSpecifier>(parser.tagpos)
+                     : std::optional<TagPosSpecifier>{},
+                 rootdfa->metadata.total_capturing_groups});
             run = false;
           }};
           exec(("../tools/wm '" + name + "'").c_str(), run);
@@ -2338,13 +2357,19 @@ int main(int argc, char *argv[]) {
           nlvmg.builder.prepare(
               {parser.gen_lexer_options, parser.gen_lexer_stopwords,
                parser.gen_lexer_ignores, parser.gen_lexer_normalisations,
-               parser.gen_lexer_literal_tags,
+               parser.gen_lexer_literal_tags,parser.gen_lexer_kdefines,
                parser.hastagpos ? std::optional<TagPosSpecifier>{parser.tagpos}
                                 : std::optional<TagPosSpecifier>{},
                rootdfa->metadata.total_capturing_groups});
 
           nlvmg.generate(rootdfa);
-          nlvmg.output();
+          nlvmg.output({parser.gen_lexer_options, parser.gen_lexer_stopwords,
+                 parser.gen_lexer_ignores, parser.gen_lexer_normalisations,
+                 parser.gen_lexer_literal_tags,parser.gen_lexer_kdefines,
+                 parser.hastagpos
+                     ? std::optional<TagPosSpecifier>(parser.tagpos)
+                     : std::optional<TagPosSpecifier>{},
+                 rootdfa->metadata.total_capturing_groups});
         }
         continue;
       } else if (line == "")
@@ -2424,13 +2449,19 @@ int main(int argc, char *argv[]) {
       nlvmg.builder.prepare(
           {parser.gen_lexer_options, parser.gen_lexer_stopwords,
            parser.gen_lexer_ignores, parser.gen_lexer_normalisations,
-           parser.gen_lexer_literal_tags,
+           parser.gen_lexer_literal_tags,parser.gen_lexer_kdefines,
            parser.hastagpos ? std::optional<TagPosSpecifier>{parser.tagpos}
                             : std::optional<TagPosSpecifier>{},
            rootdfa->metadata.total_capturing_groups});
 
       nlvmg.generate(rootdfa);
-      nlvmg.output();
+      nlvmg.output({parser.gen_lexer_options, parser.gen_lexer_stopwords,
+                 parser.gen_lexer_ignores, parser.gen_lexer_normalisations,
+                 parser.gen_lexer_literal_tags,parser.gen_lexer_kdefines,
+                 parser.hastagpos
+                     ? std::optional<TagPosSpecifier>(parser.tagpos)
+                     : std::optional<TagPosSpecifier>{},
+                 rootdfa->metadata.total_capturing_groups});
     }
     free(data);
   }

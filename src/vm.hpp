@@ -492,7 +492,7 @@ public:
 
 extern void KaleidInitialise(std::string startup_code,
                              nlvm::BaseModule *module);
-extern void KaleidCompile(std::string code, llvm::IRBuilder<> &builder);
+extern void KaleidCompile(std::string code, llvm::IRBuilder<> &builder, bool allow_bare_expressions);
 
 namespace nlvm {
 static void debugPrintValue(llvm::Value *v) { v->print(llvm::errs(), true); }
@@ -1339,6 +1339,13 @@ public:
         }
       }
     }
+    // emit any KDefines specified
+    if (lexer_stuff.kdefines.size() > 0) {
+      llvm::IRBuilder<> builder(module.TheContext);
+      for (auto &kdef : lexer_stuff.kdefines) {
+        KaleidCompile(kdef, builder, true);
+      }
+    }
     // likely to be replaced at link-time with a separate module
     /* if constexpr (false) */
     {
@@ -1370,13 +1377,16 @@ public:
             llvm::ConstantInt::get(llvm::Type::getInt32Ty(module.TheContext),
                                    lexer_stuff.tagpos->gram),
             "__nlex_tagpos_gram", true);
+        std::string postag_data = nlex::POSTag::train(lexer_stuff.tagpos->from);
+        auto *data = mk_string(module.TheModule.get(), module.TheContext, postag_data, "__nlex_postag_data");
+
         llvm::IRBuilder<> builder{module.TheContext};
         builder.SetInsertPoint(&gentag->getEntryBlock());
         builder.CreateRetVoid();
       }
     }
   }
-  void end() {
+  void end(const GenLexer &lexer_stuff) {
     using namespace llvm;
     // finish the function
     module.DBuilder->finalize();

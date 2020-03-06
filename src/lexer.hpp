@@ -17,6 +17,8 @@ enum TokenType {
   TOK_OPCONST,
   TOK_OPDEFINE,
   TOK_OPLIT,
+  TOK_KDEFINE,
+  TOK_KDEFINE_CODE,
   TOK_OPNORMAL,
   TOK_LITSTRING,
   TOK_FILESTRING,
@@ -41,6 +43,8 @@ static char *reverse_token_type[TOK_ERROR + 1] = {
     [TOK_OPCONST] = "Const",
     [TOK_OPDEFINE] = "Define",
     [TOK_OPLIT] = "Literal",
+    [TOK_KDEFINE] = "KaleidDefine",
+    [TOK_KDEFINE_CODE] = "KaleidDefineCode",
     [TOK_OPNORMAL] = "Normalise",
     [TOK_LITSTRING] = "LiteralString",
     [TOK_FILESTRING] = "FileString",
@@ -82,6 +86,7 @@ enum class LexerState : int {
                  * Stopword -> Stopword
                  * Name     -> Name
                  * Comment  -> /
+                 * define   -> KaleidDefine
                  */
   Name,         // valid tokens:
                 /* ::       -> Define
@@ -109,6 +114,9 @@ enum class LexerState : int {
   NormalTgt, // -> Toplevel
   Define,    // -> Toplevel (parses a regex)
   Literal,   // -> Toplevel (parses a sequence of strings)
+
+  KaliedDefine, // until newline -> KaliedDefine
+                // newline -> Toplevel
 
   Tag,    // 'pos' -> TagPOS
   TagPOS, // 'from' -> TagPOSFrom
@@ -180,6 +188,7 @@ public:
       [(int)LexerState::NormalTgt] = "NormalTgt",
       [(int)LexerState::Define] = "Define",
       [(int)LexerState::Literal] = "Literal",
+      [(int)LexerState::KaliedDefine] = "KaleidDefine",
       [(int)LexerState::Tag] = "Tag",
       [(int)LexerState::TagPOS] = "TagPOS",
       [(int)LexerState::TagPOSFrom] = "TagPOSFrom",
