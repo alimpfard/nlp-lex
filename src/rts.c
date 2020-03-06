@@ -280,7 +280,7 @@ int main() {
              res.length, res.tag, (res.metadata & 1 ? " " : " not "));
       metadata = res.metadata;
       int dist = __nlex_distance();
-      if (res.errc || res.length == 0 || dist == last)
+      if (res.errc || res.length == 0)
         break;
       last = dist;
     }

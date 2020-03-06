@@ -1,0 +1,3 @@
+define def hell() eprint_string("Hell has been reached")
+
+test :: hel(l\E{hell()}|p)

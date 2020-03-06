@@ -5,6 +5,7 @@
 #include "target_triple.hpp"
 #include "termdisplay.hpp"
 #include "wordtree.hpp"
+#include "hmm.hpp"
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/STLExtras.h"
@@ -44,6 +45,7 @@
 #include <string>
 #include <unistd.h>
 #include <vector>
+#include <set>
 
 template <typename T>
 typename T::mapped_type get(T value, typename T::key_type key) {
@@ -71,6 +73,8 @@ public:
 
   llvm::BasicBlock *start;
 
+  std::vector<llvm::BasicBlock*> exit_blocks = {};
+
   llvm::DIBuilder *DBuilder;
   llvm::DICompileUnit *TheCU;
   llvm::DIFile *DIFile;
@@ -89,6 +93,9 @@ public:
   llvm::Function *nlex_get_group_start_ptr = nullptr;
   llvm::Function *nlex_get_group_end_ptr = nullptr;
   llvm::Function *nlex_get_group_length = nullptr;
+
+  llvm::Function *nlex_apply_postag = nullptr;
+  bool postag_applies = false;
 
   /// Stores the start of this match
   llvm::GlobalVariable *nlex_match_start;
@@ -284,7 +291,7 @@ public:
   }
 
   llvm::Function *mkfunc(bool clear = true, std::string name = "__nlex_root",
-                         bool toplevels = true, bool nullary = false) {
+                         bool toplevels = true, bool nullary = false, bool nodefine = false) {
     llvm::Function *_main;
     llvm::ArrayRef<llvm::Type *> args = {
         llvm::PointerType::get(input_struct_type, 0)};
@@ -295,6 +302,8 @@ public:
     _main = llvm::Function::Create(
         ncf, llvm::Function::LinkageTypes::ExternalLinkage, name,
         TheModule.get());
+    if (nodefine)
+      return _main;
     auto main_entry = llvm::BasicBlock::Create(TheContext, "", _main);
     if (!toplevels)
       return _main;
@@ -355,6 +364,7 @@ public:
                                0),         // token tag
         llvm::Type::getInt8Ty(TheContext), // error code (0 = ok)
         llvm::Type::getInt8Ty(TheContext), // metadata (1 = stopword, )
+        llvm::PointerType::get(llvm::Type::getInt8Ty(TheContext), 0), // POS
     };
     input_struct_type = llvm::StructType::create(members);
     _main = mkfunc();
@@ -375,6 +385,7 @@ public:
   }
 
   std::unique_ptr<llvm::Module> RTSModule;
+  std::unique_ptr<llvm::Module> DeserModule;
 
   Module(std::string name, llvm::raw_ostream *os)
       : BaseModule(), Builder(TheContext), outputv(os) {
@@ -393,6 +404,15 @@ public:
       ed.print(name.c_str(), *os);
     assert(RTSModule.get() != nullptr && "RTS compilation failed");
 
+#include "deser.inc"
+    static llvm::StringRef mDeserBitcode = 
+      llvm::StringRef((const char*)deser_inc_bc, deser_inc_bc_len);
+    DeserModule = llvm::parseIR(llvm::MemoryBufferRef(mDeserBitcode, "deser_bc"), ed, TheContext);
+
+    if (!DeserModule)
+      ed.print(name.c_str(), *os);
+    assert(DeserModule.get() != nullptr && "Deser compilation failed");
+
     TheModule = std::make_unique<llvm::Module>(name, TheContext);
 
     TheModule->addModuleFlag(llvm::Module::Warning, "Dwarf Version",
@@ -402,15 +422,21 @@ public:
 
     TheMPM = std::make_unique<llvm::legacy::PassManager>();
 
+/*
     TheMPM->add(llvm::createInstructionCombiningPass());
     TheMPM->add(llvm::createReassociatePass());
     TheMPM->add(llvm::createGVNPass());
+*/
     // TheMPM->add(llvm::createCFGSimplificationPass());
+/*
     TheMPM->add(llvm::createLICMPass());
     TheMPM->add(llvm::createAggressiveDCEPass());
     TheMPM->add(llvm::createConstantPropagationPass());
+*/
     // TheMPM->add(llvm::createTailCallEliminationPass());
+/*
     TheMPM->add(llvm::createInstructionCombiningPass());
+*/
     // TheMPM->add(llvm::createSinkingPass());
     // TheMPM->add(llvm::createCFGSimplificationPass());
 
@@ -578,6 +604,9 @@ public:
     if (!module.BBfinalise)
       module.BBfinalise = BBfinalise;
     auto bbF = llvm::BasicBlock::Create(module.TheContext, "_escape", fn);
+    
+    module.exit_blocks.push_back(bbF);
+
     if (skip_on_error) {
       auto advance_and_callFbb =
           llvm::BasicBlock::Create(module.TheContext, "_escape_redo", fn);
@@ -816,6 +845,7 @@ public:
       }
     }
 
+    // crucial library functions
     {
       auto nlex_fed_string = module.nlex_fed_string = module.createGlobal(
           llvm::PointerType::get(llvm::Type::getInt8Ty(module.TheContext), 0),
@@ -1347,7 +1377,7 @@ public:
       }
     }
     // likely to be replaced at link-time with a separate module
-    /* if constexpr (false) */
+    // emit pos tagger stuff if that's specified
     {
       // generate a pos tagger if we have it specified
       module.createGlobal(llvm::Type::getInt1Ty(module.TheContext),
@@ -1367,8 +1397,8 @@ public:
           "__nlex_tagpos");
       get_or_create_tag(lexer_stuff.tagpos->rule, true, "__nlex_ptag");
       if (lexer_stuff.tagpos.has_value()) {
-        auto gentag =
-            module.mkfunc(false, "__nlex_generated_postag", false, true);
+        // auto gentag =
+        //     module.mkfunc(false, "__nlex_generated_postag", false, true);
         // generate some magic pos tagger from the model
         mk_string(module.TheModule.get(), module.TheContext,
                   lexer_stuff.tagpos->from, "__nlex_tagpos_filename");
@@ -1379,10 +1409,31 @@ public:
             "__nlex_tagpos_gram", true);
         std::string postag_data = nlex::POSTag::train(lexer_stuff.tagpos->from);
         auto *data = mk_string(module.TheModule.get(), module.TheContext, postag_data, "__nlex_postag_data");
+        module.createGlobal(
+            llvm::Type::getInt32Ty(module.TheContext),
+            llvm::ConstantInt::get(llvm::Type::getInt32Ty(module.TheContext),
+                                   postag_data.size()),
+            "__nlex_postag_data_length", true);
 
-        llvm::IRBuilder<> builder{module.TheContext};
-        builder.SetInsertPoint(&gentag->getEntryBlock());
-        builder.CreateRetVoid();
+        module.nlex_apply_postag = module.mkfunc(true, "__nlex_apply_postag", false, false, true);
+        module.postag_applies = true;
+
+        // llvm::IRBuilder<> builder{module.TheContext};
+        // builder.SetInsertPoint(&gentag->getEntryBlock());
+        // builder.CreateRetVoid();
+
+        // patch exit blocks of __nlex_root to call "__nlex_apply_postag"
+        std::vector<llvm::Value*> args;
+        for (auto &arg : module.main()->args()) args.push_back(&arg);
+
+        for (llvm::BasicBlock *block : module.exit_blocks) {
+          for (auto &insn : block->getInstList()) {
+            if (insn.getOpcode() == llvm::Instruction::Ret) {
+              // prepend a call to __nlex_apply_tag to the bb before the return instruction
+              llvm::CallInst::Create(module.nlex_apply_postag->getFunctionType(), module.nlex_apply_postag, args, "", &insn);
+            }
+          }
+        }
       }
     }
   }
@@ -1414,6 +1465,11 @@ public:
     if (!targetTriple.library)
       L.linkInModule(
           std::move(module.RTSModule)); // RTS only needed for executable build
+    
+    if (lexer_stuff.tagpos.has_value()) {
+      L.linkInModule(std::move(module.DeserModule)); // Deser only needed if postag is enabled
+      slts.show(Display::Type::MUST_SHOW, "Please also link against {<magenta>}libc++{<clean>} [This is a temporary issue]");
+    }
 
     L.linkInModule(std::move(module.TheModule));
 
