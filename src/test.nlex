@@ -1,4 +1,6 @@
-option unsafe_normaliser on
-normalise {t} to x
 
-root :
+EnglishWord :: a+
+Punc :: \.
+
+Link :: a+\.1
+
