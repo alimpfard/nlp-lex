@@ -1,8 +1,8 @@
 // #include <jansson.h>
-#include <math.h>
-#include "serialise.hpp"
 #include "hmm.hpp"
 #include "cassert"
+#include "serialise.hpp"
+#include <math.h>
 
 namespace nlex {
 namespace POSTag {
@@ -33,9 +33,8 @@ struct vnode {
 
 constexpr auto DEFAULT_SCORE{-100};
 
-std::vector<std::string>
-viterbi(TType &S, TType &T,
-        std::vector<std::string> &v) {
+std::vector<std::string> viterbi(TType &S, TType &T,
+                                 std::vector<std::string> &v) {
   std::vector<std::map<std::string, Node>> tbl;
 
   for (auto i = 0; i < v.size(); ++i)
@@ -144,17 +143,17 @@ std::string train(std::string filename) {
 
   trained_once = true;
 
-  std::ifstream fst { filename.c_str() };
+  std::ifstream fst{filename.c_str()};
   read_lines(fst, train_line);
   std::for_each(S.begin(), S.end(), logprob1);
   std::for_each(T.begin(), T.end(), logprob1);
 
-    std::array<TType, 2> arr { T, S };
-    std::ostringstream oss;
-    oss << bits(arr);
-    return oss.str();
+  std::array<TType, 2> arr{T, S};
+  std::ostringstream oss;
+  oss << bits(arr);
+  return oss.str();
 }
 #endif // ONLY_VITERBI_INCLUDE
 
 } // namespace POSTag
-} // namespace Nlex
+} // namespace nlex

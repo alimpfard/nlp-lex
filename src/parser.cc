@@ -287,7 +287,9 @@ void NParser::parse() {
       if (token.type != TokenType::TOK_KDEFINE_CODE) {
         statestack.pop(); // KDefine
         failing = true;
-        parser_error(ParserErrors::ExpectedToFollow, token, ErrorPosition::On, "Expected code to follow `define', but got %s", reverse_token_type[token.type]);
+        parser_error(ParserErrors::ExpectedToFollow, token, ErrorPosition::On,
+                     "Expected code to follow `define', but got %s",
+                     reverse_token_type[token.type]);
         break;
       }
       gen_lexer_kdefines.push_back(std::get<std::string>(token.value));
@@ -784,7 +786,7 @@ std::string sanitised(char c) {
   if (c == -1)
     return "DEFAULT";
   if (c < 10)
-    return "<" + std::bitset<8>(c).to_string() + ">";
+    return "<" + string_format("%04x", (unsigned char)c) + ">";
   else if (c == '"')
     return "\\\"";
   else
@@ -1433,7 +1435,8 @@ void DFACCodeGenerator<T>::generate(
         "root", get_name(node->state_info.value(), false, true)));
 }
 
-template <typename T> std::string DFACCodeGenerator<T>::output(const GenLexer &&lexer_stuff) {
+template <typename T>
+std::string DFACCodeGenerator<T>::output(const GenLexer &&lexer_stuff) {
   std::ostringstream oss;
   auto root = output_cases.front();
   output_cases.pop_front();
@@ -1748,6 +1751,22 @@ void DFANLVMCodeGenerator<T>::generate(
         em = true;
       }
     }
+    if (builder.module.debug_mode) {
+      builder.module.Builder.CreateCall(
+          builder.module.nlex_debug,
+          {
+              llvm::ConstantInt::get(
+                  llvm::Type::getInt32Ty(builder.module.TheContext), 2),
+              builder.module.Builder.CreateCall(builder.module.nlex_current_p,
+                                                {}),
+              llvm::ConstantInt::get(
+                  llvm::Type::getInt32Ty(builder.module.TheContext), 0),
+              builder.get_or_create_tag(
+                  std::accumulate(emitted.begin(), emitted.end(), std::string{},
+                                  [](auto x, auto y) { return x + y; }),
+                  false, "debug_ex"),
+          });
+    }
     builder.module.Builder.CreateStore(
         llvm::ConstantInt::getTrue(
             llvm::Type::getInt1Ty(builder.module.TheContext)),
@@ -1797,6 +1816,20 @@ void DFANLVMCodeGenerator<T>::generate(
     if (code != "") {
       KaleidCompile(code, builder.module.Builder, true);
     }
+  }
+  if (builder.module.debug_mode) {
+    builder.module.Builder.CreateCall(
+        builder.module.nlex_debug,
+        {
+            llvm::ConstantInt::get(
+                llvm::Type::getInt32Ty(builder.module.TheContext), 0),
+            builder.module.Builder.CreateCall(builder.module.nlex_current_p,
+                                              {}),
+            llvm::ConstantInt::get(
+                llvm::Type::getInt32Ty(builder.module.TheContext), 0),
+            builder.get_or_create_tag(get_name(node->state_info.value()), false,
+                                      "debug_ex"),
+        });
   }
   builder.module.Builder.CreateCall(builder.module.nlex_next, {});
   auto readv = builder.module.Builder.CreateCall(builder.module.nlex_current_f,
@@ -1924,6 +1957,21 @@ void DFANLVMCodeGenerator<T>::generate(
       auto dst = BasicBlock::Create(builder.module.TheContext, "casejmp",
                                     builder.module.current_main());
       builder.module.Builder.SetInsertPoint(dst);
+      if (builder.module.debug_mode) {
+        builder.module.Builder.CreateCall(
+            builder.module.nlex_debug,
+            {
+                llvm::ConstantInt::get(
+                    llvm::Type::getInt32Ty(builder.module.TheContext), 3),
+                builder.module.Builder.CreateCall(builder.module.nlex_current_p,
+                                                  {}),
+                llvm::ConstantInt::get(
+                    llvm::Type::getInt32Ty(builder.module.TheContext), 0),
+                builder.get_or_create_tag(
+                    std::string(1, std::get<char>(tr->input)), false,
+                    "debug_ex"),
+            });
+      }
       if (!deflBB) {
         builder.module.add_char_to_token(std::get<char>(tr->input));
         increment_(builder.module.chars_since_last_final,
@@ -1952,13 +2000,17 @@ void DFANLVMCodeGenerator<T>::generate(
   builder.module.exitScope();
 }
 
-template <typename T> std::string DFANLVMCodeGenerator<T>::output(const GenLexer &&lexer_stuff) {
+template <typename T>
+std::string DFANLVMCodeGenerator<T>::output(const GenLexer &&lexer_stuff) {
   builder.first_root = this->root_bb;
   builder.end(lexer_stuff);
   return "";
 }
 
-template <typename T> std::string CodeGenerator<T>::output(const GenLexer &&lexer_stuff) { __asm("int3"); }
+template <typename T>
+std::string CodeGenerator<T>::output(const GenLexer &&lexer_stuff) {
+  __asm("int3");
+}
 
 template <typename T>
 void CodeGenerator<T>::generate(
@@ -2342,7 +2394,8 @@ int main(int argc, char *argv[]) {
                  rootdfa->metadata.total_capturing_groups});
 
             nlvmg.generate(rootdfa);
-            nlvmg.output({parser.gen_lexer_options, parser.gen_lexer_stopwords,
+            nlvmg.output(
+                {parser.gen_lexer_options, parser.gen_lexer_stopwords,
                  parser.gen_lexer_ignores, parser.gen_lexer_normalisations,
                  parser.gen_lexer_literal_tags, parser.gen_lexer_kdefines,
                  parser.hastagpos
@@ -2357,19 +2410,19 @@ int main(int argc, char *argv[]) {
           nlvmg.builder.prepare(
               {parser.gen_lexer_options, parser.gen_lexer_stopwords,
                parser.gen_lexer_ignores, parser.gen_lexer_normalisations,
-               parser.gen_lexer_literal_tags,parser.gen_lexer_kdefines,
+               parser.gen_lexer_literal_tags, parser.gen_lexer_kdefines,
                parser.hastagpos ? std::optional<TagPosSpecifier>{parser.tagpos}
                                 : std::optional<TagPosSpecifier>{},
                rootdfa->metadata.total_capturing_groups});
 
           nlvmg.generate(rootdfa);
-          nlvmg.output({parser.gen_lexer_options, parser.gen_lexer_stopwords,
-                 parser.gen_lexer_ignores, parser.gen_lexer_normalisations,
-                 parser.gen_lexer_literal_tags,parser.gen_lexer_kdefines,
-                 parser.hastagpos
-                     ? std::optional<TagPosSpecifier>(parser.tagpos)
-                     : std::optional<TagPosSpecifier>{},
-                 rootdfa->metadata.total_capturing_groups});
+          nlvmg.output(
+              {parser.gen_lexer_options, parser.gen_lexer_stopwords,
+               parser.gen_lexer_ignores, parser.gen_lexer_normalisations,
+               parser.gen_lexer_literal_tags, parser.gen_lexer_kdefines,
+               parser.hastagpos ? std::optional<TagPosSpecifier>(parser.tagpos)
+                                : std::optional<TagPosSpecifier>{},
+               rootdfa->metadata.total_capturing_groups});
         }
         continue;
       } else if (line == "")
@@ -2449,19 +2502,19 @@ int main(int argc, char *argv[]) {
       nlvmg.builder.prepare(
           {parser.gen_lexer_options, parser.gen_lexer_stopwords,
            parser.gen_lexer_ignores, parser.gen_lexer_normalisations,
-           parser.gen_lexer_literal_tags,parser.gen_lexer_kdefines,
+           parser.gen_lexer_literal_tags, parser.gen_lexer_kdefines,
            parser.hastagpos ? std::optional<TagPosSpecifier>{parser.tagpos}
                             : std::optional<TagPosSpecifier>{},
            rootdfa->metadata.total_capturing_groups});
 
       nlvmg.generate(rootdfa);
       nlvmg.output({parser.gen_lexer_options, parser.gen_lexer_stopwords,
-                 parser.gen_lexer_ignores, parser.gen_lexer_normalisations,
-                 parser.gen_lexer_literal_tags,parser.gen_lexer_kdefines,
-                 parser.hastagpos
-                     ? std::optional<TagPosSpecifier>(parser.tagpos)
-                     : std::optional<TagPosSpecifier>{},
-                 rootdfa->metadata.total_capturing_groups});
+                    parser.gen_lexer_ignores, parser.gen_lexer_normalisations,
+                    parser.gen_lexer_literal_tags, parser.gen_lexer_kdefines,
+                    parser.hastagpos
+                        ? std::optional<TagPosSpecifier>(parser.tagpos)
+                        : std::optional<TagPosSpecifier>{},
+                    rootdfa->metadata.total_capturing_groups});
     }
     free(data);
   }

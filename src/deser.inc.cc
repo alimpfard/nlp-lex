@@ -29,7 +29,8 @@ static bool last_entry_complete = false;
 extern "C" nlex::POSTag::TType *__nlex_get_deser_postag_TS() noexcept {
   if (_m_initd)
     return _m_value.data();
-  std::istringstream iss{std::string(&__nlex_postag_data, __nlex_postag_data_length)};
+  std::istringstream iss{
+      std::string(&__nlex_postag_data, __nlex_postag_data_length)};
   iss >> bits(_m_value);
   _m_initd = true;
   return _m_value.data();
@@ -63,7 +64,7 @@ extern "C" void __nlex_apply_postag(_sresult *val) {
   }
   if (!_m_toplevel)
     return;
-  
+
   if (data_store.size() == 0)
     return;
 
@@ -77,7 +78,7 @@ extern "C" void __nlex_apply_postag(_sresult *val) {
     std::vector<std::string> inp;
     for (auto &s : sent)
       inp.push_back(std::string(s.start, s.length));
-    auto rvec = nlex::POSTag::viterbi(TS[0], TS[1], inp);
+    auto rvec = nlex::POSTag::viterbi(TS[1], TS[0], inp);
     auto it = sent.begin();
     for (auto i{0}; i < rvec.size(); ++i, std::advance(it, 1))
       it->POS = strdup(rvec[i].c_str());

@@ -7,14 +7,17 @@ option unsafe_normaliser on
 # only log errors
 option log_error on
 #
+# capture groups
+option capturing_groups on
+#
 # POS tag (WIP)
 # Splitting sentences also uses this rule 
 tag pos with delimiter SentenceDelimiter{*} every 2 tokens from "/home/Test/Documents/playground/citron/!NLP/part-6/data.xx"
 #
 PersianWord       :: [آائبپتثجچحخدذرزژسشصضطظعغفقکكلمنوهی\u200c]+
-EnglishWord       :: [A-Za-z]+
+EnglishWord       :: [a-zA-Z]+
 Number            :: [0123456789۰۱۲۳۴۵۶۷۸۹]+
-Punc              :: [,،:;'()*%~:؛«»/\u002da#$%^&_]+
+Punc              :: [,:;'()*%~:؛«»/\u002da#$%^&_]+
 SentenceDelimiter :: [.؟!?]
 Space             :: [ 	\u000a]+
 Mention           :: @[A-Za-z][A-Za-z_0-9]{4,}
@@ -23,11 +26,10 @@ Mention           :: @[A-Za-z][A-Za-z_0-9]{4,}
 emoji   -- "\uc{RGI}"
 #
 maybe_specifier :- ([a-z]+://)?
-uri :- (([a-zA-Z0-9_]|-)+\.)+
-tld :- [a-z]{2,}
+uri :- ([a-zA-Z0-9_]|-)+(\.([a-zA-Z0-9_]|-)+)+
 maybe_port :- (:\d+)?
 #
-link :: {{maybe_specifier}}{{uri}}{{tld}}{{maybe_port}}([a-zA-Z_0-9@:%\+.~\?&/=]|-)+
+Link :: {{maybe_specifier}}{{uri}}{{maybe_port}}([a-zA-Z_0-9@:%\+.~\?&/=]|-)+
 #
 # omit spaces from token output
 ignore [Space]
@@ -104,4 +106,6 @@ normalise {۽} to ﻉ
 normalise {ۜ ۩ ۡ ۖ ۬ ۣ ۢ ۞ ۠ ۚ ۥ ۤ ۛ ۝ ۧ ۘ ۦ ۭ ۗ ۫ ۨ ۟ ۪ ۙ} to _
 normalise {ی ۍ ې ے ۓ ێ ؽ ﻱ ؠ ۑ ؾ ؿ ٸ ﻯ ﺉ ﯼ ي} to ی
 normalise {ـ} to _
+# seems to confuse the regex engine
+normalise {،} to ,
 #
