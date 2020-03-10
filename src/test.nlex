@@ -1,5 +1,5 @@
 
-EnglishWord :: a+
+EnglishWord :: (a+)b+\g1
 Punc :: \.
 
 Link :: a+\.1

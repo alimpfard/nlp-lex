@@ -3,7 +3,7 @@ MAINTAINER Ali Mohammad Pur <devanothertest@gmail.com>
 
 RUN pacman -Syu --noconfirm
 RUN pacman -S --noconfirm llvm openmp intel-tbb tcl bash
-RUN pacman -S --noconfirm git cmake make clang
+RUN pacman -S --noconfirm git cmake make clang vim
 RUN git clone https://github.com/alimpfard/nlp-lex
 
 WORKDIR /nlp-lex/src
