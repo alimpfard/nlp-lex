@@ -1478,6 +1478,23 @@ void DFANLVMCodeGenerator<T>::generate(
     llvm::IRBuilder<> dbuilder(builder.module.TheContext);
     dbuilder.SetInsertPoint(builder.module.start);
     dbuilder.CreateBr(mroot);
+
+        dbuilder.SetInsertPoint(
+            builder.module.backtrackBB);
+        auto matched = dbuilder.CreateLoad(builder.module.anything_matched);
+        dbuilder.CreateStore(
+          llvm::Constant::getNullValue(llvm::Type::getInt1Ty(builder.module.TheContext)),
+          builder.module.anything_matched
+        );
+        dbuilder.CreateStore(
+          dbuilder.CreateSelect(
+            matched,
+            dbuilder.CreateLoad(builder.module.nlex_errc),
+            llvm::ConstantInt::get(llvm::Type::getInt8Ty(builder.module.TheContext), 42)
+          ),
+          builder.module.nlex_errc
+        );
+        dbuilder.CreateCondBr(matched, mroot, builder.module.BBfinalise);
   }
   builder.issubexp = true;
   std::set<llvm::Function *> visitedFuncs{};
@@ -1506,6 +1523,7 @@ void DFANLVMCodeGenerator<T>::generate(
         dbuilder.SetInsertPoint(
             &builder.module.current_main()->getEntryBlock());
         dbuilder.CreateBr(mroot);
+
         builder.module._cmain = cmain;
       }
     }
@@ -1546,6 +1564,7 @@ void DFANLVMCodeGenerator<T>::generate(
                                       // get_name(node->state_info.value()),
                                       "", builder.module.current_main());
   llvm::BasicBlock *BBnode = BB;
+  auto my_alloca = builder.module.getFreshBranchAlloca(BB);
   BasicBlock *BBend =
       BasicBlock::Create(builder.module.TheContext,
                          /* get_name(node->state_info.value()) + "{::}E" */ "E",
@@ -1557,16 +1576,32 @@ void DFANLVMCodeGenerator<T>::generate(
                  node->default_transition == nullptr);
 
   if (!finalm) {
-    builder.module.Builder.CreateCall(
-        builder.module.nlex_restore,
-        {builder.module.Builder.CreateLoad(
-            builder.module.last_final_state_position)});
+    if (builder.module.debug_mode) {
+      builder.module.Builder.CreateCall(
+          builder.module.nlex_debug,
+          {
+              llvm::ConstantInt::get(
+                  llvm::Type::getInt32Ty(builder.module.TheContext), 4),
+              builder.module.Builder.CreateCall(builder.module.nlex_current_p,
+                                                {}),
+              llvm::ConstantInt::get(
+                  llvm::Type::getInt32Ty(builder.module.TheContext), 0),
+              builder.get_or_create_tag(get_name(node->state_info.value(), true),
+                  false, "debug_ex"),
+          });
+    }
+    // note that we have tried this branch
     builder.module.Builder.CreateStore(
-        builder.module.Builder.CreateNSWSub(
-            builder.module.Builder.CreateLoad(builder.module.token_length),
-            builder.module.Builder.CreateLoad(
-                builder.module.chars_since_last_final)),
-        builder.module.token_length);
+        llvm::ConstantInt::get(llvm::Type::getInt1Ty(builder.module.TheContext), 1),
+        my_alloca);
+
+      builder.module.Builder.CreateBr(
+        builder.module.backtrackBB
+      );
+    // builder.module.Builder.CreateCall(
+    //     builder.module.nlex_restore,
+    //     {builder.module.Builder.CreateLoad(
+    //         builder.module.last_final_state_position)});
   } else {
     builder.module.Builder.CreateCall(
         builder.module.nlex_restore,
@@ -1574,8 +1609,8 @@ void DFANLVMCodeGenerator<T>::generate(
             builder.module.Builder.CreateCall(builder.module.nlex_current_p),
             {llvm::ConstantInt::get(
                 llvm::Type::getInt32Ty(builder.module.TheContext), -1)})});
+    builder.module.Builder.CreateBr(builder.module.BBfinalise);
   }
-  builder.module.Builder.CreateBr(builder.module.BBfinalise);
 
   builder.module.Builder.SetInsertPoint(BB);
   // if there are assertions, apply them now
@@ -1831,6 +1866,7 @@ void DFANLVMCodeGenerator<T>::generate(
                                       "debug_ex"),
         });
   }
+  // read next char
   builder.module.Builder.CreateCall(builder.module.nlex_next, {});
   auto readv = builder.module.Builder.CreateCall(builder.module.nlex_current_f,
                                                  {}, "readv");
@@ -1938,6 +1974,7 @@ void DFANLVMCodeGenerator<T>::generate(
     deflBB = bb_;
   }
   builder.module.Builder.SetInsertPoint(BBnode);
+
   if (node->outgoing_transitions.size() > 0) {
     if (deflBB)
       builder.module.add_value_to_token(readv);
@@ -1954,8 +1991,18 @@ void DFANLVMCodeGenerator<T>::generate(
         generate(tr->target, visited, blocks);
 
       auto jdst = blocks[tr->target];
+      auto jdst_id = builder.module.block_allocas[jdst];
       auto dst = BasicBlock::Create(builder.module.TheContext, "casejmp",
                                     builder.module.current_main());
+      auto rdst = BasicBlock::Create(builder.module.TheContext, "rcasejmp",
+                                    builder.module.current_main());
+      builder.module.Builder.SetInsertPoint(rdst);
+      builder.module.Builder.CreateCondBr(
+        builder.module.Builder.CreateLoad(jdst_id),
+        builder.module.backtrackExitBB,
+        dst
+      );
+
       builder.module.Builder.SetInsertPoint(dst);
       if (builder.module.debug_mode) {
         builder.module.Builder.CreateCall(
@@ -1982,7 +2029,7 @@ void DFANLVMCodeGenerator<T>::generate(
       switchinst->addCase(
           ConstantInt::get(IntegerType::get(builder.module.TheContext, 8),
                            std::to_string((int)std::get<char>(tr->input)), 10),
-          dst);
+          rdst);
     }
   } else {
     if (deflBB) {

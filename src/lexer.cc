@@ -864,6 +864,7 @@ inline Token NLexer::_next() {
       return errtok;
     }
     state = LexerState::Toplevel;
+    regex.mark_leaves();
     return Token{TOK_REGEX, lineno, offset - regex.str.size(), regex.str.size(),
                  regex};
   }
@@ -1708,7 +1709,37 @@ std::optional<Regexp> NLexer::regexp_quantifier(Regexp &reg) {
   return reg;
 }
 
+void Regexp::mark_leaves() {
+  return;
+  auto mark = [](Regexp& reg) { reg.is_leaf = true; };
+  switch (type) {
+  case Symbol:
+    mark(*this);
+    break;
+  case Alternative:
+    for (auto *ch : children)
+      ch->mark_leaves();
+    break;
+  case Concat:
+    children.back()->mark_leaves();
+    break;
+  case Nested:
+    std::get<Regexp*>(inner)->mark_leaves();
+    break;
+  case Dot:
+  case Literal:
+  case Escape:
+  case CharacterClass:
+  case Assertion:
+  case SubExprCall:
+  case Code:
+    mark(*this);
+    break;
+  }
+}
+
 Regexp Regexp::concat(const Regexp &other) {
+  is_leaf = false;
   if (type == RegexpType::Assertion && other.type == RegexpType::Assertion) {
     auto assertions = std::get<std::vector<RegexpAssertion>>(inner);
     std::vector<RegexpAssertion> asserts{assertions.cbegin(),
@@ -1754,7 +1785,7 @@ Regexp Regexp::concat(const Regexp &other) {
     std::vector<Regexp *> vec;
     vec.push_back(new Regexp(*this));
     for (auto child : other.children)
-      vec.push_back(child);
+      vec.push_back(child->set_is_leaf_p(false));
     return Regexp{str + (std::string{"|"} + other.str),
                   RegexpType::Alternative,
                   vec,
@@ -1764,13 +1795,13 @@ Regexp Regexp::concat(const Regexp &other) {
                                  other.debug_info.name.c_str())}};
   }
   if (type == RegexpType::Concat) {
-    children.push_back(new Regexp{other});
+    children.push_back((new Regexp{other})->set_is_leaf_p(false));
     str += other.str;
     return *this;
   }
   std::vector<Regexp *> vec;
-  vec.push_back(new Regexp{*this});
-  vec.push_back(new Regexp{other});
+  vec.push_back((new Regexp{*this})->set_is_leaf_p(false));
+  vec.push_back((new Regexp{other})->set_is_leaf_p(false));
 
   return Regexp(this->str + other.str, RegexpType::Concat, vec,
                 {debug_info.lineno, debug_info.offset,

@@ -41,7 +41,7 @@ struct Regexp {
   std::variant<std::string, char, Regexp *, std::vector<RegexpAssertion>> inner;
   std::vector<Regexp *> children;
 
-  bool is_leaf = true;
+  bool is_leaf = false;
   bool was_reference = false;
   std::optional<std::string> referenced_symbol, named_rule;
 
@@ -54,6 +54,10 @@ public:
 
   std::optional<RepeatQuantifier> repeat;
 
+  Regexp& set_is_leaf(bool il) { is_leaf = il; return *this; }
+  Regexp* set_is_leaf_p(bool il) { is_leaf = il; return this; }
+  void mark_leaves();
+  
   bool operator==(const Regexp &other) const;
 
   Regexp concat(const Regexp &other);

@@ -110,9 +110,11 @@ void __nlex_produce_debug(int action, const char* position, int reg_id, char con
     case 0: act = "shift"; break;
     case 1: act = "fail"; break;
     case 2: act = "succeed"; break;
+    case 3: act = "jump"; break;
+    case 4: act = "backtrack"; break;
     default: act = "?"; break;
   }
-  printf("[DEBUG] [%.*s] %s in %p from regex [%s] id %d\n", 1+__nlex_utf8_length(*position), position, act, position, name, reg_id);
+  printf("[DEBUG] [%.*s](%#x) %s in %p from regex [%s] id %d\n", 1+__nlex_utf8_length(*position), position, *position, act, position, name, reg_id);
 }
 
 /* lib code */
