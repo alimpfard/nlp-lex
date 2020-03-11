@@ -1,0 +1,8 @@
+test :: [a-f]+
+space :: [ ]
+
+sentence_delm :: \.
+
+ignore [ space ]
+
+tag pos every 2 tokens with delimiter sentence_delm{*} from "data/0009-pos.data"

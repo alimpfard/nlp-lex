@@ -1,0 +1,8 @@
+4
+res at 0x7ffffb369268, s at 0x7f9200a9f010
+processing - 'aaaa
+'
+match {'aaaa' - (null) - 4 test} is not a stopword
+match {'
+' - (null) - 1 newline} is not a stopword
+no match {'' - (null) - 0 newline} is not a stopword

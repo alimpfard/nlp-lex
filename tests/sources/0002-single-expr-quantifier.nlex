@@ -1,0 +1,12 @@
+# Numeric limit with both sides has an issue.
+test_plus :: 0+
+test_star :: 1*
+test_numeric_limit_left :: 2{1,}
+# test_numeric_limit_right :: 3{0,10}
+test_plus_plus :: 4++
+test_maybe :: 5?6
+test_plus_maybe :: 7+?8
+test_star_maybe :: 9*?a
+test_numeric_limit_left_maybe :: b{1,}?c
+# test_numeric_limit_right_maybe :: d{1,2}?e
+space :: [ ]

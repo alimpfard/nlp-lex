@@ -1,0 +1,8 @@
+# Inline code facilities
+define \
+    global x = 0 \
+    def test() 1 \
+    def aa() (x = x + 1)
+
+test :: (a\E{aa()})+
+newline :: [\u000a]\E{dprintdf(1, "%.0f\n", x)}

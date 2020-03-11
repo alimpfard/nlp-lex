@@ -1,0 +1,9 @@
+test_correct :: [ab]+
+test_incorrect :: [^ab]+
+
+normalise { c d e f g h i j k l m n } to a
+normalise { o p q r s t u v w x y z } to b
+
+# unicode literal :: .
+normalise { \+002e } to a
+normalise { ش } to a

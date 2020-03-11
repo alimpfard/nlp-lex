@@ -1,0 +1,8 @@
+inc :- test+
+tester :: {{inc}}er
+
+sub :: {{tester}}s
+
+space :: [ ]
+
+ignore [ space ]
