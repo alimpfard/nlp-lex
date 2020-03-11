@@ -4,7 +4,7 @@ import json
 import time
 import sys
 
-wo = NLexWrappedObject("../../../src/playground/all.so")
+wo = NLexWrappedObject("/home/Test/Documents/nlp-lex/wrapper/python/nlex/all.so")
 ns = time.time_ns()
 ts = wo.process_json(open('input.json', 'r').read(), clean=False)
 ns2 = time.time_ns()
