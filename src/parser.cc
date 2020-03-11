@@ -758,6 +758,8 @@ std::string get_name(std::set<NFANode<T> *> nodes, bool simple = false,
 
     if (!ptr)
       oss << " ";
+    else
+      oss << ",";
   }
 
   if (!ptr)
@@ -867,9 +869,11 @@ std::string NFANode<T>::gen_dot(
                                         node->inline_code.value(), "\"", "\\\"")
                                         .c_str())
                     : "")
-        << '"' << "] LR_" << nodeids[node] << ";" << ss_end;
+        << '"' << "] LR_" << nodeids[node] << string_format("_%p", node) << ";"
+        << ss_end;
   }
-  std::map<std::pair<int, int>, std::pair<std::set<std::string>, NFANode<T> *>>
+  std::map<std::pair<std::string, std::string>,
+           std::pair<std::set<std::string>, NFANode<T> *>>
       target_labels{};
   for (auto tr : transitions) {
     int fid, tid;
@@ -887,7 +891,9 @@ std::string NFANode<T>::gen_dot(
     } else
       tid = nodeids[tr.target];
 
-    auto &tl = target_labels[std::make_pair(fid, tid)];
+    auto &tl =
+        target_labels[std::make_pair(string_format("%d_%p", fid, tr.source),
+                                     string_format("%d_%p", tid, tr.target))];
     tl.first.insert(
         std::holds_alternative<EpsilonTransitionT>(tr.input)
             ? string_format("<%sEpsilon>",
@@ -1012,11 +1018,14 @@ std::string DFANode<T>::gen_dot(
                                                       "\"", "\\\"")
                                                       .c_str())
                                   : "")
-          << '"' << "] LR_" << nodeids[node] << ";" << ss_end;
+          << '"' << "] LR_" << nodeids[node] << string_format("_%p", node)
+          << ";" << ss_end;
     else
-      oss << "LR_" << nodeids[node] << ";" << ss_end;
+      oss << "LR_" << nodeids[node] << string_format("_%p", node) << ";"
+          << ss_end;
   }
-  std::map<std::pair<int, int>, std::pair<std::set<std::string>, DFANode<T> *>>
+  std::map<std::pair<std::string, std::string>,
+           std::pair<std::set<std::string>, DFANode<T> *>>
       target_labels{};
   for (auto tr : transitions) {
     int fid, tid;
@@ -1034,7 +1043,9 @@ std::string DFANode<T>::gen_dot(
     } else
       tid = nodeids[tr.target];
 
-    auto &tl = target_labels[std::make_pair(fid, tid)];
+    auto &tl =
+        target_labels[std::make_pair(string_format("%d_%p", fid, tr.source),
+                                     string_format("%d_%p", tid, tr.target))];
     if (std::holds_alternative<char>(tr.input))
       tl.first.insert(sanitised(std::get<char>(tr.input)));
     else
@@ -1479,22 +1490,18 @@ void DFANLVMCodeGenerator<T>::generate(
     dbuilder.SetInsertPoint(builder.module.start);
     dbuilder.CreateBr(mroot);
 
-        dbuilder.SetInsertPoint(
-            builder.module.backtrackBB);
-        auto matched = dbuilder.CreateLoad(builder.module.anything_matched);
-        dbuilder.CreateStore(
-          llvm::Constant::getNullValue(llvm::Type::getInt1Ty(builder.module.TheContext)),
-          builder.module.anything_matched
-        );
-        dbuilder.CreateStore(
-          dbuilder.CreateSelect(
-            matched,
-            dbuilder.CreateLoad(builder.module.nlex_errc),
-            llvm::ConstantInt::get(llvm::Type::getInt8Ty(builder.module.TheContext), 42)
-          ),
-          builder.module.nlex_errc
-        );
-        dbuilder.CreateCondBr(matched, mroot, builder.module.BBfinalise);
+    dbuilder.SetInsertPoint(builder.module.backtrackBB);
+    auto matched = dbuilder.CreateLoad(builder.module.anything_matched);
+    dbuilder.CreateStore(llvm::Constant::getNullValue(
+                             llvm::Type::getInt1Ty(builder.module.TheContext)),
+                         builder.module.anything_matched);
+    dbuilder.CreateStore(
+        dbuilder.CreateSelect(
+            matched, dbuilder.CreateLoad(builder.module.nlex_errc),
+            llvm::ConstantInt::get(
+                llvm::Type::getInt8Ty(builder.module.TheContext), 42)),
+        builder.module.nlex_errc);
+    dbuilder.CreateCondBr(matched, mroot, builder.module.BBfinalise);
   }
   builder.issubexp = true;
   std::set<llvm::Function *> visitedFuncs{};
@@ -1581,23 +1588,23 @@ void DFANLVMCodeGenerator<T>::generate(
           builder.module.nlex_debug,
           {
               llvm::ConstantInt::get(
-                  llvm::Type::getInt32Ty(builder.module.TheContext), 4),
+                  llvm::Type::getInt32Ty(builder.module.TheContext),
+                  4), // backtrack
               builder.module.Builder.CreateCall(builder.module.nlex_current_p,
                                                 {}),
-              llvm::ConstantInt::get(
-                  llvm::Type::getInt32Ty(builder.module.TheContext), 0),
-              builder.get_or_create_tag(get_name(node->state_info.value(), true),
-                  false, "debug_ex"),
+              builder.module.Builder.CreateLoad(
+                  builder.module.last_backtrack_branch_position),
+              builder.get_or_create_tag(string_format("%p", node), false,
+                                        "debug_ex"),
           });
     }
     // note that we have tried this branch
     builder.module.Builder.CreateStore(
-        llvm::ConstantInt::get(llvm::Type::getInt1Ty(builder.module.TheContext), 1),
+        llvm::ConstantInt::get(llvm::Type::getInt1Ty(builder.module.TheContext),
+                               1),
         my_alloca);
 
-      builder.module.Builder.CreateBr(
-        builder.module.backtrackBB
-      );
+    builder.module.Builder.CreateBr(builder.module.backtrackBB);
     // builder.module.Builder.CreateCall(
     //     builder.module.nlex_restore,
     //     {builder.module.Builder.CreateLoad(
@@ -1794,12 +1801,10 @@ void DFANLVMCodeGenerator<T>::generate(
                   llvm::Type::getInt32Ty(builder.module.TheContext), 2),
               builder.module.Builder.CreateCall(builder.module.nlex_current_p,
                                                 {}),
-              llvm::ConstantInt::get(
-                  llvm::Type::getInt32Ty(builder.module.TheContext), 0),
-              builder.get_or_create_tag(
-                  std::accumulate(emitted.begin(), emitted.end(), std::string{},
-                                  [](auto x, auto y) { return x + y; }),
-                  false, "debug_ex"),
+              llvm::Constant::getNullValue(llvm::PointerType::getInt8PtrTy(
+                  builder.module.TheContext, 0)),
+              builder.get_or_create_tag(string_format("%p", node), false,
+                                        "debug_ex"),
           });
     }
     builder.module.Builder.CreateStore(
@@ -1857,12 +1862,12 @@ void DFANLVMCodeGenerator<T>::generate(
         builder.module.nlex_debug,
         {
             llvm::ConstantInt::get(
-                llvm::Type::getInt32Ty(builder.module.TheContext), 0),
+                llvm::Type::getInt32Ty(builder.module.TheContext), 0), // shift
             builder.module.Builder.CreateCall(builder.module.nlex_current_p,
                                               {}),
-            llvm::ConstantInt::get(
-                llvm::Type::getInt32Ty(builder.module.TheContext), 0),
-            builder.get_or_create_tag(get_name(node->state_info.value()), false,
+            llvm::Constant::getNullValue(
+                llvm::PointerType::getInt8PtrTy(builder.module.TheContext, 0)),
+            builder.get_or_create_tag(string_format("%p", node), false,
                                       "debug_ex"),
         });
   }
@@ -1995,13 +2000,11 @@ void DFANLVMCodeGenerator<T>::generate(
       auto dst = BasicBlock::Create(builder.module.TheContext, "casejmp",
                                     builder.module.current_main());
       auto rdst = BasicBlock::Create(builder.module.TheContext, "rcasejmp",
-                                    builder.module.current_main());
+                                     builder.module.current_main());
       builder.module.Builder.SetInsertPoint(rdst);
       builder.module.Builder.CreateCondBr(
-        builder.module.Builder.CreateLoad(jdst_id),
-        builder.module.backtrackExitBB,
-        dst
-      );
+          builder.module.Builder.CreateLoad(jdst_id),
+          builder.module.backtrackExitBB, dst);
 
       builder.module.Builder.SetInsertPoint(dst);
       if (builder.module.debug_mode) {
@@ -2009,14 +2012,14 @@ void DFANLVMCodeGenerator<T>::generate(
             builder.module.nlex_debug,
             {
                 llvm::ConstantInt::get(
-                    llvm::Type::getInt32Ty(builder.module.TheContext), 3),
+                    llvm::Type::getInt32Ty(builder.module.TheContext),
+                    3), // jump
                 builder.module.Builder.CreateCall(builder.module.nlex_current_p,
                                                   {}),
-                llvm::ConstantInt::get(
-                    llvm::Type::getInt32Ty(builder.module.TheContext), 0),
-                builder.get_or_create_tag(
-                    std::string(1, std::get<char>(tr->input)), false,
-                    "debug_ex"),
+                llvm::Constant::getNullValue(llvm::PointerType::getInt8PtrTy(
+                    builder.module.TheContext, 0)),
+                builder.get_or_create_tag(string_format("%p", node), false,
+                                          "debug_ex"),
             });
       }
       if (!deflBB) {
@@ -2091,7 +2094,7 @@ std::string exec(const char *cmd, const bool &run) {
 }
 
 static const char m_help[] = R"(
-./a.out [args] [filename]
+nlex [args] [filename]
 ARGS:
     -h
         This help
@@ -2148,6 +2151,26 @@ ARGS:
 
     --features <features>
         Set target CPU features
+
+Reading from stdin (if no input file is given):
+nlex [args]
+
+  You'd be presented with a 'Toplevel>' prompt, wherein you can enter expressions.
+  everything is the same as a normal file, except compiler actions are prepended with a dot (.)
+  and they must be explicitly invoked:
+    - .end
+      Exits the repl
+    - .nlvm
+      Compiles to object file
+    - .tree
+      Prints out the AST
+    - .dot
+      Prints out the DOT code for the (unoptimised) NFA
+    - .gengraph
+      Enables/Disables graph generation
+    - .opt=
+      Allows you to specify optimisation level (anything over 0 will take a _long_ time, and the gains are extremely small)
+      also as a downside, you lose all debug info
 )";
 void parse_commandline(int argc, char *argv[], /* out */ char **filename,
                        /* out */ bool *generate_graph,

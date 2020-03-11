@@ -62,7 +62,8 @@ extern nlvm::TargetTriple targetTriple;
 namespace nlvm {
 static llvm::AllocaInst *createEntryBlockAlloca(llvm::Function *TheFunction,
                                                 const std::string &VarName,
-                                                llvm::Type *ty, bool init = false) {
+                                                llvm::Type *ty,
+                                                bool init = false) {
   llvm::IRBuilder<> TmpB(&TheFunction->getEntryBlock(),
                          TheFunction->getEntryBlock().begin());
   auto alloca = TmpB.CreateAlloca(ty, 0, VarName.c_str());
@@ -78,12 +79,11 @@ public:
 
   std::vector<llvm::BasicBlock *> exit_blocks = {};
 
-  llvm::AllocaInst* getFreshBranchAlloca(llvm::BasicBlock* bb) {
+  llvm::AllocaInst *getFreshBranchAlloca(llvm::BasicBlock *bb) {
     auto &alloca = block_allocas[bb];
     if (alloca == nullptr)
       return block_allocas[bb] = createEntryBlockAlloca(
-        main(), "lbtr_flag",
-        llvm::Type::getInt1Ty(TheContext), true);
+                 main(), "lbtr_flag", llvm::Type::getInt1Ty(TheContext), true);
   }
 
   llvm::DIBuilder *DBuilder;
@@ -91,7 +91,7 @@ public:
   llvm::DIFile *DIFile;
   std::vector<llvm::DIScope *> LexicalDebugBlocks;
 
-  std::map<llvm::BasicBlock*, llvm::AllocaInst*> block_allocas = {};
+  std::map<llvm::BasicBlock *, llvm::AllocaInst *> block_allocas = {};
 
   llvm::Function *nlex_current_f;
   llvm::Function *nlex_current_p;
@@ -125,7 +125,8 @@ public:
   llvm::GlobalVariable *nlex_capture_indices = nullptr;
 
   llvm::Function *_main = nullptr;
-  llvm::BasicBlock *main_entry, *BBfinalise = nullptr, *backtrackBB = nullptr, *backtrackExitBB = nullptr;
+  llvm::BasicBlock *main_entry, *BBfinalise = nullptr, *backtrackBB = nullptr,
+                                *backtrackExitBB = nullptr;
 
   llvm::AllocaInst *last_tag;
   llvm::AllocaInst *last_final_state_position;
@@ -354,12 +355,9 @@ public:
         llvm::ConstantInt::get(chars_since_last_final->getAllocatedType(), 0),
         chars_since_last_final);
     auto val = builder.CreateCall(nlex_current_p, {});
-    builder.CreateStore(val,
-                        last_final_state_position);
-  // store backtrack position
-  builder.CreateStore(val,
-    last_backtrack_branch_position
-  );
+    builder.CreateStore(val, last_final_state_position);
+    // store backtrack position
+    builder.CreateStore(val, last_backtrack_branch_position);
     builder.CreateStore(
         llvm::ConstantInt::getFalse(llvm::Type::getInt1Ty(TheContext)),
         anything_matched);
@@ -1166,7 +1164,7 @@ public:
           llvm::Type::getVoidTy(module.TheContext),
           {llvm::Type::getInt32Ty(module.TheContext),
            llvm::PointerType::getInt8PtrTy(module.TheContext, 0),
-           llvm::Type::getInt32Ty(module.TheContext),
+           llvm::PointerType::getInt8PtrTy(module.TheContext, 0),
            llvm::PointerType::getInt8PtrTy(module.TheContext, 0)},
           false);
       module.nlex_debug = module.mkfunc(true, "__nlex_produce_debug", false,
@@ -1490,12 +1488,12 @@ public:
         }
       }
     }
-    auto backtrackBB =
-      llvm::BasicBlock::Create(module.TheContext, "_backtrack", module.main());
-    
+    auto backtrackBB = llvm::BasicBlock::Create(module.TheContext, "_backtrack",
+                                                module.main());
+
     if (!module.backtrackBB)
       module.backtrackBB = backtrackBB;
-    
+
     module.Builder.SetInsertPoint(backtrackBB);
     module.Builder.CreateStore(
         llvm::ConstantInt::get(llvm::Type::getInt32Ty(module.TheContext), 0),
@@ -1505,24 +1503,23 @@ public:
         module.chars_since_last_final);
     // see into the abyss
     module.Builder.CreateCall(
-      module.nlex_restore,
-      {module.Builder.CreateLoad(module.last_backtrack_branch_position)}
-    );
+        module.nlex_restore,
+        {module.Builder.CreateLoad(module.last_backtrack_branch_position)});
 
-    auto backtrackExitBB =
-      llvm::BasicBlock::Create(module.TheContext, "_backtrack_exit", module.main());
-    
+    auto backtrackExitBB = llvm::BasicBlock::Create(
+        module.TheContext, "_backtrack_exit", module.main());
+
     if (!module.backtrackExitBB)
       module.backtrackExitBB = backtrackExitBB;
-    
+
     module.Builder.SetInsertPoint(backtrackExitBB);
     // see into the abyss
     module.Builder.CreateCall(
         module.nlex_restore,
         {module.Builder.CreateInBoundsGEP(
             module.Builder.CreateCall(module.nlex_current_p),
-            {llvm::ConstantInt::get(
-                llvm::Type::getInt32Ty(module.TheContext), -1)})});
+            {llvm::ConstantInt::get(llvm::Type::getInt32Ty(module.TheContext),
+                                    -1)})});
     module.Builder.CreateBr(module.BBfinalise);
   }
   void end(const GenLexer &lexer_stuff) {

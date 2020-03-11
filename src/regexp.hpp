@@ -34,7 +34,8 @@ struct RepeatQuantifier {
   int lowbound, highbound;
 };
 
-struct Regexp {
+class Regexp {
+public:
   // here there be dragons
   RegexpType type;
   CUDebugInformation debug_info;
@@ -45,7 +46,6 @@ struct Regexp {
   bool was_reference = false;
   std::optional<std::string> referenced_symbol, named_rule;
 
-public:
   std::string str;
 
   bool plus = false, star = false, lazy = false, store = false;
@@ -54,10 +54,16 @@ public:
 
   std::optional<RepeatQuantifier> repeat;
 
-  Regexp& set_is_leaf(bool il) { is_leaf = il; return *this; }
-  Regexp* set_is_leaf_p(bool il) { is_leaf = il; return this; }
+  Regexp &set_is_leaf(bool il) {
+    is_leaf = il;
+    return *this;
+  }
+  Regexp *set_is_leaf_p(bool il) {
+    is_leaf = il;
+    return this;
+  }
   void mark_leaves();
-  
+
   bool operator==(const Regexp &other) const;
 
   Regexp concat(const Regexp &other);

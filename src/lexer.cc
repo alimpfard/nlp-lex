@@ -1711,7 +1711,7 @@ std::optional<Regexp> NLexer::regexp_quantifier(Regexp &reg) {
 
 void Regexp::mark_leaves() {
   return;
-  auto mark = [](Regexp& reg) { reg.is_leaf = true; };
+  auto mark = [](Regexp &reg) { reg.is_leaf = true; };
   switch (type) {
   case Symbol:
     mark(*this);
@@ -1724,7 +1724,7 @@ void Regexp::mark_leaves() {
     children.back()->mark_leaves();
     break;
   case Nested:
-    std::get<Regexp*>(inner)->mark_leaves();
+    std::get<Regexp *>(inner)->mark_leaves();
     break;
   case Dot:
   case Literal:

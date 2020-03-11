@@ -1,5 +1,6 @@
+option debug_mode on
 
-EnglishWord :: (a+)b+\g1
+EnglishWord :: a+
 Punc :: \.
 
 Link :: a+\.1
