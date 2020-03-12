@@ -1453,6 +1453,7 @@ std::optional<Regexp> NLexer::regexp_expression() {
         break;
       }
       buffer[length++] = c;
+      escaped = false;
     } while (1);
     return Regexp{std::string{startp, source_p - startp},
                   RegexpType::CharacterClass, std::string{buffer, length},

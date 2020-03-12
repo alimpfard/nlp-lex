@@ -132,6 +132,7 @@ public:
   llvm::AllocaInst *last_final_state_position;
   llvm::AllocaInst *chars_since_last_final;
   llvm::AllocaInst *anything_matched;
+  llvm::AllocaInst *anything_matched_after_backtrack;
   llvm::AllocaInst *nlex_errc;
   llvm::AllocaInst *last_backtrack_branch_position;
 
@@ -339,6 +340,8 @@ public:
         llvm::PointerType::get(llvm::Type::getInt8Ty(TheContext), 0));
     anything_matched = createEntryBlockAlloca(
         _main, "lanything", llvm::Type::getInt1Ty(TheContext));
+    anything_matched_after_backtrack = createEntryBlockAlloca(
+        _main, "lbtr_anything", llvm::Type::getInt1Ty(TheContext));
     chars_since_last_final = createEntryBlockAlloca(
         _main, "lfinal_cs", llvm::Type::getInt32Ty(TheContext));
     last_final_state_position = createEntryBlockAlloca(
@@ -361,6 +364,9 @@ public:
     builder.CreateStore(
         llvm::ConstantInt::getFalse(llvm::Type::getInt1Ty(TheContext)),
         anything_matched);
+    builder.CreateStore(
+        llvm::ConstantInt::getFalse(llvm::Type::getInt1Ty(TheContext)),
+        anything_matched_after_backtrack);
     if (clear) {
       builder.CreateStore(
           llvm::ConstantInt::get(llvm::Type::getInt32Ty(TheContext), 0),
@@ -606,7 +612,7 @@ public:
         extern freed(ptr);
 
         extern variadic dprintdf(fd fmt);
-        
+
         extern cderef(ptr);
         extern cderefset(ptr val);
         extern dderef(ptr);
@@ -1555,7 +1561,8 @@ public:
 
     L.linkInModule(std::move(module.TheModule));
 
-    module.TheMPM->run(*Composite);
+    if (!module.debug_mode)
+        module.TheMPM->run(*Composite);
 
     legacy::PassManager pass;
     auto FileType = LLVMTargetMachine::CodeGenFileType::CGFT_ObjectFile;
@@ -1634,10 +1641,13 @@ public:
   }
 
   std::map<std::string, llvm::Constant *> registered_tags;
+  std::map<std::string, llvm::Constant *> registered_non_tags;
   llvm::Value *get_or_create_tag(std::string tag, bool istag = true,
                                  std::string name = "str") {
     if (name != "str") {
-      return mk_string(module.TheModule.get(), module.TheContext, tag, name);
+        if (registered_non_tags.count(tag))
+          return registered_non_tags[tag];
+        return registered_non_tags[tag] = mk_string(module.TheModule.get(), module.TheContext, tag, name);
     }
     if (istag) {
       auto pos = tag.find("{::}");

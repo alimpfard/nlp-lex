@@ -12,7 +12,7 @@ option capturing_groups on
 #
 # POS tag (WIP)
 # Splitting sentences also uses this rule 
-# tag pos with delimiter SentenceDelimiter{*} every 2 tokens from "/home/Test/Documents/playground/citron/!NLP/part-6/data.xx"
+tag pos with delimiter SentenceDelimiter{*} every 2 tokens from "/home/Test/Documents/playground/citron/!NLP/part-6/data.xx"
 #
 PersianWord       :: [آائبپتثجچحخدذرزژسشصضطظعغفقکكلمنوهی\u200c]+
 EnglishWord       :: [a-zA-Z]+

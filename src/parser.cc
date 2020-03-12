@@ -1491,10 +1491,15 @@ void DFANLVMCodeGenerator<T>::generate(
     dbuilder.CreateBr(mroot);
 
     dbuilder.SetInsertPoint(builder.module.backtrackBB);
-    auto matched = dbuilder.CreateLoad(builder.module.anything_matched);
+    auto matchedl = dbuilder.CreateLoad(builder.module.anything_matched);
+    auto matchedv = dbuilder.CreateLoad(builder.module.anything_matched_after_backtrack);
+    auto matched = dbuilder.CreateAnd(matchedl, matchedv);
     dbuilder.CreateStore(llvm::Constant::getNullValue(
                              llvm::Type::getInt1Ty(builder.module.TheContext)),
                          builder.module.anything_matched);
+                         dbuilder.CreateStore(llvm::ConstantInt::getFalse(
+                                                  llvm::Type::getInt1Ty(builder.module.TheContext)),
+                                              builder.module.anything_matched_after_backtrack);
     dbuilder.CreateStore(
         dbuilder.CreateSelect(
             matched, dbuilder.CreateLoad(builder.module.nlex_errc),
@@ -2022,6 +2027,10 @@ void DFANLVMCodeGenerator<T>::generate(
                                           "debug_ex"),
             });
       }
+    builder.module.Builder.CreateStore(
+        llvm::ConstantInt::getTrue(
+            llvm::Type::getInt1Ty(builder.module.TheContext)),
+        builder.module.anything_matched_after_backtrack);
       if (!deflBB) {
         builder.module.add_char_to_token(std::get<char>(tr->input));
         increment_(builder.module.chars_since_last_final,
@@ -2132,13 +2141,13 @@ ARGS:
     --target <triple>
         set the target triple
 
-    
+
     --relocation-model <reloc-model>
       set output object file relocation model
 
     --object-format <format-name>
       set output object file format
-        
+
         -OR-
 
     --emit-llvm
