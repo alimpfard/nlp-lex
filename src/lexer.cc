@@ -1056,7 +1056,7 @@ std::optional<Regexp> NLexer::regexp_expression() {
         backrefnum = nested_index - 2;
       }
       auto reg = Regexp{
-          std::string{source_p - len, len}, RegexpType::Escape, '\\',
+          std::string{source_p - len, len}, RegexpType::Backreference, "\\" + std::to_string(backrefnum),
           regexp_debug_info(this, std::string{source_p - len, len}, len)};
       reg.index = backrefnum;
       return reg;
@@ -2077,6 +2077,15 @@ Regexp::compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
     parent->epsilon_transition_to(tl);
     tl->named_rule = namef;
     tl->inline_code = std::get<std::string>(inner);
+    result = tl;
+    result->debug_info = debug_info;
+    break;
+  }
+  case RegexpType::Backreference: {
+    NFANode<std::string> *tl = new NFANode<std::string>{"BR" + mangle()};
+    parent->epsilon_transition_to(tl);
+    tl->named_rule = namef;
+    tl->backreference = index;
     result = tl;
     result->debug_info = debug_info;
     break;

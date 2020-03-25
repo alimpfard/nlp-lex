@@ -861,6 +861,9 @@ std::string NFANode<T>::gen_dot(
         << (node->subexpr_call > -1
                 ? string_format(" [calls %d]", node->subexpr_call)
                 : "")
+        << (node->backreference.has_value()
+                ? string_format(" [backreferences %d]", node->backreference.value())
+                : "")
         << '"'
         << ", xlabel=\"" +
                (node->inline_code.has_value()
@@ -1009,6 +1012,9 @@ std::string DFANode<T>::gen_dot(
                   : "")
           << (node->subexpr_call > -1
                   ? string_format(" [calls %d]", node->subexpr_call)
+                  : "")
+          << (node->backreference.has_value()
+                  ? string_format(" [backreferences %d]", node->backreference.value())
                   : "")
           << '"'
           << ", xlabel=\"" + (node->inline_code.has_value()
@@ -1289,6 +1295,13 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
           abort();
         }
         dfanode->subexpr_call = s->subexpr_call;
+      }
+      if (s->backreference.has_value()) {
+        if (dfanode->backreference.has_value() && dfanode->backreference.value() != s->backreference.value()) {
+          slts.show(Display::Type::WARNING, "expression conflict, two backreferences clash in one subexpression: %s (index %d - %d)", get_name(current).c_str(), dfanode->backreference.value(), s->backreference.value());
+          abort();
+        }
+        dfanode->backreference = s->backreference;
       }
       if (s->final) {
         slts.show(Display::Type::DEBUG,
@@ -1776,6 +1789,38 @@ void DFANLVMCodeGenerator<T>::generate(
                 })));
       }
     }
+  // if this node has a backreference, generate the code here
+  // how do we want to actually do backreferences?
+  // @TODO: Figure out a way to apply backreferences
+  if (node->backreference.has_value()) {
+    auto backref_index = node->backreference.value();
+    // get the matched indices
+    // auto idx_end = builder.module.Builder.CreateLoad(
+    //     llvm::ConstantExpr::getInBoundsGetElementPtr(
+    //         builder.module.nlex_capture_indices->getType()
+    //             ->getPointerElementType(),
+    //         builder.module.nlex_capture_indices,
+    //         llvm::ArrayRef<llvm::Constant *>({
+    //             llvm::ConstantInt::get(
+    //                 llvm::Type::getInt32Ty(builder.module.TheContext), 0),
+    //             llvm::ConstantInt::get(
+    //                 llvm::Type::getInt32Ty(builder.module.TheContext),
+    //                 backref_index * 2 + 1),
+    //         })));
+    // auto idx_start = builder.module.Builder.CreateLoad(
+    //     llvm::ConstantExpr::getInBoundsGetElementPtr(
+    //         builder.module.nlex_capture_indices->getType()
+    //             ->getPointerElementType(),
+    //         builder.module.nlex_capture_indices,
+    //         llvm::ArrayRef<llvm::Constant *>({
+    //             llvm::ConstantInt::get(
+    //                 llvm::Type::getInt32Ty(builder.module.TheContext), 0),
+    //             llvm::ConstantInt::get(
+    //                 llvm::Type::getInt32Ty(builder.module.TheContext),
+    //                 backref_index * 2),
+    //         })));
+    assert(false && "Backreferences not allowed");
+  }
   if (finalm) {
     // store the tag and string position upon getting here
     auto em = false;

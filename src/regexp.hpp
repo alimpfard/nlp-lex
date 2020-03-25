@@ -26,7 +26,8 @@ enum RegexpType {
   CharacterClass,
   Assertion,
   SubExprCall,
-  Code, // inner : string
+  Code, // inner : string,
+  Backreference,
 };
 
 struct RepeatQuantifier {

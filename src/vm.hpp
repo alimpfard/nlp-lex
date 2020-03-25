@@ -459,16 +459,21 @@ public:
                              llvm::DEBUG_METADATA_VERSION);
 
     TheMPM = std::make_unique<llvm::legacy::PassManager>();
+//
+    // TheMPM->add(llvm::createInstructionCombiningPass());
+    // TheMPM->add(llvm::createReassociatePass());
+    // TheMPM->add(llvm::createGVNPass());
 
-    TheMPM->add(llvm::createInstructionCombiningPass());
-    TheMPM->add(llvm::createReassociatePass());
-    TheMPM->add(llvm::createGVNPass());
     // TheMPM->add(llvm::createCFGSimplificationPass());
-    TheMPM->add(llvm::createLICMPass());
-    TheMPM->add(llvm::createAggressiveDCEPass());
-    TheMPM->add(llvm::createConstantPropagationPass());
+//
+    // TheMPM->add(llvm::createLICMPass());
+    // TheMPM->add(llvm::createAggressiveDCEPass());
+    // TheMPM->add(llvm::createConstantPropagationPass());
+
     // TheMPM->add(llvm::createTailCallEliminationPass());
-    TheMPM->add(llvm::createInstructionCombiningPass());
+//
+    // TheMPM->add(llvm::createInstructionCombiningPass());
+
     // TheMPM->add(llvm::createSinkingPass());
     // TheMPM->add(llvm::createCFGSimplificationPass());
 

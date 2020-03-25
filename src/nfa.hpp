@@ -70,6 +70,7 @@ public:
   std::vector<RegexpAssertion> assertions = {};
   std::set<int> subexpr_idxs = {};
   std::set<int> subexpr_end_idxs = {};
+  std::optional<int> backreference {}; 
   int subexpr_call = -1;
 
   std::optional<std::string> named_rule;
@@ -144,6 +145,7 @@ public:
                // nullptr :- fail match and revert back to last final state
   std::optional<std::string> named_rule = {};
   std::vector<RegexpAssertion> assertions = {};
+  std::optional<int> backreference {}; 
   int subexpr_idx = -1;
   int subexpr_end_idx = -1;
   int subexpr_call = -1;
