@@ -1560,7 +1560,8 @@ static void HandleTopLevelExpression(bool allow_bare) {
 }
 
 /// top ::= definition | external | expression | ';'
-void KaleidCompile(std::string code, llvm::IRBuilder<> &TheBuilder, bool allow_bare_expressions = false) {
+void KaleidCompile(std::string code, llvm::IRBuilder<> &TheBuilder,
+                   bool allow_bare_expressions = false) {
   Builder = &TheBuilder;
   KaleidFeed(code);
   getNextToken(true);
@@ -1619,7 +1620,8 @@ extern "C" DLLEXPORT double printd(double X) {
 static bool initd = false;
 
 void KaleidInitialise(std::string startup_code, nlvm::BaseModule *module) {
-  if (initd) return;
+  if (initd)
+    return;
   initd = true;
   // Install standard binary operators.
   // 1 is lowest precedence.

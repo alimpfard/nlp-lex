@@ -1562,7 +1562,7 @@ public:
     L.linkInModule(std::move(module.TheModule));
 
     if (!module.debug_mode)
-        module.TheMPM->run(*Composite);
+      module.TheMPM->run(*Composite);
 
     legacy::PassManager pass;
     auto FileType = LLVMTargetMachine::CodeGenFileType::CGFT_ObjectFile;
@@ -1645,9 +1645,10 @@ public:
   llvm::Value *get_or_create_tag(std::string tag, bool istag = true,
                                  std::string name = "str") {
     if (name != "str") {
-        if (registered_non_tags.count(tag))
-          return registered_non_tags[tag];
-        return registered_non_tags[tag] = mk_string(module.TheModule.get(), module.TheContext, tag, name);
+      if (registered_non_tags.count(tag))
+        return registered_non_tags[tag];
+      return registered_non_tags[tag] = mk_string(module.TheModule.get(),
+                                                  module.TheContext, tag, name);
     }
     if (istag) {
       auto pos = tag.find("{::}");
