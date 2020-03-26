@@ -1477,9 +1477,14 @@ public:
       builder.CreateBr(check);
       builder.SetInsertPoint(check);
 
-      for (auto [tag, values] : lexer_stuff.literal_tags) {
-        WordTree<std::string, std::string, std::vector<std::string>> wt{
-            values, WordTreeActions::store_value_tag{}};
+      WordTree<std::string, std::pair<std::string, std::string>,
+               std::vector<std::string>>
+          wt;
+      for (auto &[tag, values] : lexer_stuff.literal_tags) {
+        for (auto &value : values)
+          wt.insert(value, std::make_pair(tag, value));
+      }
+      {
         std::queue<std::tuple<decltype(wt.root_node), llvm::BasicBlock *, int>>
             queue;
         queue.push({wt.root_node, check, 0});
@@ -1496,6 +1501,7 @@ public:
               start, nodes->elements.size());
           for (auto [c, node] : *nodes) {
             // EOW - tag matches, emit new tag and return
+            auto &tag = node->metadata.first;
             if (c == 0) {
               builder.SetInsertPoint(swinst);
               // reset token length (write from the beginning of the token
@@ -1505,7 +1511,7 @@ public:
                       llvm::Type::getInt32Ty(module.TheContext), 0),
                   module.token_length);
               // set token value
-              for (auto c : node->metadata)
+              for (auto c : node->metadata.second)
                 module.add_char_to_token(c, builder);
 
               // set tag

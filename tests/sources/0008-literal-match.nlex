@@ -1,6 +1,6 @@
 
 # RGI emojis
-# emoji -- "\uc{RGI}"
+emoji -- "\uc{RGI}"
 
 # literal matches take precedence over non-literal matches
 literal -- "HELP"
