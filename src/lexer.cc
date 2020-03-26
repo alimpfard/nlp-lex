@@ -1056,7 +1056,8 @@ std::optional<Regexp> NLexer::regexp_expression() {
         backrefnum = nested_index - 2;
       }
       auto reg = Regexp{
-          std::string{source_p - len, len}, RegexpType::Backreference, "\\" + std::to_string(backrefnum),
+          std::string{source_p - len, len}, RegexpType::Backreference,
+          "\\" + std::to_string(backrefnum),
           regexp_debug_info(this, std::string{source_p - len, len}, len)};
       reg.index = backrefnum;
       return reg;

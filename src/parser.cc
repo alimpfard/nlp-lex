@@ -862,7 +862,8 @@ std::string NFANode<T>::gen_dot(
                 ? string_format(" [calls %d]", node->subexpr_call)
                 : "")
         << (node->backreference.has_value()
-                ? string_format(" [backreferences %d]", node->backreference.value())
+                ? string_format(" [backreferences %d]",
+                                node->backreference.value())
                 : "")
         << '"'
         << ", xlabel=\"" +
@@ -1014,7 +1015,8 @@ std::string DFANode<T>::gen_dot(
                   ? string_format(" [calls %d]", node->subexpr_call)
                   : "")
           << (node->backreference.has_value()
-                  ? string_format(" [backreferences %d]", node->backreference.value())
+                  ? string_format(" [backreferences %d]",
+                                  node->backreference.value())
                   : "")
           << '"'
           << ", xlabel=\"" + (node->inline_code.has_value()
@@ -1294,11 +1296,18 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
                     get_name(current).c_str(), dfanode->subexpr_call);
           abort();
         }
+        dfanode->subexpr_recurses =
+            dfanode->subexpr_call <= dfanode->subexpr_end_idxs.size();
         dfanode->subexpr_call = s->subexpr_call;
       }
       if (s->backreference.has_value()) {
-        if (dfanode->backreference.has_value() && dfanode->backreference.value() != s->backreference.value()) {
-          slts.show(Display::Type::WARNING, "expression conflict, two backreferences clash in one subexpression: %s (index %d - %d)", get_name(current).c_str(), dfanode->backreference.value(), s->backreference.value());
+        if (dfanode->backreference.has_value() &&
+            dfanode->backreference.value() != s->backreference.value()) {
+          slts.show(Display::Type::WARNING,
+                    "expression conflict, two backreferences clash in one "
+                    "subexpression: %s (index %d - %d)",
+                    get_name(current).c_str(), dfanode->backreference.value(),
+                    s->backreference.value());
           abort();
         }
         dfanode->backreference = s->backreference;
@@ -1532,15 +1541,22 @@ void DFANLVMCodeGenerator<T>::generate(
           continue;
         decltype(visited) _visited;
         typename std::remove_reference<decltype(blk)>::type _blocks;
-        auto fn = subexprFunc[subexpr_idx];
-        if (visitedFuncs.count(fn))
+        auto scope = subexprFunc[subexpr_idx];
+        if (visitedFuncs.count(scope.main))
           continue;
-        visitedFuncs.insert(fn);
+        visitedFuncs.insert(scope.main);
 
-        auto cmain = builder.module._cmain;
-        builder.module._cmain = fn;
+        builder.module.enter_new_main(scope);
 
-        builder.begin(builder.module.current_main(), true);
+        builder.begin(builder.module.current_main(), true, false);
+        const auto &vref =
+            builder.create_backtrack_block(builder.module.current_main());
+        scope.backtrackBB = vref[0];
+        scope.backtrackExitBB = vref[1];
+
+        builder.module.backtrackBB = vref[0];
+        builder.module.backtrackExitBB = vref[1];
+
         generate(node, _visited, _blocks);
 
         auto mroot = _blocks[node];
@@ -1549,8 +1565,26 @@ void DFANLVMCodeGenerator<T>::generate(
         dbuilder.SetInsertPoint(
             &builder.module.current_main()->getEntryBlock());
         dbuilder.CreateBr(mroot);
+        dbuilder.SetInsertPoint(builder.module.backtrackBB);
+        auto matchedl = dbuilder.CreateLoad(builder.module.anything_matched);
+        auto matchedv = dbuilder.CreateLoad(
+            builder.module.anything_matched_after_backtrack);
+        auto matched = dbuilder.CreateAnd(matchedl, matchedv);
+        dbuilder.CreateStore(llvm::Constant::getNullValue(llvm::Type::getInt1Ty(
+                                 builder.module.TheContext)),
+                             builder.module.anything_matched);
+        dbuilder.CreateStore(llvm::ConstantInt::getFalse(llvm::Type::getInt1Ty(
+                                 builder.module.TheContext)),
+                             builder.module.anything_matched_after_backtrack);
+        dbuilder.CreateStore(
+            dbuilder.CreateSelect(
+                matched, dbuilder.CreateLoad(builder.module.nlex_errc),
+                llvm::ConstantInt::get(
+                    llvm::Type::getInt8Ty(builder.module.TheContext), 42)),
+            builder.module.nlex_errc);
+        dbuilder.CreateCondBr(matched, mroot, builder.module.BBfinalise);
 
-        builder.module._cmain = cmain;
+        builder.module.exit_main();
       }
     }
   builder.issubexp = wasub;
@@ -1878,14 +1912,85 @@ void DFANLVMCodeGenerator<T>::generate(
         builder.module.nlex_errc);
   }
   // if there is a subexpr call, create it now
-  if (node->subexpr_call > -1) {
+  if (node->subexpr_call > -1 &&
+      (node->subexpr_recurses || node->subexpr_call > subexprFunc.size())) {
     llvm::Function *fn;
     auto val = builder.module.current_main()->arg_begin();
     if (subexprFunc.count(node->subexpr_call))
-      fn = subexprFunc[node->subexpr_call];
-    else
-      subexprFunc[node->subexpr_call] = fn = builder.module.mkfunc(false);
+      fn = subexprFunc[node->subexpr_call].main;
+    else {
+      auto &scope = subexprFunc[node->subexpr_call] = builder.module.mkscope();
+      fn = scope.main;
+      scope.backtrackBB = nullptr;
+      scope.backtrackExitBB = nullptr;
+    }
+    auto my_alloca = builder.module.getFreshBranchAlloca(&fn->getEntryBlock());
+    // @TODO test if this block has been tried before
+
+    if (builder.module.debug_mode) {
+      builder.module.Builder.CreateCall(
+          builder.module.nlex_debug,
+          {
+              llvm::ConstantInt::get(
+                  llvm::Type::getInt32Ty(builder.module.TheContext),
+                  5), // recurse
+              builder.module.Builder.CreateCall(builder.module.nlex_current_p,
+                                                {}),
+              builder.get_or_create_tag(string_format("%d", node->subexpr_call),
+                                        false, "debug_ex_rec"),
+              builder.get_or_create_tag(string_format("%p", node), false,
+                                        "debug_ex"),
+          });
+    }
     builder.module.Builder.CreateCall(fn, {val});
+    if (builder.module.debug_mode) {
+      builder.module.Builder.CreateCall(
+          builder.module.nlex_debug,
+          {
+              llvm::ConstantInt::get(
+                  llvm::Type::getInt32Ty(builder.module.TheContext),
+                  6), // finish
+              builder.module.Builder.CreateCall(builder.module.nlex_current_p,
+                                                {}),
+              builder.get_or_create_tag(string_format("%d", node->subexpr_call),
+                                        false, "debug_ex_rec"),
+              builder.get_or_create_tag(string_format("%p", node), false,
+                                        "debug_ex"),
+          });
+    }
+    // check subexpr error code (backtrack failure?)
+    auto errc = builder.module.Builder.CreateLoad(
+        builder.module.Builder.CreateInBoundsGEP(
+            val, {
+                     llvm::ConstantInt::get(
+                         llvm::Type::getInt32Ty(builder.module.TheContext), 0),
+                     llvm::ConstantInt::get(
+                         llvm::Type::getInt32Ty(builder.module.TheContext), 3),
+                 }));
+    builder.module.Builder.CreateStore(errc, builder.module.nlex_errc);
+    // auto commit = llvm::BasicBlock::Create(builder.module.TheContext,
+    // "rcommit", builder.module.current_main()); auto discard =
+    // llvm::BasicBlock::Create(builder.module.TheContext, "rdiscard",
+    // builder.module.current_main()); builder.module.Builder.CreateCondBr(
+    //   builder.module.Builder.CreateICmpNE(
+    //     errc,
+    //                   llvm::ConstantInt::get(
+    //                       llvm::Type::getInt8Ty(builder.module.TheContext),
+    //                       0)
+    //   ),
+    //   discard, commit
+    // );
+    // builder.module.Builder.SetInsertPoint(discard);
+    // // note that we have tried this branch
+    // builder.module.Builder.CreateStore(
+    //     llvm::ConstantInt::get(llvm::Type::getInt1Ty(builder.module.TheContext),
+    //                            1),
+    //     my_alloca);
+
+    // builder.module.Builder.CreateBr(builder.module.backtrackBB);
+
+    // // -------------------------------
+    // builder.module.Builder.SetInsertPoint(commit);
     // TODO
     // if the subexpr is lazy, just go on
     // otherwise check return error code

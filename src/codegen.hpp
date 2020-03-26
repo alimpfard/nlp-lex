@@ -62,7 +62,7 @@ template <typename T> struct DFANLVMCodeGenerator : public CodeGenerator<T> {
 public:
   nlvm::Builder builder;
   llvm::BasicBlock *root_bb;
-  std::map<int, llvm::Function *> subexprFunc = {};
+  std::map<int, nlvm::MainScope> subexprFunc = {};
   std::map<int, DFANode<std::set<NFANode<T> *>> *> subexprs = {};
 
   DFANLVMCodeGenerator()

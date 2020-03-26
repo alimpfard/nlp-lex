@@ -104,6 +104,7 @@ double repl_testmetadata(double bit) {
 
 extern int __nlex_utf8_length(char c);
 /* debugger code */
+static int m_stack_idx = 0;
 void __nlex_produce_debug(int action, const char* position, const char* data, char const* name) {
   char *act;
   switch(action) {
@@ -112,9 +113,17 @@ void __nlex_produce_debug(int action, const char* position, const char* data, ch
     case 2: act = "succeed"; break;
     case 3: act = "jump"; break;
     case 4: act = "backtrack"; break;
+    case 5:
+      act = "recurse";
+      ++m_stack_idx;
+    break;
+    case 6:
+      act = "finish";
+      --m_stack_idx;
+    break;
     default: act = "?"; break;
   }
-  printf("[DEBUG] [%.*s](%#x) %s in %p from regex [%s] :: %p\n", 1+__nlex_utf8_length(*position), position, *position, act, position, name, data);
+  printf("[DEBUG] [REC %d] [%.*s](%#x) %s in %p from regex [%s] :: %p\n", m_stack_idx, 1+__nlex_utf8_length(*position), position, *position, act, position, name, data);
 }
 
 /* lib code */
