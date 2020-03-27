@@ -1,4 +1,4 @@
-res at 0x7ffe8df3e678, s at 0x7ff892c2e010
+res at 0x7ffc26eda248, s at 0x7fc1109a1010
 processing - 'HELP😒
 '
 match {'HELP' - (null) - 4 literal} is a stopword

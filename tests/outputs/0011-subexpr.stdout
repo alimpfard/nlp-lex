@@ -1,4 +1,4 @@
-res at 0x7ffdeebc6688, s at 0x7fcaae9ea010
+res at 0x7ffd5f1a3468, s at 0x7ff8bcfe3010
 processing - 'testtest'
 match {'testtest' - (null) - 8 expr} is not a stopword
 no match {'' - (null) - 0 expr} is not a stopword

@@ -1,0 +1,5 @@
+res at 0x7ffc99366f18, s at 0x7fc02f781010
+processing - 'testhelloooohellotest'
+match {'testhelloooo' - (null) - 12 expr} is not a stopword
+match {'hellotest' - (null) - 9 expr} is not a stopword
+no match {'' - (null) - 0 expr} is not a stopword

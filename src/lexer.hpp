@@ -209,6 +209,7 @@ public:
   int offset;
   char buffer[1024000];
   int nested_index = 0;
+  int inside_index = 0;
   /// If there's anything on this, reset index to it
   /// when matching alternatives
   std::stack<int> branch_reset_indices{};

@@ -70,6 +70,7 @@ public:
   std::vector<RegexpAssertion> assertions = {};
   std::set<int> subexpr_idxs = {};
   std::set<int> subexpr_end_idxs = {};
+  int inside_subexpr = -1;
   std::optional<int> backreference{};
   int subexpr_call = -1;
   bool subexpr_recurses = false;
@@ -128,6 +129,7 @@ public:
        subexpr_end = false, reference_node = false;
   int max_opt_steps = 50;
   int opt_step = max_opt_steps;
+  int inside_subexpr = -1;
 
   std::optional<std::string> inline_code =
       {}; // code that would be executed should this node match
@@ -150,7 +152,6 @@ public:
   int subexpr_idx = -1;
   int subexpr_end_idx = -1;
   int subexpr_call = -1;
-  bool subexpr_recurses = false;
 
   NFANode(StateInfoT s) : state_info(s) {}
   NFANode() {}

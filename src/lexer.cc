@@ -886,6 +886,7 @@ std::optional<Regexp> NLexer::_regexp() {
   advance(-1);
   // reset capture indices
   nested_index = 0;
+  inside_index = 0;
   while (branch_reset_indices.size())
     branch_reset_indices.pop();
 
@@ -1228,6 +1229,7 @@ std::optional<Regexp> NLexer::regexp_expression() {
                           RegexpType::SubExprCall, (char)backrefnum,
                           regexp_debug_info(this, "\\g", 2)};
         reg.subexprcall = backrefnum;
+        reg.inside_subexpr = inside_index;
         return reg;
       }
       lexer_error(*this, Errors::InvalidRegexpSyntax, error_token(),
@@ -1463,6 +1465,7 @@ std::optional<Regexp> NLexer::regexp_expression() {
   // parenthesised expression
   if (c == '(') {
     nested_index++;
+    inside_index++;
     std::optional<int> reset_branch{};
     int branch = 0;
     if (!branch_reset_indices.empty()) {
@@ -1492,6 +1495,7 @@ std::optional<Regexp> NLexer::regexp_expression() {
           }
         }
         advance(1); // consume ')'
+        inside_index--;
         if (seen_newline) {
           const Token &mtoken = error_token();
           lexer_error(*this, Errors::InvalidRegexpSyntax, mtoken,
@@ -1511,6 +1515,7 @@ std::optional<Regexp> NLexer::regexp_expression() {
         // what _this_ index is
         branch_reset_indices.push(nested_index);
         auto reg = regexp();
+        inside_index--;
         if (reset_branch.has_value()) {
           nested_index = *reset_branch;
           branch_reset_indices.push(branch);
@@ -1540,6 +1545,7 @@ std::optional<Regexp> NLexer::regexp_expression() {
           nested_index = *reset_branch;
           branch_reset_indices.push(branch);
         }
+        inside_index--;
         return {};
       }
       if (c == '<' || c == '=') {
@@ -1550,6 +1556,7 @@ std::optional<Regexp> NLexer::regexp_expression() {
           nested_index = *reset_branch;
           branch_reset_indices.push(branch);
         }
+        inside_index--;
         return {};
       }
       if (c == '>') {
@@ -1560,6 +1567,7 @@ std::optional<Regexp> NLexer::regexp_expression() {
           nested_index = *reset_branch;
           branch_reset_indices.push(branch);
         }
+        inside_index--;
         return {};
       }
       if (c == ':') {
@@ -1572,6 +1580,7 @@ std::optional<Regexp> NLexer::regexp_expression() {
         if (!reg.has_value())
           return reg;
         auto &rv = reg.value();
+        inside_index--;
         c = *source_p;
         if (c != ')') {
           const Token &mtoken = error_token();
@@ -1589,6 +1598,7 @@ std::optional<Regexp> NLexer::regexp_expression() {
     }
     auto my_index = nested_index;
     auto reg = regexp();
+    inside_index--;
     if (reset_branch.has_value()) {
       nested_index = *reset_branch;
       branch_reset_indices.push(branch);
@@ -2068,6 +2078,7 @@ Regexp::compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
     NFANode<std::string> *tl = new NFANode<std::string>{"R<>" + mangle()};
     parent->epsilon_transition_to(tl);
     tl->subexpr_call = subexprcall;
+    tl->inside_subexpr = inside_subexpr;
     tl->named_rule = namef;
     result = tl;
     result->debug_info = debug_info;

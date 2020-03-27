@@ -41,6 +41,8 @@ inline static void parser_error_impl(char const *fmt, va_list arg) {
   std::vprintf(fmt, arg);
 }
 
+static int sexpr_being_built = 0;
+
 char *parser_errors[(int)ParserErrors::LAST - 10] = {
     [(int)ParserErrors::InvalidToken - 11] = "Invalid token",
     [(int)ParserErrors::FeatureUnsupported - 11] = "Unsupported feature",
@@ -1298,6 +1300,7 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
         }
         dfanode->subexpr_recurses =
             dfanode->subexpr_call <= dfanode->subexpr_end_idxs.size();
+        dfanode->inside_subexpr = s->inside_subexpr;
         dfanode->subexpr_call = s->subexpr_call;
       }
       if (s->backreference.has_value()) {
@@ -1539,6 +1542,8 @@ void DFANLVMCodeGenerator<T>::generate(
       for (auto subexpr_idx : node->subexpr_idxs) {
         if (!subexprFunc.count(subexpr_idx))
           continue;
+        int sbb = sexpr_being_built;
+        sexpr_being_built = subexpr_idx;
         decltype(visited) _visited;
         typename std::remove_reference<decltype(blk)>::type _blocks;
         auto scope = subexprFunc[subexpr_idx];
@@ -1585,6 +1590,7 @@ void DFANLVMCodeGenerator<T>::generate(
         dbuilder.CreateCondBr(matched, mroot, builder.module.BBfinalise);
 
         builder.module.exit_main();
+        sexpr_being_built = sbb;
       }
     }
   builder.issubexp = wasub;
@@ -1913,7 +1919,7 @@ void DFANLVMCodeGenerator<T>::generate(
   }
   // if there is a subexpr call, create it now
   if (node->subexpr_call > -1 &&
-      (node->subexpr_recurses || node->subexpr_call > subexprFunc.size())) {
+      (node->subexpr_recurses || sexpr_being_built < node->subexpr_call)) {
     llvm::Function *fn;
     auto val = builder.module.current_main()->arg_begin();
     if (subexprFunc.count(node->subexpr_call))
