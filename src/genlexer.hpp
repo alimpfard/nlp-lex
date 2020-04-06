@@ -33,6 +33,7 @@ struct GenLexer {
   std::set<std::pair<std::string, debug_offset_info>> ignores;
   std::map<std::string, std::string> normalisations;
   std::map<std::string, std::vector<std::string>> literal_tags;
+  std::vector<std::string> kdefines;
   std::optional<TagPosSpecifier> tagpos;
   int total_capturing_groups;
 };

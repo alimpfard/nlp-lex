@@ -50,6 +50,8 @@ inline static void parser_error_impl(char const *fmt, va_list arg) {
   std::vprintf(fmt, arg);
 }
 
+static int sexpr_being_built = 0;
+
 char *parser_errors[(int)ParserErrors::LAST - 10] = {
     [(int)ParserErrors::InvalidToken - 11] = "Invalid token",
     [(int)ParserErrors::FeatureUnsupported - 11] = "Unsupported feature",
@@ -195,6 +197,9 @@ void NParser::parse() {
       case TokenType::TOK_OPNORMAL:
         statestack.push(ParserState::Normal);
         break;
+      case TokenType::TOK_KDEFINE:
+        statestack.push(ParserState::KDefine);
+        break;
       error:
       case TOK_ERROR:
       default:
@@ -288,6 +293,18 @@ void NParser::parse() {
         for (auto t : vec)
           gen_lexer_literal_tags[std::get<std::string>(persist)].push_back(t);
       }
+      break;
+    case ParserState::KDefine:
+      if (token.type != TokenType::TOK_KDEFINE_CODE) {
+        statestack.pop(); // KDefine
+        failing = true;
+        parser_error(ParserErrors::ExpectedToFollow, token, ErrorPosition::On,
+                     "Expected code to follow `define', but got %s",
+                     reverse_token_type[token.type]);
+        break;
+      }
+      gen_lexer_kdefines.push_back(std::get<std::string>(token.value));
+      statestack.pop(); // KDefine
       break;
     case ParserState::Name:
       if (token.type == TokenType::TOK_OPCONST) {
@@ -752,6 +769,8 @@ std::string get_name(std::set<NFANode<T> *> nodes, bool simple = false,
 
     if (!ptr)
       oss << " ";
+    else
+      oss << ",";
   }
 
   if (!ptr)
@@ -780,7 +799,7 @@ std::string sanitised(char c) {
   if (c == -1)
     return "DEFAULT";
   if (c < 10)
-    return "<" + std::bitset<8>(c).to_string() + ">";
+    return "<" + string_format("%04x", (unsigned char)c) + ">";
   else if (c == '"')
     return "\\\"";
   else
@@ -853,6 +872,10 @@ std::string NFANode<T>::gen_dot(
         << (node->subexpr_call > -1
                 ? string_format(" [calls %d]", node->subexpr_call)
                 : "")
+        << (node->backreference.has_value()
+                ? string_format(" [backreferences %d]",
+                                node->backreference.value())
+                : "")
         << '"'
         << ", xlabel=\"" +
                (node->inline_code.has_value()
@@ -861,9 +884,11 @@ std::string NFANode<T>::gen_dot(
                                         node->inline_code.value(), "\"", "\\\"")
                                         .c_str())
                     : "")
-        << '"' << "] LR_" << nodeids[node] << ";" << ss_end;
+        << '"' << "] LR_" << nodeids[node] << string_format("_%p", node) << ";"
+        << ss_end;
   }
-  std::map<std::pair<int, int>, std::pair<std::set<std::string>, NFANode<T> *>>
+  std::map<std::pair<std::string, std::string>,
+           std::pair<std::set<std::string>, NFANode<T> *>>
       target_labels{};
   for (auto tr : transitions) {
     int fid, tid;
@@ -881,7 +906,9 @@ std::string NFANode<T>::gen_dot(
     } else
       tid = nodeids[tr.target];
 
-    auto &tl = target_labels[std::make_pair(fid, tid)];
+    auto &tl =
+        target_labels[std::make_pair(string_format("%d_%p", fid, tr.source),
+                                     string_format("%d_%p", tid, tr.target))];
     tl.first.insert(
         std::holds_alternative<EpsilonTransitionT>(tr.input)
             ? string_format("<%sEpsilon>",
@@ -998,6 +1025,10 @@ std::string DFANode<T>::gen_dot(
           << (node->subexpr_call > -1
                   ? string_format(" [calls %d]", node->subexpr_call)
                   : "")
+          << (node->backreference.has_value()
+                  ? string_format(" [backreferences %d]",
+                                  node->backreference.value())
+                  : "")
           << '"'
           << ", xlabel=\"" + (node->inline_code.has_value()
                                   ? string_format("Executes\\n%s",
@@ -1006,11 +1037,14 @@ std::string DFANode<T>::gen_dot(
                                                       "\"", "\\\"")
                                                       .c_str())
                                   : "")
-          << '"' << "] LR_" << nodeids[node] << ";" << ss_end;
+          << '"' << "] LR_" << nodeids[node] << string_format("_%p", node)
+          << ";" << ss_end;
     else
-      oss << "LR_" << nodeids[node] << ";" << ss_end;
+      oss << "LR_" << nodeids[node] << string_format("_%p", node) << ";"
+          << ss_end;
   }
-  std::map<std::pair<int, int>, std::pair<std::set<std::string>, DFANode<T> *>>
+  std::map<std::pair<std::string, std::string>,
+           std::pair<std::set<std::string>, DFANode<T> *>>
       target_labels{};
   for (auto tr : transitions) {
     int fid, tid;
@@ -1028,7 +1062,9 @@ std::string DFANode<T>::gen_dot(
     } else
       tid = nodeids[tr.target];
 
-    auto &tl = target_labels[std::make_pair(fid, tid)];
+    auto &tl =
+        target_labels[std::make_pair(string_format("%d_%p", fid, tr.source),
+                                     string_format("%d_%p", tid, tr.target))];
     if (std::holds_alternative<char>(tr.input))
       tl.first.insert(sanitised(std::get<char>(tr.input)));
     else
@@ -1271,7 +1307,22 @@ template <typename T> DFANode<std::set<NFANode<T> *>> *NFANode<T>::to_dfa() {
                     get_name(current).c_str(), dfanode->subexpr_call);
           abort();
         }
+        dfanode->subexpr_recurses =
+            dfanode->subexpr_call <= dfanode->subexpr_end_idxs.size();
+        dfanode->inside_subexpr = s->inside_subexpr;
         dfanode->subexpr_call = s->subexpr_call;
+      }
+      if (s->backreference.has_value()) {
+        if (dfanode->backreference.has_value() &&
+            dfanode->backreference.value() != s->backreference.value()) {
+          slts.show(Display::Type::WARNING,
+                    "expression conflict, two backreferences clash in one "
+                    "subexpression: %s (index %d - %d)",
+                    get_name(current).c_str(), dfanode->backreference.value(),
+                    s->backreference.value());
+          abort();
+        }
+        dfanode->backreference = s->backreference;
       }
       if (s->final) {
         slts.show(Display::Type::DEBUG,
@@ -1429,7 +1480,8 @@ void DFACCodeGenerator<T>::generate(
         "root", get_name(node->state_info.value(), false, true)));
 }
 
-template <typename T> std::string DFACCodeGenerator<T>::output() {
+template <typename T>
+std::string DFACCodeGenerator<T>::output(const GenLexer &&lexer_stuff) {
   std::ostringstream oss;
   auto root = output_cases.front();
   output_cases.pop_front();
@@ -1471,6 +1523,25 @@ void DFANLVMCodeGenerator<T>::generate(
     llvm::IRBuilder<> dbuilder(builder.module.TheContext);
     dbuilder.SetInsertPoint(builder.module.start);
     dbuilder.CreateBr(mroot);
+
+    dbuilder.SetInsertPoint(builder.module.backtrackBB);
+    auto matchedl = dbuilder.CreateLoad(builder.module.anything_matched);
+    auto matchedv =
+        dbuilder.CreateLoad(builder.module.anything_matched_after_backtrack);
+    auto matched = dbuilder.CreateAnd(matchedl, matchedv);
+    dbuilder.CreateStore(llvm::Constant::getNullValue(
+                             llvm::Type::getInt1Ty(builder.module.TheContext)),
+                         builder.module.anything_matched);
+    dbuilder.CreateStore(llvm::ConstantInt::getFalse(
+                             llvm::Type::getInt1Ty(builder.module.TheContext)),
+                         builder.module.anything_matched_after_backtrack);
+    dbuilder.CreateStore(
+        dbuilder.CreateSelect(
+            matched, dbuilder.CreateLoad(builder.module.nlex_errc),
+            llvm::ConstantInt::get(
+                llvm::Type::getInt8Ty(builder.module.TheContext), 42)),
+        builder.module.nlex_errc);
+    dbuilder.CreateCondBr(matched, mroot, builder.module.BBfinalise);
   }
   builder.issubexp = true;
   std::set<llvm::Function *> visitedFuncs{};
@@ -1480,17 +1551,26 @@ void DFANLVMCodeGenerator<T>::generate(
       for (auto subexpr_idx : node->subexpr_idxs) {
         if (!subexprFunc.count(subexpr_idx))
           continue;
+        int sbb = sexpr_being_built;
+        sexpr_being_built = subexpr_idx;
         decltype(visited) _visited;
         typename std::remove_reference<decltype(blk)>::type _blocks;
-        auto fn = subexprFunc[subexpr_idx];
-        if (visitedFuncs.count(fn))
+        auto scope = subexprFunc[subexpr_idx];
+        if (visitedFuncs.count(scope.main))
           continue;
-        visitedFuncs.insert(fn);
+        visitedFuncs.insert(scope.main);
 
-        auto cmain = builder.module._cmain;
-        builder.module._cmain = fn;
+        builder.module.enter_new_main(scope);
 
-        builder.begin(builder.module.current_main(), true);
+        builder.begin(builder.module.current_main(), true, false);
+        const auto &vref =
+            builder.create_backtrack_block(builder.module.current_main());
+        scope.backtrackBB = vref[0];
+        scope.backtrackExitBB = vref[1];
+
+        builder.module.backtrackBB = vref[0];
+        builder.module.backtrackExitBB = vref[1];
+
         generate(node, _visited, _blocks);
 
         auto mroot = _blocks[node];
@@ -1499,7 +1579,27 @@ void DFANLVMCodeGenerator<T>::generate(
         dbuilder.SetInsertPoint(
             &builder.module.current_main()->getEntryBlock());
         dbuilder.CreateBr(mroot);
-        builder.module._cmain = cmain;
+        dbuilder.SetInsertPoint(builder.module.backtrackBB);
+        auto matchedl = dbuilder.CreateLoad(builder.module.anything_matched);
+        auto matchedv = dbuilder.CreateLoad(
+            builder.module.anything_matched_after_backtrack);
+        auto matched = dbuilder.CreateAnd(matchedl, matchedv);
+        dbuilder.CreateStore(llvm::Constant::getNullValue(llvm::Type::getInt1Ty(
+                                 builder.module.TheContext)),
+                             builder.module.anything_matched);
+        dbuilder.CreateStore(llvm::ConstantInt::getFalse(llvm::Type::getInt1Ty(
+                                 builder.module.TheContext)),
+                             builder.module.anything_matched_after_backtrack);
+        dbuilder.CreateStore(
+            dbuilder.CreateSelect(
+                matched, dbuilder.CreateLoad(builder.module.nlex_errc),
+                llvm::ConstantInt::get(
+                    llvm::Type::getInt8Ty(builder.module.TheContext), 42)),
+            builder.module.nlex_errc);
+        dbuilder.CreateCondBr(matched, mroot, builder.module.BBfinalise);
+
+        builder.module.exit_main();
+        sexpr_being_built = sbb;
       }
     }
   builder.issubexp = wasub;
@@ -1539,6 +1639,7 @@ void DFANLVMCodeGenerator<T>::generate(
                                       // get_name(node->state_info.value()),
                                       "", builder.module.current_main());
   llvm::BasicBlock *BBnode = BB;
+  auto my_alloca = builder.module.getFreshBranchAlloca(BB);
   BasicBlock *BBend =
       BasicBlock::Create(builder.module.TheContext,
                          /* get_name(node->state_info.value()) + "{::}E" */ "E",
@@ -1550,16 +1651,32 @@ void DFANLVMCodeGenerator<T>::generate(
                  node->default_transition == nullptr);
 
   if (!finalm) {
-    builder.module.Builder.CreateCall(
-        builder.module.nlex_restore,
-        {builder.module.Builder.CreateLoad(
-            builder.module.last_final_state_position)});
+    if (builder.module.debug_mode) {
+      builder.module.Builder.CreateCall(
+          builder.module.nlex_debug,
+          {
+              llvm::ConstantInt::get(
+                  llvm::Type::getInt32Ty(builder.module.TheContext),
+                  4), // backtrack
+              builder.module.Builder.CreateCall(builder.module.nlex_current_p,
+                                                {}),
+              builder.module.Builder.CreateLoad(
+                  builder.module.last_backtrack_branch_position),
+              builder.get_or_create_tag(string_format("%p", node), false,
+                                        "debug_ex"),
+          });
+    }
+    // note that we have tried this branch
     builder.module.Builder.CreateStore(
-        builder.module.Builder.CreateNSWSub(
-            builder.module.Builder.CreateLoad(builder.module.token_length),
-            builder.module.Builder.CreateLoad(
-                builder.module.chars_since_last_final)),
-        builder.module.token_length);
+        llvm::ConstantInt::get(llvm::Type::getInt1Ty(builder.module.TheContext),
+                               1),
+        my_alloca);
+
+    builder.module.Builder.CreateBr(builder.module.backtrackBB);
+    // builder.module.Builder.CreateCall(
+    //     builder.module.nlex_restore,
+    //     {builder.module.Builder.CreateLoad(
+    //         builder.module.last_final_state_position)});
   } else {
     builder.module.Builder.CreateCall(
         builder.module.nlex_restore,
@@ -1567,8 +1684,8 @@ void DFANLVMCodeGenerator<T>::generate(
             builder.module.Builder.CreateCall(builder.module.nlex_current_p),
             {llvm::ConstantInt::get(
                 llvm::Type::getInt32Ty(builder.module.TheContext), -1)})});
+    builder.module.Builder.CreateBr(builder.module.BBfinalise);
   }
-  builder.module.Builder.CreateBr(builder.module.BBfinalise);
 
   builder.module.Builder.SetInsertPoint(BB);
   // if there are assertions, apply them now
@@ -1721,6 +1838,38 @@ void DFANLVMCodeGenerator<T>::generate(
                 })));
       }
     }
+  // if this node has a backreference, generate the code here
+  // how do we want to actually do backreferences?
+  // @TODO: Figure out a way to apply backreferences
+  if (node->backreference.has_value()) {
+    auto backref_index = node->backreference.value();
+    // get the matched indices
+    // auto idx_end = builder.module.Builder.CreateLoad(
+    //     llvm::ConstantExpr::getInBoundsGetElementPtr(
+    //         builder.module.nlex_capture_indices->getType()
+    //             ->getPointerElementType(),
+    //         builder.module.nlex_capture_indices,
+    //         llvm::ArrayRef<llvm::Constant *>({
+    //             llvm::ConstantInt::get(
+    //                 llvm::Type::getInt32Ty(builder.module.TheContext), 0),
+    //             llvm::ConstantInt::get(
+    //                 llvm::Type::getInt32Ty(builder.module.TheContext),
+    //                 backref_index * 2 + 1),
+    //         })));
+    // auto idx_start = builder.module.Builder.CreateLoad(
+    //     llvm::ConstantExpr::getInBoundsGetElementPtr(
+    //         builder.module.nlex_capture_indices->getType()
+    //             ->getPointerElementType(),
+    //         builder.module.nlex_capture_indices,
+    //         llvm::ArrayRef<llvm::Constant *>({
+    //             llvm::ConstantInt::get(
+    //                 llvm::Type::getInt32Ty(builder.module.TheContext), 0),
+    //             llvm::ConstantInt::get(
+    //                 llvm::Type::getInt32Ty(builder.module.TheContext),
+    //                 backref_index * 2),
+    //         })));
+    assert(false && "Backreferences not allowed");
+  }
   if (finalm) {
     // store the tag and string position upon getting here
     auto em = false;
@@ -1744,6 +1893,20 @@ void DFANLVMCodeGenerator<T>::generate(
         em = true;
       }
     }
+    if (builder.module.debug_mode) {
+      builder.module.Builder.CreateCall(
+          builder.module.nlex_debug,
+          {
+              llvm::ConstantInt::get(
+                  llvm::Type::getInt32Ty(builder.module.TheContext), 2),
+              builder.module.Builder.CreateCall(builder.module.nlex_current_p,
+                                                {}),
+              llvm::Constant::getNullValue(llvm::PointerType::getInt8PtrTy(
+                  builder.module.TheContext, 0)),
+              builder.get_or_create_tag(string_format("%p", node), false,
+                                        "debug_ex"),
+          });
+    }
     builder.module.Builder.CreateStore(
         llvm::ConstantInt::getTrue(
             llvm::Type::getInt1Ty(builder.module.TheContext)),
@@ -1764,14 +1927,85 @@ void DFANLVMCodeGenerator<T>::generate(
         builder.module.nlex_errc);
   }
   // if there is a subexpr call, create it now
-  if (node->subexpr_call > -1) {
+  if (node->subexpr_call > -1 &&
+      (node->subexpr_recurses || sexpr_being_built < node->subexpr_call)) {
     llvm::Function *fn;
     auto val = builder.module.current_main()->arg_begin();
     if (subexprFunc.count(node->subexpr_call))
-      fn = subexprFunc[node->subexpr_call];
-    else
-      subexprFunc[node->subexpr_call] = fn = builder.module.mkfunc(false);
+      fn = subexprFunc[node->subexpr_call].main;
+    else {
+      auto &scope = subexprFunc[node->subexpr_call] = builder.module.mkscope();
+      fn = scope.main;
+      scope.backtrackBB = nullptr;
+      scope.backtrackExitBB = nullptr;
+    }
+    auto my_alloca = builder.module.getFreshBranchAlloca(&fn->getEntryBlock());
+    // @TODO test if this block has been tried before
+
+    if (builder.module.debug_mode) {
+      builder.module.Builder.CreateCall(
+          builder.module.nlex_debug,
+          {
+              llvm::ConstantInt::get(
+                  llvm::Type::getInt32Ty(builder.module.TheContext),
+                  5), // recurse
+              builder.module.Builder.CreateCall(builder.module.nlex_current_p,
+                                                {}),
+              builder.get_or_create_tag(string_format("%d", node->subexpr_call),
+                                        false, "debug_ex_rec"),
+              builder.get_or_create_tag(string_format("%p", node), false,
+                                        "debug_ex"),
+          });
+    }
     builder.module.Builder.CreateCall(fn, {val});
+    if (builder.module.debug_mode) {
+      builder.module.Builder.CreateCall(
+          builder.module.nlex_debug,
+          {
+              llvm::ConstantInt::get(
+                  llvm::Type::getInt32Ty(builder.module.TheContext),
+                  6), // finish
+              builder.module.Builder.CreateCall(builder.module.nlex_current_p,
+                                                {}),
+              builder.get_or_create_tag(string_format("%d", node->subexpr_call),
+                                        false, "debug_ex_rec"),
+              builder.get_or_create_tag(string_format("%p", node), false,
+                                        "debug_ex"),
+          });
+    }
+    // check subexpr error code (backtrack failure?)
+    auto errc = builder.module.Builder.CreateLoad(
+        builder.module.Builder.CreateInBoundsGEP(
+            val, {
+                     llvm::ConstantInt::get(
+                         llvm::Type::getInt32Ty(builder.module.TheContext), 0),
+                     llvm::ConstantInt::get(
+                         llvm::Type::getInt32Ty(builder.module.TheContext), 3),
+                 }));
+    builder.module.Builder.CreateStore(errc, builder.module.nlex_errc);
+    // auto commit = llvm::BasicBlock::Create(builder.module.TheContext,
+    // "rcommit", builder.module.current_main()); auto discard =
+    // llvm::BasicBlock::Create(builder.module.TheContext, "rdiscard",
+    // builder.module.current_main()); builder.module.Builder.CreateCondBr(
+    //   builder.module.Builder.CreateICmpNE(
+    //     errc,
+    //                   llvm::ConstantInt::get(
+    //                       llvm::Type::getInt8Ty(builder.module.TheContext),
+    //                       0)
+    //   ),
+    //   discard, commit
+    // );
+    // builder.module.Builder.SetInsertPoint(discard);
+    // // note that we have tried this branch
+    // builder.module.Builder.CreateStore(
+    //     llvm::ConstantInt::get(llvm::Type::getInt1Ty(builder.module.TheContext),
+    //                            1),
+    //     my_alloca);
+
+    // builder.module.Builder.CreateBr(builder.module.backtrackBB);
+
+    // // -------------------------------
+    // builder.module.Builder.SetInsertPoint(commit);
     // TODO
     // if the subexpr is lazy, just go on
     // otherwise check return error code
@@ -1791,9 +2025,24 @@ void DFANLVMCodeGenerator<T>::generate(
   if (node->inline_code.has_value()) {
     std::string code = node->inline_code.value();
     if (code != "") {
-      KaleidCompile(code, builder.module.Builder);
+      KaleidCompile(code, builder.module.Builder, true);
     }
   }
+  if (builder.module.debug_mode) {
+    builder.module.Builder.CreateCall(
+        builder.module.nlex_debug,
+        {
+            llvm::ConstantInt::get(
+                llvm::Type::getInt32Ty(builder.module.TheContext), 0), // shift
+            builder.module.Builder.CreateCall(builder.module.nlex_current_p,
+                                              {}),
+            llvm::Constant::getNullValue(
+                llvm::PointerType::getInt8PtrTy(builder.module.TheContext, 0)),
+            builder.get_or_create_tag(string_format("%p", node), false,
+                                      "debug_ex"),
+        });
+  }
+  // read next char
   builder.module.Builder.CreateCall(builder.module.nlex_next, {});
   auto readv = builder.module.Builder.CreateCall(builder.module.nlex_current_f,
                                                  {}, "readv");
@@ -1901,6 +2150,7 @@ void DFANLVMCodeGenerator<T>::generate(
     deflBB = bb_;
   }
   builder.module.Builder.SetInsertPoint(BBnode);
+
   if (node->outgoing_transitions.size() > 0) {
     if (deflBB)
       builder.module.add_value_to_token(readv);
@@ -1917,9 +2167,36 @@ void DFANLVMCodeGenerator<T>::generate(
         generate(tr->target, visited, blocks);
 
       auto jdst = blocks[tr->target];
+      auto jdst_id = builder.module.block_allocas[jdst];
       auto dst = BasicBlock::Create(builder.module.TheContext, "casejmp",
                                     builder.module.current_main());
+      auto rdst = BasicBlock::Create(builder.module.TheContext, "rcasejmp",
+                                     builder.module.current_main());
+      builder.module.Builder.SetInsertPoint(rdst);
+      builder.module.Builder.CreateCondBr(
+          builder.module.Builder.CreateLoad(jdst_id),
+          builder.module.backtrackExitBB, dst);
+
       builder.module.Builder.SetInsertPoint(dst);
+      if (builder.module.debug_mode) {
+        builder.module.Builder.CreateCall(
+            builder.module.nlex_debug,
+            {
+                llvm::ConstantInt::get(
+                    llvm::Type::getInt32Ty(builder.module.TheContext),
+                    3), // jump
+                builder.module.Builder.CreateCall(builder.module.nlex_current_p,
+                                                  {}),
+                llvm::Constant::getNullValue(llvm::PointerType::getInt8PtrTy(
+                    builder.module.TheContext, 0)),
+                builder.get_or_create_tag(string_format("%p", node), false,
+                                          "debug_ex"),
+            });
+      }
+      builder.module.Builder.CreateStore(
+          llvm::ConstantInt::getTrue(
+              llvm::Type::getInt1Ty(builder.module.TheContext)),
+          builder.module.anything_matched_after_backtrack);
       if (!deflBB) {
         builder.module.add_char_to_token(std::get<char>(tr->input));
         increment_(builder.module.chars_since_last_final,
@@ -1930,7 +2207,7 @@ void DFANLVMCodeGenerator<T>::generate(
       switchinst->addCase(
           ConstantInt::get(IntegerType::get(builder.module.TheContext, 8),
                            std::to_string((int)std::get<char>(tr->input)), 10),
-          dst);
+          rdst);
     }
   } else {
     if (deflBB) {
@@ -1948,13 +2225,17 @@ void DFANLVMCodeGenerator<T>::generate(
   builder.module.exitScope();
 }
 
-template <typename T> std::string DFANLVMCodeGenerator<T>::output() {
+template <typename T>
+std::string DFANLVMCodeGenerator<T>::output(const GenLexer &&lexer_stuff) {
   builder.first_root = this->root_bb;
-  builder.end();
+  builder.end(lexer_stuff);
   return "";
 }
 
-template <typename T> std::string CodeGenerator<T>::output() { __asm("int3"); }
+template <typename T>
+std::string CodeGenerator<T>::output(const GenLexer &&lexer_stuff) {
+  __asm("int3");
+}
 
 template <typename T>
 void CodeGenerator<T>::generate(
@@ -1988,7 +2269,7 @@ std::string exec(const char *cmd, const bool &run) {
 }
 
 static const char m_help[] = R"(
-./a.out [args] [filename]
+nlex [args] [filename]
 ARGS:
     -h
         This help
@@ -2026,13 +2307,13 @@ ARGS:
     --target <triple>
         set the target triple
 
-    
+
     --relocation-model <reloc-model>
       set output object file relocation model
 
     --object-format <format-name>
       set output object file format
-        
+
         -OR-
 
     --emit-llvm
@@ -2045,6 +2326,26 @@ ARGS:
 
     --features <features>
         Set target CPU features
+
+Reading from stdin (if no input file is given):
+nlex [args]
+
+  You'd be presented with a 'Toplevel>' prompt, wherein you can enter expressions.
+  everything is the same as a normal file, except compiler actions are prepended with a dot (.)
+  and they must be explicitly invoked:
+    - .end
+      Exits the repl
+    - .nlvm
+      Compiles to object file
+    - .tree
+      Prints out the AST
+    - .dot
+      Prints out the DOT code for the (unoptimised) NFA
+    - .gengraph
+      Enables/Disables graph generation
+    - .opt=
+      Allows you to specify optimisation level (anything over 0 will take a _long_ time, and the gains are extremely small)
+      also as a downside, you lose all debug info
 )";
 void parse_commandline(int argc, char *argv[], /* out */ char **filename,
                        /* out */ bool *generate_graph,
@@ -2318,14 +2619,21 @@ int main(int argc, char *argv[]) {
             nlvmg.builder.prepare(
                 {parser.gen_lexer_options, parser.gen_lexer_stopwords,
                  parser.gen_lexer_ignores, parser.gen_lexer_normalisations,
-                 parser.gen_lexer_literal_tags,
+                 parser.gen_lexer_literal_tags, parser.gen_lexer_kdefines,
                  parser.hastagpos
                      ? std::optional<TagPosSpecifier>(parser.tagpos)
                      : std::optional<TagPosSpecifier>{},
                  rootdfa->metadata.total_capturing_groups});
 
             nlvmg.generate(rootdfa);
-            nlvmg.output();
+            nlvmg.output(
+                {parser.gen_lexer_options, parser.gen_lexer_stopwords,
+                 parser.gen_lexer_ignores, parser.gen_lexer_normalisations,
+                 parser.gen_lexer_literal_tags, parser.gen_lexer_kdefines,
+                 parser.hastagpos
+                     ? std::optional<TagPosSpecifier>(parser.tagpos)
+                     : std::optional<TagPosSpecifier>{},
+                 rootdfa->metadata.total_capturing_groups});
             run = false;
           }};
           exec(("../tools/wm '" + name + "'").c_str(), run);
@@ -2334,13 +2642,19 @@ int main(int argc, char *argv[]) {
           nlvmg.builder.prepare(
               {parser.gen_lexer_options, parser.gen_lexer_stopwords,
                parser.gen_lexer_ignores, parser.gen_lexer_normalisations,
-               parser.gen_lexer_literal_tags,
+               parser.gen_lexer_literal_tags, parser.gen_lexer_kdefines,
                parser.hastagpos ? std::optional<TagPosSpecifier>{parser.tagpos}
                                 : std::optional<TagPosSpecifier>{},
                rootdfa->metadata.total_capturing_groups});
 
           nlvmg.generate(rootdfa);
-          nlvmg.output();
+          nlvmg.output(
+              {parser.gen_lexer_options, parser.gen_lexer_stopwords,
+               parser.gen_lexer_ignores, parser.gen_lexer_normalisations,
+               parser.gen_lexer_literal_tags, parser.gen_lexer_kdefines,
+               parser.hastagpos ? std::optional<TagPosSpecifier>(parser.tagpos)
+                                : std::optional<TagPosSpecifier>{},
+               rootdfa->metadata.total_capturing_groups});
         }
         continue;
       } else if (line == "")
@@ -2420,13 +2734,19 @@ int main(int argc, char *argv[]) {
       nlvmg.builder.prepare(
           {parser.gen_lexer_options, parser.gen_lexer_stopwords,
            parser.gen_lexer_ignores, parser.gen_lexer_normalisations,
-           parser.gen_lexer_literal_tags,
+           parser.gen_lexer_literal_tags, parser.gen_lexer_kdefines,
            parser.hastagpos ? std::optional<TagPosSpecifier>{parser.tagpos}
                             : std::optional<TagPosSpecifier>{},
            rootdfa->metadata.total_capturing_groups});
 
       nlvmg.generate(rootdfa);
-      nlvmg.output();
+      nlvmg.output({parser.gen_lexer_options, parser.gen_lexer_stopwords,
+                    parser.gen_lexer_ignores, parser.gen_lexer_normalisations,
+                    parser.gen_lexer_literal_tags, parser.gen_lexer_kdefines,
+                    parser.hastagpos
+                        ? std::optional<TagPosSpecifier>(parser.tagpos)
+                        : std::optional<TagPosSpecifier>{},
+                    rootdfa->metadata.total_capturing_groups});
     }
     free(data);
   }

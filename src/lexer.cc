@@ -221,6 +221,13 @@ inline Token NLexer::_next() {
       return Token{TOK_OPNORMAL, lineno, offset - strlen("normalise"),
                    strlen("normalise"), empty_string};
     }
+    if (c == 'd' && strncmp("efine", source_p, strlen("efine")) == 0 &&
+        !isalnum(*(source_p + strlen("efine")))) {
+      state = LexerState::KaliedDefine;
+      advance(strlen("efine"));
+      return Token{TOK_KDEFINE, lineno, offset - strlen("define"),
+                   strlen("define"), empty_string};
+    }
     length = 0;
     buffer[length++] = c;
     do {
@@ -606,6 +613,19 @@ inline Token NLexer::_next() {
     return Token{isfile ? TOK_FILESTRING : TOK_LITSTRING, lineno,
                  offset - str.size(), str.size(), str};
   }
+  case LexerState::KaliedDefine: {
+    static char kbuf[10240];
+    int kbuf_idx = 0;
+    while (c != '\n' && c != 0) {
+      kbuf[kbuf_idx++] = c;
+      c = *source_p;
+      advance(1);
+    }
+    kbuf[kbuf_idx] = 0;
+    state = LexerState::Toplevel;
+    return Token{TOK_KDEFINE_CODE, lineno, offset - kbuf_idx + 1, kbuf_idx - 1,
+                 std::string{kbuf}};
+  }
   case LexerState::Stopword: {
     if (c != '-' && c != '"') {
       source_p--;
@@ -849,6 +869,7 @@ inline Token NLexer::_next() {
       return errtok;
     }
     state = LexerState::Toplevel;
+    regex.mark_leaves();
     return Token{TOK_REGEX, lineno, offset - regex.str.size(), regex.str.size(),
                  regex};
   }
@@ -870,6 +891,7 @@ std::optional<Regexp> NLexer::_regexp() {
   advance(-1);
   // reset capture indices
   nested_index = 0;
+  inside_index = 0;
   while (branch_reset_indices.size())
     branch_reset_indices.pop();
 
@@ -1040,7 +1062,8 @@ std::optional<Regexp> NLexer::regexp_expression() {
         backrefnum = nested_index - 2;
       }
       auto reg = Regexp{
-          std::string{source_p - len, len}, RegexpType::Escape, '\\',
+          std::string{source_p - len, len}, RegexpType::Backreference,
+          "\\" + std::to_string(backrefnum),
           regexp_debug_info(this, std::string{source_p - len, len}, len)};
       reg.index = backrefnum;
       return reg;
@@ -1211,6 +1234,7 @@ std::optional<Regexp> NLexer::regexp_expression() {
                           RegexpType::SubExprCall, (char)backrefnum,
                           regexp_debug_info(this, "\\g", 2)};
         reg.subexprcall = backrefnum;
+        reg.inside_subexpr = inside_index;
         return reg;
       }
       lexer_error(*this, Errors::InvalidRegexpSyntax, error_token(),
@@ -1437,6 +1461,7 @@ std::optional<Regexp> NLexer::regexp_expression() {
         break;
       }
       buffer[length++] = c;
+      escaped = false;
     } while (1);
     return Regexp{std::string{startp, source_p - startp},
                   RegexpType::CharacterClass, std::string{buffer, length},
@@ -1445,6 +1470,7 @@ std::optional<Regexp> NLexer::regexp_expression() {
   // parenthesised expression
   if (c == '(') {
     nested_index++;
+    inside_index++;
     std::optional<int> reset_branch{};
     int branch = 0;
     if (!branch_reset_indices.empty()) {
@@ -1474,6 +1500,7 @@ std::optional<Regexp> NLexer::regexp_expression() {
           }
         }
         advance(1); // consume ')'
+        inside_index--;
         if (seen_newline) {
           const Token &mtoken = error_token();
           lexer_error(*this, Errors::InvalidRegexpSyntax, mtoken,
@@ -1493,6 +1520,7 @@ std::optional<Regexp> NLexer::regexp_expression() {
         // what _this_ index is
         branch_reset_indices.push(nested_index);
         auto reg = regexp();
+        inside_index--;
         if (reset_branch.has_value()) {
           nested_index = *reset_branch;
           branch_reset_indices.push(branch);
@@ -1522,6 +1550,7 @@ std::optional<Regexp> NLexer::regexp_expression() {
           nested_index = *reset_branch;
           branch_reset_indices.push(branch);
         }
+        inside_index--;
         return {};
       }
       if (c == '<' || c == '=') {
@@ -1532,6 +1561,7 @@ std::optional<Regexp> NLexer::regexp_expression() {
           nested_index = *reset_branch;
           branch_reset_indices.push(branch);
         }
+        inside_index--;
         return {};
       }
       if (c == '>') {
@@ -1542,6 +1572,7 @@ std::optional<Regexp> NLexer::regexp_expression() {
           nested_index = *reset_branch;
           branch_reset_indices.push(branch);
         }
+        inside_index--;
         return {};
       }
       if (c == ':') {
@@ -1554,6 +1585,7 @@ std::optional<Regexp> NLexer::regexp_expression() {
         if (!reg.has_value())
           return reg;
         auto &rv = reg.value();
+        inside_index--;
         c = *source_p;
         if (c != ')') {
           const Token &mtoken = error_token();
@@ -1571,6 +1603,7 @@ std::optional<Regexp> NLexer::regexp_expression() {
     }
     auto my_index = nested_index;
     auto reg = regexp();
+    inside_index--;
     if (reset_branch.has_value()) {
       nested_index = *reset_branch;
       branch_reset_indices.push(branch);
@@ -1693,7 +1726,37 @@ std::optional<Regexp> NLexer::regexp_quantifier(Regexp &reg) {
   return reg;
 }
 
+void Regexp::mark_leaves() {
+  return;
+  auto mark = [](Regexp &reg) { reg.is_leaf = true; };
+  switch (type) {
+  case Symbol:
+    mark(*this);
+    break;
+  case Alternative:
+    for (auto *ch : children)
+      ch->mark_leaves();
+    break;
+  case Concat:
+    children.back()->mark_leaves();
+    break;
+  case Nested:
+    std::get<Regexp *>(inner)->mark_leaves();
+    break;
+  case Dot:
+  case Literal:
+  case Escape:
+  case CharacterClass:
+  case Assertion:
+  case SubExprCall:
+  case Code:
+    mark(*this);
+    break;
+  }
+}
+
 Regexp Regexp::concat(const Regexp &other) {
+  is_leaf = false;
   if (type == RegexpType::Assertion && other.type == RegexpType::Assertion) {
     auto assertions = std::get<std::vector<RegexpAssertion>>(inner);
     std::vector<RegexpAssertion> asserts{assertions.cbegin(),
@@ -1739,7 +1802,7 @@ Regexp Regexp::concat(const Regexp &other) {
     std::vector<Regexp *> vec;
     vec.push_back(new Regexp(*this));
     for (auto child : other.children)
-      vec.push_back(child);
+      vec.push_back(child->set_is_leaf_p(false));
     return Regexp{str + (std::string{"|"} + other.str),
                   RegexpType::Alternative,
                   vec,
@@ -1749,13 +1812,13 @@ Regexp Regexp::concat(const Regexp &other) {
                                  other.debug_info.name.c_str())}};
   }
   if (type == RegexpType::Concat) {
-    children.push_back(new Regexp{other});
+    children.push_back((new Regexp{other})->set_is_leaf_p(false));
     str += other.str;
     return *this;
   }
   std::vector<Regexp *> vec;
-  vec.push_back(new Regexp{*this});
-  vec.push_back(new Regexp{other});
+  vec.push_back((new Regexp{*this})->set_is_leaf_p(false));
+  vec.push_back((new Regexp{other})->set_is_leaf_p(false));
 
   return Regexp(this->str + other.str, RegexpType::Concat, vec,
                 {debug_info.lineno, debug_info.offset,
@@ -2020,6 +2083,7 @@ Regexp::compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
     NFANode<std::string> *tl = new NFANode<std::string>{"R<>" + mangle()};
     parent->epsilon_transition_to(tl);
     tl->subexpr_call = subexprcall;
+    tl->inside_subexpr = inside_subexpr;
     tl->named_rule = namef;
     result = tl;
     result->debug_info = debug_info;
@@ -2030,6 +2094,15 @@ Regexp::compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
     parent->epsilon_transition_to(tl);
     tl->named_rule = namef;
     tl->inline_code = std::get<std::string>(inner);
+    result = tl;
+    result->debug_info = debug_info;
+    break;
+  }
+  case RegexpType::Backreference: {
+    NFANode<std::string> *tl = new NFANode<std::string>{"BR" + mangle()};
+    parent->epsilon_transition_to(tl);
+    tl->named_rule = namef;
+    tl->backreference = index;
     result = tl;
     result->debug_info = debug_info;
     break;

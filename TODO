@@ -40,3 +40,9 @@
 #         - calling convention?
 #   - add compile-on-need to python wrapper
 #   - 'option farsi on' to appease the gods
+
+
+# - Backtracking:
+#  - when a branch fails, and we have no tags for it, somehow flag this, go back a character, and take this flag into account
+#  - whenever we are transitioning somewhere
+#  - if, that flag fails, we will simply not transition anymore

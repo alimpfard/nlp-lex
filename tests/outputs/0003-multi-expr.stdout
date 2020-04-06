@@ -1,0 +1,7 @@
+res at 0x7ffe873a4b98, s at 0x7fb48714e010
+processing - '0010020012
+'
+match {'001' - (null) - 3 test_prefix0} is not a stopword
+match {'002' - (null) - 3 test_prefix1} is not a stopword
+match {'0012' - (null) - 4 test_uni} is not a stopword
+no match {'' - (null) - 0 test_uni} is not a stopword

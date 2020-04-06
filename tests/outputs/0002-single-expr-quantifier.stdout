@@ -1,0 +1,41 @@
+res at 0x7fff6467ea18, s at 0x7f3b8d95d010
+processing - ' 0 00 1 11 2 22 222 4 4444 56 6 78 7778 a 9a 999a bc c bb'
+match {' ' - (null) - 1 space} is not a stopword
+match {'0' - (null) - 1 test_plus} is not a stopword
+match {' ' - (null) - 1 space} is not a stopword
+match {'00' - (null) - 2 test_plus} is not a stopword
+match {' ' - (null) - 1 space} is not a stopword
+match {'1' - (null) - 1 test_star} is not a stopword
+match {' ' - (null) - 1 space} is not a stopword
+match {'11' - (null) - 2 test_star} is not a stopword
+match {' ' - (null) - 1 space} is not a stopword
+match {'2' - (null) - 1 test_numeric_limit_left} is not a stopword
+match {' ' - (null) - 1 space} is not a stopword
+match {'22' - (null) - 2 test_numeric_limit_left} is not a stopword
+match {' ' - (null) - 1 space} is not a stopword
+match {'222' - (null) - 3 test_numeric_limit_left} is not a stopword
+match {' ' - (null) - 1 space} is not a stopword
+match {'4' - (null) - 1 test_plus_plus} is not a stopword
+match {' ' - (null) - 1 space} is not a stopword
+match {'4444' - (null) - 4 test_plus_plus} is not a stopword
+match {' ' - (null) - 1 space} is not a stopword
+match {'56' - (null) - 2 test_maybe} is not a stopword
+match {' ' - (null) - 1 space} is not a stopword
+match {'6' - (null) - 1 test_maybe} is not a stopword
+match {' ' - (null) - 1 space} is not a stopword
+match {'78' - (null) - 2 test_plus_maybe} is not a stopword
+match {' ' - (null) - 1 space} is not a stopword
+match {'7778' - (null) - 4 test_plus_maybe} is not a stopword
+match {' ' - (null) - 1 space} is not a stopword
+match {'a' - (null) - 1 test_star_maybe} is not a stopword
+match {' ' - (null) - 1 space} is not a stopword
+match {'9a' - (null) - 2 test_star_maybe} is not a stopword
+match {' ' - (null) - 1 space} is not a stopword
+match {'999a' - (null) - 4 test_star_maybe} is not a stopword
+match {' ' - (null) - 1 space} is not a stopword
+match {'bc' - (null) - 2 test_numeric_limit_left_maybe} is not a stopword
+match {' ' - (null) - 1 space} is not a stopword
+match {'c' - (null) - 1 test_numeric_limit_left_maybe} is not a stopword
+match {' ' - (null) - 1 space} is not a stopword
+match {'b' - (null) - 1 space} is not a stopword
+match {'' - (null) - 0 space} is not a stopword

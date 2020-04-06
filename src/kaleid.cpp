@@ -81,7 +81,7 @@ static double NumVal;             // Filled in if tok_number
 static std::string StringValue;   // Filled in if tok_string
 static std::string fed_string = "";
 
-void KaleidFeed(std::string s) { fed_string += s; }
+void KaleidFeed(std::string s) { fed_string += "\n" + s; }
 
 static char next_char() {
   if (fed_string.size() == 0)
@@ -1548,10 +1548,11 @@ static void HandleExtern() {
   }
 }
 
-static void HandleTopLevelExpression() {
+static void HandleTopLevelExpression(bool allow_bare) {
   // Evaluate a top-level expression into an anonymous function.
   if (auto FnAST = ParseTopLevelExpr()) {
-    FnAST->codegen();
+    if (allow_bare)
+      FnAST->codegen();
   } else {
     // Skip token for error recovery.
     getNextToken();
@@ -1559,7 +1560,8 @@ static void HandleTopLevelExpression() {
 }
 
 /// top ::= definition | external | expression | ';'
-void KaleidCompile(std::string code, llvm::IRBuilder<> &TheBuilder) {
+void KaleidCompile(std::string code, llvm::IRBuilder<> &TheBuilder,
+                   bool allow_bare_expressions = false) {
   Builder = &TheBuilder;
   KaleidFeed(code);
   getNextToken(true);
@@ -1583,7 +1585,7 @@ void KaleidCompile(std::string code, llvm::IRBuilder<> &TheBuilder) {
       break;
     }
     default: {
-      HandleTopLevelExpression();
+      HandleTopLevelExpression(allow_bare_expressions);
       break;
     }
     }
@@ -1615,8 +1617,12 @@ extern "C" DLLEXPORT double printd(double X) {
 //===----------------------------------------------------------------------===//
 // Main driver code.
 //===----------------------------------------------------------------------===//
+static bool initd = false;
 
 void KaleidInitialise(std::string startup_code, nlvm::BaseModule *module) {
+  if (initd)
+    return;
+  initd = true;
   // Install standard binary operators.
   // 1 is lowest precedence.
   BinopPrecedence['='] = 5;
@@ -1677,7 +1683,7 @@ auto main() -> int {
     std::cout << "> ";
     std::getline(std::cin, line);
 
-    KaleidCompile(line, builder);
+    KaleidCompile(line, builder, true);
     if (line == "")
       break;
   }

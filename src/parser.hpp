@@ -32,6 +32,7 @@ enum class ParserState {
   Define,
   Const,
   Literal,
+  KDefine,
   Normal,
   NormalS,
   // Tag ...
@@ -88,6 +89,7 @@ public:
   std::set<std::pair<std::string, debug_offset_info>> gen_lexer_ignores;
   std::map<std::string, std::string> gen_lexer_normalisations;
   std::map<std::string, std::vector<std::string>> gen_lexer_literal_tags;
+  std::vector<std::string> gen_lexer_kdefines;
 
   TagPosSpecifier tagpos;
   bool hastagpos = false;

@@ -1,0 +1,9 @@
+
+# RGI emojis
+emoji -- "\uc{RGI}"
+
+# literal matches take precedence over non-literal matches
+literal -- "HELP"
+non_literal :: HELP
+
+stopword "HELP"

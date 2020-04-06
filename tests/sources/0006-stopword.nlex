@@ -1,0 +1,6 @@
+test :: [a-zA-Z]+
+space :: [ ]
+
+stopword "Test" "test"
+
+ignore [ space ]

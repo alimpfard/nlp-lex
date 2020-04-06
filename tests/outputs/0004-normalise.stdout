@@ -1,0 +1,7 @@
+res at 0x7ffdbd5ad3f8, s at 0x7ffa52b8a010
+processing - 'cdefghijklmnopqrstuvwxyzش.
+'
+match {'aaaaaaaaaaaabbbbbbbbbbbbaa' - (null) - 26 test_correct} is not a stopword
+match {'
+' - (null) - 2 test_incorrect} is not a stopword
+no match {'' - (null) - 0 test_incorrect} is not a stopword

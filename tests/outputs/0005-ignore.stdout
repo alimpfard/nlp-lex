@@ -1,0 +1,14 @@
+res at 0x7ffcb3d0b9f8, s at 0x7eff9b594010
+processing - 'ab
+cdef
+'
+match {'b' - (null) - 1 interesting} is not a stopword
+match {'
+' - (null) - 1 interesting} is not a stopword
+match {'c' - (null) - 1 interesting} is not a stopword
+match {'d' - (null) - 1 interesting} is not a stopword
+match {'e' - (null) - 1 interesting} is not a stopword
+match {'f' - (null) - 1 interesting} is not a stopword
+match {'
+' - (null) - 1 interesting} is not a stopword
+no match {'' - (null) - 0 interesting} is not a stopword

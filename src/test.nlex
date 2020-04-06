@@ -1,4 +1,7 @@
-option unsafe_normaliser on
-normalise {t} to x
+option debug_mode on
 
-root :
+EnglishWord :: a+
+Punc :: \.
+
+Link :: a+\.1
+

@@ -1,0 +1,12 @@
+res at 0x7ffc6d126a88, s at 0x7f3efe7f6010
+processing - 'a b c. a d e.
+'
+match {'a' - A - 1 test} is not a stopword
+match {'b' - B - 1 test} is not a stopword
+match {'c' - C - 1 test} is not a stopword
+match {'.' - DOT - 1 sentence_delm} is not a stopword
+match {'a' - A - 1 test} is not a stopword
+match {'d' - B - 1 test} is not a stopword
+match {'e' - C - 1 test} is not a stopword
+match {'.' - DOT - 1 sentence_delm} is not a stopword
+no match {'' - DOT - 0 test} is not a stopword

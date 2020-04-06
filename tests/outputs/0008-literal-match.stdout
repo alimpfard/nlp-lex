@@ -1,0 +1,6 @@
+res at 0x7ffc26eda248, s at 0x7fc1109a1010
+processing - 'HELP😒
+'
+match {'HELP' - (null) - 4 literal} is a stopword
+match {'😒' - (null) - 4 emoji} is not a stopword
+no match {'' - (null) - 0 emoji} is not a stopword

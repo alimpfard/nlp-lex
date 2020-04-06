@@ -1,0 +1,4 @@
+test :: a
+interesting :: [^a]
+
+ignore [ test ]
