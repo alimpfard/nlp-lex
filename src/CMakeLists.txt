@@ -46,6 +46,7 @@ llvm_config(nlex USE_SHARED core)
 
 target_include_directories(nlex PUBLIC
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>
+)
 
 target_compile_options(nlex PRIVATE -Wno-narrowing -Wno-write-strings -pthread -g)
 

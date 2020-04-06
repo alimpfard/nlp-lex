@@ -1,9 +1,15 @@
 #include <stdio.h>
 #include <memory.h>
-#include <unistd.h>
+#include "unistd.h"
 #include <errno.h>
 #include <stdarg.h>
 #include <stdlib.h>
+#include <stdint.h>
+
+extern void __nlex_root(struct sresult *);
+extern void __nlex_feed(char const *p);
+extern int __nlex_distance();
+
 
 struct sresult {
   char const *start;
@@ -14,9 +20,6 @@ struct sresult {
   char const *pos;
   int allocd;
 };
-extern void __nlex_root(struct sresult *);
-extern void __nlex_feed(char const *p);
-extern int __nlex_distance();
 
 /* kaleidoscope rts */
 double putchard(double d) {
@@ -39,11 +42,18 @@ double eprintd(double d) {
   return (double) fprintf(stderr, "%lf", d);
 }
 
+int vdprintf(int fd, char* fmt, va_list ap) {
+	FILE* fp = fdopen(fd, "w");
+	int res = vfprintf(fp, fmt, ap);
+	fclose(fp);
+	return res;
+}
+
 double dprintdf(double fd, double ptr, ...) {
   va_list ap;
   va_start(ap, ptr);
 
-  __intptr_t ip = ptr;
+  intptr_t ip = ptr;
   double res = (double) vdprintf((int) fd, (char*) ip, ap);
   va_end(ap);
   return res;
@@ -52,40 +62,40 @@ double dprintdf(double fd, double ptr, ...) {
 double mallocd(double s) {
   size_t sze = (size_t) s;
   void *mem = malloc(sze);
-  __intptr_t ip = (__intptr_t) mem;
+  intptr_t ip = (intptr_t) mem;
   return (double) ip;
 }
 
 double memsetd(double p, double s, double n) {
-  __intptr_t ip = p;
-  ip = (__intptr_t) memset((void*) ip, (int) s, (size_t) n);
+  intptr_t ip = p;
+  ip = (intptr_t) memset((void*) ip, (int) s, (size_t) n);
   return (double) ip;
 }
 
 double freed(double ptr) {
-  __intptr_t p = ptr;
+  intptr_t p = ptr;
   free((void*) p);
   return 0.0;
 }
 
 double cderef(double ptr) {
-  __intptr_t p = ptr;
+  intptr_t p = ptr;
   return * ((char*) p);
 }
 
 double cderefset(double ptr, double value) {
-  __intptr_t p = ptr;
+  intptr_t p = ptr;
   memmove((char*) p, (void*) &value, sizeof(char));
   return value;
 }
 
 double dderef(double ptr) {
-  __intptr_t p = ptr;
+  intptr_t p = ptr;
   return * ((double*) p);
 }
 
 double dderefset(double ptr, double value) {
-  __intptr_t p = ptr;
+  intptr_t p = ptr;
   memmove((double*) p, (void*) &value, sizeof(double));
   return value;
 }
@@ -131,7 +141,7 @@ void __nlex_produce_debug(int action, const char* position, const char* data, ch
 int main() {
   struct sresult res = {0};
   size_t size = 1024000;
-  char *s = malloc(size);
+  char *s = (char*) malloc(size);
   printf("res at %p, s at %p\n", &res, s);
   while (1) {
     int last = -1;
@@ -142,7 +152,7 @@ int main() {
     } else {
         els = read(STDIN_FILENO, s, 1024000);
         if (els < 0) {
-            fprintf(stderr, "Error from read(2): %s", strerror(errno));
+            fprintf(stderr, "Error from read(2)");
             break;
         }
         if (els == 0) break;

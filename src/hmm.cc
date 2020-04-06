@@ -3,6 +3,7 @@
 #include "cassert"
 #include "serialise.hpp"
 #include <math.h>
+#include <array>
 
 namespace nlex {
 namespace POSTag {

@@ -2,6 +2,8 @@
 #include "serialise.hpp"
 #include <list>
 #include <queue>
+#include <array>
+#include <cstring>
 
 #define ONLY_VITERBI_INCLUDE
 #include "hmm.cc"
@@ -25,6 +27,13 @@ struct _sresult {
 
 static std::queue<std::pair<bool, std::list<_sresult>>> data_store{};
 static bool last_entry_complete = false;
+
+char* strndup(char const* ptr, size_t length) noexcept {
+    char* p = (char*) malloc(length + 1);
+    memcpy(p, ptr, length);
+    p[length] = 0;
+    return p;
+}
 
 extern "C" nlex::POSTag::TType *__nlex_get_deser_postag_TS() noexcept {
   if (_m_initd)
