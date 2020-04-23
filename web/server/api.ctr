@@ -1,0 +1,76 @@
+import generate: \*.
+
+api postEndpoints.
+
+type Arguments [
+    boolean dry_run,
+    string output_name,
+    string image_format,
+    string target
+].
+
+model Job [
+    string source,
+    Arguments arguments,
+    boolean is_done,
+    string output_name
+].
+
+type Diagnostic [
+    int line,
+    int column,
+    enum['error', 'warning'] level,
+    string data
+].
+
+function resolveJobReference [
+    reference[Job] job_id
+] -> Job job.
+
+var resource is Object cnew: {
+    resources => Array new.
+    on: 'process:' do: {:path
+        redirect from: path to: '/index?res=$$path'.
+        my resources push: path.
+    }.
+    on: 'enum' do: {
+        ^enum applyAll: my resources.
+    }.
+}.
+
+redirect from: '' to: '/index?res=editor.html'.
+
+resource 'res/ace/mode-nlex.js' 'editor.html' 'res/ace/ace.js' 'res/ace/theme-twilight.js'.
+
+
+action index pure [
+    Request [
+        resource enum res
+    ],
+    Response string,
+    Action [ 'set content type' ] 
+].
+
+endpoint run [
+    Request [
+        string source
+    ],
+    Response [
+        Diagnostic[] diagnostics,
+        reference[Job] identifier,
+        string dot_data
+    ]
+].
+
+endpoint compile [
+    Request [
+        reference[Job] job_id
+    ],
+    Response [
+        string b64encoded
+    ],
+    Before [ resolveJobReference ]
+].
+
+api log: \debug.
+api generate.

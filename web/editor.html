@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NLex Online Editor</title>
+    <style>
+        .container {
+            display: flex;
+            height: 100%;
+        }
+        
+        .container-vert {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .fixed {
+            width: 45vw;
+            height: 99vh;
+            resize: horizontal;
+            overflow: auto;
+        }
+        
+        .flex-item {
+            flex-grow: 1;
+        }
+        
+        .vert70 {
+            height: 70vh;
+            width: 55vw;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <!-- Editor -->
+        <div id="editor" class="fixed">EDITOR</div>
+
+        <!-- Side: graph view, utilities -->
+        <div class="flex-item container-vert">
+            <div id="graph" class="flex-item vert70">
+                GRAPH
+            </div>
+            <div class="flex-item">
+                UTILITIES
+                <br>
+                <button onclick="diagnostics()">
+                    Process for debug
+                </button>
+            </div>
+        </div>
+    </div>
+</body>
+
+<footer>
+    <script src="https://d3js.org/d3.v5.min.js"></script>
+    <script src="https://unpkg.com/@hpcc-js/wasm@0.3.6/dist/index.min.js"></script>
+    <script src="https://unpkg.com/d3-graphviz@3.0.0/build/d3-graphviz.js"></script>
+    <script src="res/ace/ace.js" type="text/javascript" charset="utf-8"></script>
+    <script src="res/ace/mode-nlex.js" type="text/javascript" charset="utf-8"></script>
+    <script>
+        var editor = ace.edit("editor");
+        editor.setTheme("ace/theme/twilight");
+        editor.session.setMode('ace/mode/nlex');
+        editor.session.setOption("useWorker", false);
+        var dot = '';
+
+        async function diagnostics() {
+            let json = await fetch('/run', {
+                method: 'POST',
+                body: JSON.stringify({
+                    source: editor.getValue(),
+                })
+            });
+            json = await json.json();
+            console.log(json);
+            let diags = json.diagnostics;
+            dot = json.dot_data;
+            var graphviz = d3.select("#graph").graphviz()
+                .transition(function() {
+                    return d3.transition("main")
+                        .ease(d3.easeLinear)
+                        .delay(500)
+                        .duration(1500);
+                })
+                .logEvents(true)
+                .on("initEnd", render);
+
+            function render() {
+                graphviz.dot(dot);
+                graphviz.height(graph.clientHeight);
+                graphviz.width(graph.clientWidth);
+                graphviz.render();
+            }
+            let annotations = [];
+            if (diags)
+                for (let diag of diags) {
+                    annotations.push({
+                        row: diag.line - 1,
+                        column: diag.column,
+                        text: diag.data,
+                        type: diag.level
+                    });
+                }
+            return editor.getSession().setAnnotations(annotations);
+        }
+    </script>
+</footer>
+
+</html>
