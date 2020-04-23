@@ -18,6 +18,7 @@ RUN mkdir -p /nlex/bin
 RUN mv src/build/nlex /nlex/bin
 RUN mv tools /nlex
 RUN mv examples /nlex
+RUN mv web /nlex/web
 
 WORKDIR /nlex
 
