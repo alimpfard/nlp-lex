@@ -1682,7 +1682,11 @@ public:
       module.TheMPM->run(*Composite);
 
     legacy::PassManager pass;
+#if LLVM_VERSION_MAJOR > 9
+    auto FileType = CGFT_ObjectFile;
+#else
     auto FileType = LLVMTargetMachine::CodeGenFileType::CGFT_ObjectFile;
+#endif
     std::error_code EC;
     if (output_file_name == "")
       output_file_name = std::string{Composite->getName()} + ".o";
