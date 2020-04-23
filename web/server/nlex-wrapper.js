@@ -34,14 +34,44 @@ module.exports = {
             bin_arguments.push('--gout');
             bin_arguments.push(args.output_name + '.dot');
         } else {
-            if (args.image_format) {
+            if (args.arguments.object_format) {
                 bin_arguments.push('--object-format');
-                bin_arguments.push(args.image_format);
+                bin_arguments.push(args.arguments.object_format);
             }
-            if (args.target) {
+            if (args.arguments.target) {
                 bin_arguments.push('--target');
-                bin_arguments.push(args.target);
+                bin_arguments.push(args.arguments.target);
+            } else {
+                if (args.arguments.target_arch) {
+                    bin_arguments.push('--target-arch');
+                    bin_arguments.push(args.arguments.target_arch);
+                }
+                if (args.arguments.target_vendor) {
+                    bin_arguments.push('--target-vendor');
+                    bin_arguments.push(args.arguments.target_vendor);
+                }
+                if (args.arguments.target_sys) {
+                    bin_arguments.push('--target-sys');
+                    bin_arguments.push(args.arguments.target_sys);
+                }
+                if (args.arguments.target_env) {
+                    bin_arguments.push('--target-env');
+                    bin_arguments.push(args.arguments.target_env);
+                }
             }
+            if (args.arguments.library) {
+                bin_arguments.push('--library');
+            }
+            if (args.arguments.cpu) {
+                bin_arguments.push('-mcpu');
+                bin_arguments.push(args.arguments.cpu);
+            }
+            if (args.arguments.features) {
+                bin_arguments.push('--features');
+                bin_arguments.push(args.arguments.features);
+            }
+            bin_arguments.push('-o');
+            bin_arguments.push(args.output_name + '.out');
         }
         bin_arguments.push(args.output_name + '.in');
 
@@ -49,7 +79,7 @@ module.exports = {
 
         let child = ps.spawn(nlexBinary, bin_arguments);
         console.log(bin_arguments);
-        let diagnostics = ""
+        let diagnostics = '';
 
         function handle_data(data) {
             diagnostics += data.toString();
@@ -68,7 +98,7 @@ module.exports = {
                         _diagnostics.push(read_error(line));
                     }
                 }
-                resolve({ diagnostics: _diagnostics });
+                resolve({ diagnostics: _diagnostics, outputName: args.output_name + '.out', ok: code === 0 });
             });
             child.on('error', err => {
                 console.log('error', err);

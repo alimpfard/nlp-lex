@@ -47,9 +47,54 @@
             <div class="flex-item">
                 UTILITIES
                 <br>
+                <button onclick="toggleSettings()">
+                    Show Options
+                </button>
+                <br>
+                <div id="settings" style="visibility: hidden;">
+                    <select name="target_vendor" id="target_vendor">
+                        <option selected value="">Default</option>
+                        <option value="pc">pc</option>
+                        <option value="apple">apple</option>
+                        <option value="nvidia">nvidia</option>
+                        <option value="ibm">ibm</option>
+                    </select>
+                    <select name="target_sys" id="target_sys">
+                        <option selected value="">Default</option>
+                        <option value="none">none</option>
+                        <option value="linux">linux</option>
+                        <option value="windows">windows</option>
+                        <option value="darwin">darwin</option>
+                        <option value="cuda">cuda</option>
+                    </select>
+                    <select name="object_format" id="object_format">
+                        <option selected value="">Default</option>
+                        <option value="coff">coff</option>
+                        <option value="elf">ELF</option>
+                    </select>
+                    <select name="relocation_model" id="relocation_model">
+                        <option selected value="">Default</option>
+                        <option value="pie">pie</option>
+                    </select>
+                    <label for="library">Library mode</label>
+                    <input type="checkbox" name="library" id="library">
+                    <label for="target">Target (leave empty if you don't want to override the entire target)</label>
+                    <input type="text" name="target" id="target">
+                </div>
+                <br>
                 <button onclick="diagnostics()">
                     Process for debug
                 </button>
+                <br>
+                <button onclick="compile()">
+                    Compile
+                </button>
+                <br>
+                <button onclick="load_examples()">
+                    Load Examples
+                </button>
+                <br>
+                <div id="list_examples"></div>
             </div>
         </div>
     </div>
@@ -67,33 +112,74 @@
         editor.session.setMode('ace/mode/nlex');
         editor.session.setOption("useWorker", false);
         var dot = '';
+        var job_id = null;
 
-        async function diagnostics() {
+        function toggleSettings() {
+            settings.style.visibility = settings.style.visibility == 'hidden' ? 'unset' : 'hidden';
+        }
+
+        async function compile() {
+            if (await diagnostics())
+                return;
+            fetch('/compile', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        job_id: job_id
+                    })
+                })
+                .then(res => res.blob())
+                .then(blob => {
+                    var file = window.URL.createObjectURL(blob);
+                    window.location.assign(file);
+                });
+        }
+
+        async function load_examples() {
+            let examples = await (await fetch('/examples?foo=', {
+                method: 'GET'
+            })).json();
+            let examples_html = examples.map(e => `<li><a href="javascript:load_example('${e}')">${e}</a></li>`).join(' ');
+            list_examples.innerHTML = '<ul>' + examples_html + '</ul>';
+        }
+
+        async function load_example(name) {
+            let example = (await (await fetch('/example?name=' + name, {
+                method: 'GET'
+            })).json()).example;
+            editor.setValue(example);
+        }
+
+        async function diagnostics(norefresh) {
             let json = await fetch('/run', {
                 method: 'POST',
                 body: JSON.stringify({
                     source: editor.getValue(),
+                    arguments: {
+                        target_vendor: target_vendor.value,
+                        target_sys: target_sys.value,
+                        object_format: object_format.value,
+                        relocation_model: relocation_model.value,
+                        library: library.value,
+                        target: target.value
+                    }
                 })
             });
             json = await json.json();
             console.log(json);
             let diags = json.diagnostics;
             dot = json.dot_data;
-            var graphviz = d3.select("#graph").graphviz()
-                .transition(function() {
-                    return d3.transition("main")
-                        .ease(d3.easeLinear)
-                        .delay(500)
-                        .duration(1500);
-                })
-                .logEvents(true)
-                .on("initEnd", render);
+            job_id = json.identifier;
+            if (!norefresh) {
+                var graphviz = d3.select("#graph").graphviz()
+                    .logEvents(true)
+                    .on("initEnd", render);
 
-            function render() {
-                graphviz.dot(dot);
-                graphviz.height(graph.clientHeight);
-                graphviz.width(graph.clientWidth);
-                graphviz.render();
+                function render() {
+                    graphviz.dot(dot);
+                    graphviz.height(graph.clientHeight);
+                    graphviz.width(graph.clientWidth);
+                    graphviz.render();
+                }
             }
             let annotations = [];
             if (diags)
@@ -105,7 +191,8 @@
                         type: diag.level
                     });
                 }
-            return editor.getSession().setAnnotations(annotations);
+            editor.getSession().setAnnotations(annotations);
+            return diags && diags.length > 0;
         }
     </script>
 </footer>

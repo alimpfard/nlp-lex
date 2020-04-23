@@ -1,6 +1,8 @@
+const { env } = require('process');
+
 module.exports = {
-    port: 8080,
-    mongo_addr: "mongodb://127.0.0.1",
+    port: env.PORT || 8080,
+    mongo_addr: env.MONGO_ADDRESS || "mongodb://127.0.0.1",
     database: "nlex",
-    nlexBinary: '/home/Test/Documents/nlp-lex/build/nlex'
+    nlexBinary: '../nlex/bin/nlex'
 };

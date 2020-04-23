@@ -2,11 +2,24 @@ import generate: \*.
 
 api postEndpoints.
 
+type UserArguments [
+    string target_arch,
+    string target_vendor,
+    string target_sys,
+    string target_env,
+    string target,
+    
+    boolean library,
+    boolean llvm,
+    string object_format,
+    string cpu,
+    string features
+].
+
 type Arguments [
     boolean dry_run,
     string output_name,
-    string image_format,
-    string target
+    UserArguments arguments
 ].
 
 model Job [
@@ -53,23 +66,48 @@ action index pure [
 
 endpoint run [
     Request [
-        string source
+        string source,
+        UserArguments arguments
     ],
     Response [
         Diagnostic[] diagnostics,
-        reference[Job] identifier,
+        string identifier,
         string dot_data
     ]
 ].
 
-endpoint compile [
+action compile [
     Request [
         reference[Job] job_id
     ],
     Response [
-        string b64encoded
+        boolean ok
+    ],
+    Action [
+        'compile',
+        'download'
     ],
     Before [ resolveJobReference ]
+].
+
+action examples pure [
+    Request [
+        string foo['']
+    ],
+    Response string[],
+    Action [ ]
+].
+
+var examples is enum applyAll: (File list: '../../examples', fmap!: \:x x @ 'file', filter_v: \:x x endsWith: '.nlex').
+
+action example pure [
+    Request [
+        examples name
+    ],
+    Response [
+        string example
+    ],
+    Action [ ]
 ].
 
 api log: \debug.

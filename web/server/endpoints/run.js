@@ -1,4 +1,4 @@
-const { ArrayType, Diagnostic, Enum1, Enum0 } = require("../types.js");
+const { ArrayType, Diagnostic, UserArguments } = require("../types.js");
 
 const { Job } = require("../models.js");
 
@@ -22,19 +22,24 @@ let constructIdentifier = x => (String).call(null, x);
 
 module.exports = async function process_run(res_input, res_output) {
     const outputName = 'aaa';
+    const arguments = {};
+    UserArguments.forEach(res_input.arguments, (k, v) => {
+        if (v !== undefined && v !== '' && v != 'undefined')
+            arguments[k] = v;
+    });
     let job = {
         source: res_input.source,
         arguments: {
             dry_run: true,
             output_name: outputName,
-            image_format: null,
-            target: null
+            arguments: arguments
         },
         is_done: false,
         output_name: outputName
     };
     let ident = await Job.db().insertOne(job);
-    res_output.identifier = ident._id;
+    console.log(ident);
+    res_output.identifier = ident.insertedId;
     res_output.diagnostics = [];
     for (let diagnostic of(await run({ job })).diagnostics)
         res_output.diagnostics.push({
