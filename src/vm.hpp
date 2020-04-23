@@ -59,6 +59,10 @@ extern Display::SingleLineTermStatus slts;
 extern std::string output_file_name;
 extern nlvm::TargetTriple targetTriple;
 
+#include "test_bc.h"
+#include "deser.inc"
+
+
 namespace nlvm {
 static llvm::AllocaInst *createEntryBlockAlloca(llvm::Function *TheFunction,
                                                 const std::string &VarName,
@@ -532,10 +536,6 @@ public:
       : BaseModule(), Builder(TheContext), outputv(os) {
     llvm::SMDiagnostic ed;
 
-// #define unsigned const
-#include "test_bc.h"
-    // #undef unsigned
-
     static llvm::StringRef mLibraryBitcode =
         llvm::StringRef((const char *)test_bc, test_bc_len);
     RTSModule = llvm::parseIR(llvm::MemoryBufferRef(mLibraryBitcode, "test_bc"),
@@ -545,7 +545,6 @@ public:
       ed.print(name.c_str(), *os);
     assert(RTSModule.get() != nullptr && "RTS compilation failed");
 
-#include "deser.inc"
     static llvm::StringRef mDeserBitcode =
         llvm::StringRef((const char *)deser_inc_bc, deser_inc_bc_len);
     DeserModule = llvm::parseIR(

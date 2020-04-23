@@ -2275,7 +2275,8 @@ Regexp::compile(std::multimap<const Regexp *, NFANode<std::string> *> &cache,
         prev_s = c->compile(cache, prev_s, cpath, leading_);
       }
     }
-    prev_s->epsilon_transition_to(endp);
+    if (prev_s)
+      prev_s->epsilon_transition_to(endp);
     root = transform_by_quantifiers(
         new PseudoNFANode<std::string>{"S" + mangle(), root, endp});
     parent->epsilon_transition_to(root);

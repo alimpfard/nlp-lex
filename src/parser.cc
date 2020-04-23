@@ -844,7 +844,7 @@ std::string NFANode<T>::gen_dot(
   std::map<NFANode<T> *, int> nodeids;
   for (auto node : nodes) {
     nodeids[node] = node_id++;
-    oss << "node [shape = "
+    oss << "node [penwidth=2.0, shape = "
         << (node->start ? "square" : node->final ? "doublecircle" : "circle")
         << (", label = \"" +
             Display::findAndReplaceAllT(get_name(node, true) + "\\nat " +
@@ -920,7 +920,7 @@ std::string NFANode<T>::gen_dot(
   }
   for (auto kv : target_labels)
     oss << "LR_" << kv.first.first << " -> LR_" << kv.first.second
-        << " [ label = \""
+        << " [penwidth=2.0, label = \""
         << "{" << join(kv.second.first) << "}"
         << " -> " << get_name(kv.second.second, false, true) << "\\n@"
         << string_format("%p", kv.second.second) << "\" ];" << ss_end;
@@ -992,7 +992,7 @@ std::string DFANode<T>::gen_dot(
   for (auto node : nodes) {
     nodeids[node] = node_id++;
     if constexpr (true)
-      oss << "node [shape = " << (node->final ? "doublecircle" : "circle")
+      oss << "node [penwidth=2.0, shape = " << (node->final ? "doublecircle" : "circle")
           << (", label = \"" +
               std::string(node->start ? "Initial State:" : "") +
               get_name(node->state_info.value(), false, true) + "\\nat " +
