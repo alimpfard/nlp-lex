@@ -9,14 +9,17 @@ const MongoClient = require("mongodb").MongoClient;
 const process_run = require("./endpoints/run.js");
 const process_example = require("./endpoints/example.js");
 const process_examples = require("./endpoints/examples.js");
+const process_download = require("./endpoints/download.js");
+const action_download_0 = require("./actions/download-action0.js");
 const process_compile = require("./endpoints/compile.js");
 const action_compile_0 = require("./actions/compile-action0.js");
 const action_compile_1 = require("./actions/compile-action1.js");
 const process_index = require("./endpoints/index.js");
 const action_index_0 = require("./actions/index-action0.js");
 
-const {ArrayType, Diagnostic, UserArguments, Arguments, Enum2, Enum1, Enum0} = require("./types.js");
-const {Job} = require("./models.js");
+const {ArrayType, Arguments, Diagnostic, UserArguments, namedFile, Enum2, Enum1, Enum0} = require("./types.js");
+const {Job, CompiledFile} = require("./models.js");
+const resolveDownloadReference = require("./utilities/resolveDownloadReference.js");
 const resolveJobReference = require("./utilities/resolveJobReference.js");
 
 function getOrFail(type, obj, prop, _default) {
@@ -72,8 +75,8 @@ app.post("/run", async (req, res) => {
 			};
 
 			res_output = {
-				'identifier': null /* String */,
 				'diagnostics': null /* ArrayType(Diagnostic) */,
+				'identifier': null /* String */,
 				'dot_data': null /* String */,
 			};
 
@@ -192,6 +195,50 @@ app.get("/examples", async (req, res) => {
 			if (!ok && !handled) res.status(500).send(res_output);
 			}
 	});
+app.get("/download", async (req, res) => {
+	console.log("[DEBUG] activity on download");
+	let ok = false, handled = false, res_input = null, res_output = null;
+		let total_failure = {fail_early: false, action_handled_response: false};
+		try {
+			res_input = {
+				'file_id': getOrFail(String, req.query, 'file_id', undefined),
+			};
+
+			let failure = {error:null, ok:null};
+			let resolveDownloadReference_files = {set value(val) { res_input["files"] = val; }};
+			if (!(await resolveDownloadReference({"file_id": res_input["file_id"]}, failure, resolveDownloadReference_files) &&
+			    true)) {
+				console.log("failure: ");
+				console.log(failure);
+				handled = true;
+				res.status(500).send(failure);
+				return;
+			}
+			res_output = {
+			};
+
+			if (await action_download_0(res, req, res_output, res_input, total_failure) &&
+			    true) {
+				(total_failure.action_handled_response ? (x=>{console.log(x)}) : x=>{res.send(x)})(await process_download(res_input, res_output));
+				ok = true;
+			}
+			else {
+				ok = false;
+			}
+			handled = total_failure.action_handled_response;
+		} catch(e) {
+			console.error(e);
+			ok = false;
+			if (!total_failure.action_handled_response) {
+				handled = true;
+				res.status(500).send({_error: e.toString(), ...res_output});
+			} else {
+				handled = true;
+			}
+		} finally {
+			if (!ok && !handled) res.status(500).send(res_output);
+			}
+	});
 app.post("/compile", async (req, res) => {
 	console.log("[DEBUG] activity on compile");
 	var bodyStr = "";
@@ -220,7 +267,7 @@ app.post("/compile", async (req, res) => {
 				return;
 			}
 			res_output = {
-				'ok': null /* Boolean */,
+				'file_id': null /* String */,
 			};
 
 			if (await action_compile_0(res, req, res_output, res_input, total_failure) &&

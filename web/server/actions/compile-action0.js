@@ -32,5 +32,18 @@ module.exports = async function action_compile_0(res, req, res_output, res_input
 
     res_output.ok = result.ok;
 
+    if (result.ok) {
+
+        let bytes = result.outputName;
+        let filename = result.outputName.replace('.out', '');
+        let module_definition = job.arguments.arguments.target_sys === 'windows' ? filename + '.def' : ''
+
+        let files = [{ data: fs.readFileSync(result.outputName).toString(), name: 'tokenizer.obj' }];
+        if (module_definition)
+            files.push({ data: fs.readFileSync(module_definition).toString(), name: 'tokenizer.def' });
+
+        res_input.files = files;
+    }
+
     return result.ok;
 }

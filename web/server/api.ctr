@@ -29,6 +29,15 @@ model Job [
     string output_name
 ].
 
+type namedFile [
+    string name,
+    string data
+].
+
+model CompiledFile [
+    namedFile[] files
+].
+
 type Diagnostic [
     int line,
     int column,
@@ -39,6 +48,10 @@ type Diagnostic [
 function resolveJobReference [
     reference[Job] job_id
 ] -> Job job.
+
+function resolveDownloadReference [
+    reference[CompiledFile] file_id
+] -> CompiledFile files.
 
 var resource is Object cnew: {
     resources => Array new.
@@ -81,13 +94,24 @@ action compile [
         reference[Job] job_id
     ],
     Response [
-        boolean ok
+    reference[CompiledFile] file_id
     ],
     Action [
         'compile',
-        'download'
+        'store in database'
     ],
     Before [ resolveJobReference ]
+].
+
+action download pure [
+    Request [
+        reference[CompiledFile] file_id
+    ],
+    Response [],
+    Action [
+        'download'
+    ],
+    Before [ resolveDownloadReference ]
 ].
 
 action examples pure [

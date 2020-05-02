@@ -1,19 +1,13 @@
-const { ArrayType, UserArguments, Arguments, Diagnostic, Enum2, Enum1, Enum0 } = require("../types.js");
+const {ArrayType, UserArguments, Diagnostic, namedFile, Arguments, Enum2, Enum1, Enum0} = require("../types.js");
 
-const { Job } = require("../models.js");
-
-const fs = require('fs');
-
-const zip = require('express-zip');
+const {Job, CompiledFile} = require("../models.js");
 
 /**
- * download
+ * store in database
  */
 /**
  * res_output
- * @param bytes: ArrayType(Number)
- * @param module_definition: String
- * @param extension: String
+ * @param file_id: String
  */
 
 /**
@@ -21,21 +15,13 @@ const zip = require('express-zip');
  * @param job_id: String
  */
 
-let constructBytes = x => (ArrayType(Number)).call(null, x);
-let constructModule_definition = x => (String).call(null, x);
-let constructExtension = x => (String).call(null, x);
-module.exports = async function action_compile_1(res, req, res_output, res_input, total_failure) {
-    let result = res_input._result;
-    let job = res_input.job;
-    let bytes = result.outputName;
-    let filename = result.outputName.replace('.out', '');
-    let module_definition = job.arguments.arguments.target_sys === 'windows' ? result.outputName + '.def' : ''
-
-    res.zip([
-        { path: result.outputName, name: 'tokenizer.obj' }
-    ].concat(module_definition ? [{ path: module_definition, name: 'tokenizer.def' }] : []));
-
-    total_failure.action_handled_response = true;
-
+let constructFile_id = x => (String).call(null, x);
+module.exports = async function action_compile_1(res, req, res_output, res_input) {
+    let files = res_input.files;
+    let insert = await CompiledFile.db().insertOne({
+        files: files,
+        createdAt: new Date()
+    });
+    res_output.file_id = insert.insertedId;
     return true;
 }

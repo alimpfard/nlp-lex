@@ -1,6 +1,6 @@
 FROM anothertest/nlex:latest
 
-RUN pacman -S --noconfirm nodejs npm
+RUN pacman -Syu --noconfirm nodejs npm
 
 ADD editor.html /editor.html
 ADD res /res

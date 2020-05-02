@@ -4,6 +4,8 @@ const { Job } = require("../models.js");
 
 const fs = require('fs');
 
+const config = require('../config.js');
+
 /**
  * res_output
  * = String
@@ -14,5 +16,5 @@ const fs = require('fs');
  * @param name: Enum2
  */
 module.exports = async function process_example(res_input, res_output) {
-    return { example: fs.readFileSync('../nlex/examples/' + res_input.name).toString() };
+    return { example: fs.readFileSync(config.example_path + res_input.name).toString() };
 }
