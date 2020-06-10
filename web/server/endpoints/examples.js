@@ -1,6 +1,15 @@
-const {ArrayType, Diagnostic, Arguments, Enum2, Enum1, Enum0} = require("../types.js");
+const {
+  ArrayType,
+  Diagnostic,
+  Arguments,
+  Enum2,
+  Enum1,
+  Enum0
+} = require("../types.js");
 
-const {Job} = require("../models.js");
+const {
+  Job
+} = require("../models.js");
 
 /**
  * res_output
@@ -11,5 +20,5 @@ const {Job} = require("../models.js");
  * res_input
  */
 module.exports = async function process_examples(res_input, res_output) {
-    return Enum2.choices;
+  return Enum2.choices;
 }

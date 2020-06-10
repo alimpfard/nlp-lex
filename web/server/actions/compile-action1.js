@@ -1,6 +1,18 @@
-const {ArrayType, UserArguments, Diagnostic, namedFile, Arguments, Enum2, Enum1, Enum0} = require("../types.js");
+const {
+  ArrayType,
+  UserArguments,
+  Diagnostic,
+  namedFile,
+  Arguments,
+  Enum2,
+  Enum1,
+  Enum0
+} = require("../types.js");
 
-const {Job, CompiledFile} = require("../models.js");
+const {
+  Job,
+  CompiledFile
+} = require("../models.js");
 
 /**
  * store in database
@@ -17,11 +29,11 @@ const {Job, CompiledFile} = require("../models.js");
 
 let constructFile_id = x => (String).call(null, x);
 module.exports = async function action_compile_1(res, req, res_output, res_input) {
-    let files = res_input.files;
-    let insert = await CompiledFile.db().insertOne({
-        files: files,
-        createdAt: new Date()
-    });
-    res_output.file_id = insert.insertedId;
-    return true;
+  let files = res_input.files;
+  let insert = await CompiledFile.db().insertOne({
+    files: files,
+    createdAt: new Date()
+  });
+  res_output.file_id = insert.insertedId;
+  return true;
 }

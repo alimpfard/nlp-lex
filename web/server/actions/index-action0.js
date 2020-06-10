@@ -1,6 +1,12 @@
-const { ArrayType, Diagnostic, Enum0 } = require("../types.js");
+const {
+  ArrayType,
+  Diagnostic,
+  Enum0
+} = require("../types.js");
 
-const { Job } = require("../models.js");
+const {
+  Job
+} = require("../models.js");
 
 /**
  * set content type
@@ -16,6 +22,6 @@ const { Job } = require("../models.js");
  */
 
 module.exports = async function action_index_0(res, req, res_output, res_input) {
-    res.type(res_input.res.includes('.js') ? 'text/javascript' : 'text/html')
-    return true;
+  res.type(res_input.res.includes('.js') ? 'text/javascript' : 'text/html')
+  return true;
 }
