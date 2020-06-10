@@ -1,11 +1,11 @@
-const {ArrayType, Arguments, Diagnostic, UserArguments, namedFile, Enum2, Enum1, Enum0} = require("./types.js");
+const {ArrayType, Arguments, UserArguments, Diagnostic, namedFile, Enum2, Enum1, Enum0} = require("./types.js");
 const { ObjectId } = require("mongodb");
 module.exports = {};
 let Job = {
 	'arguments': arg => Arguments.call(null, arg),
+	'source': arg => String.call(null, arg),
 	'output_name': arg => String.call(null, arg),
 	'is_done': arg => Boolean.call(null, arg),
-	'source': arg => String.call(null, arg),
 	aliasedName: {},
 	staticProperties: ["call", "db", "findById", "staticProperties", "forEach", "aliasedName"],
 	call(_, value) {

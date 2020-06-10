@@ -17,10 +17,10 @@ const action_compile_1 = require("./actions/compile-action1.js");
 const process_index = require("./endpoints/index.js");
 const action_index_0 = require("./actions/index-action0.js");
 
-const {ArrayType, Arguments, Diagnostic, UserArguments, namedFile, Enum2, Enum1, Enum0} = require("./types.js");
+const {ArrayType, Arguments, UserArguments, Diagnostic, namedFile, Enum2, Enum1, Enum0} = require("./types.js");
 const {Job, CompiledFile} = require("./models.js");
-const resolveDownloadReference = require("./utilities/resolveDownloadReference.js");
 const resolveJobReference = require("./utilities/resolveJobReference.js");
+const resolveDownloadReference = require("./utilities/resolveDownloadReference.js");
 
 function getOrFail(type, obj, prop, _default) {
 	let oprop = obj[prop];

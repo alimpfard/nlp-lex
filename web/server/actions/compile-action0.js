@@ -6,11 +6,11 @@ const {
   Enum2,
   Enum1,
   Enum0
-} = require("../types.js");
+} = require('../types.js');
 
 const {
   Job
-} = require("../models.js");
+} = require('../models.js');
 
 const {
   run
@@ -31,13 +31,13 @@ const fs = require('fs');
  * @param job_id: String
  */
 
-let constructBytes = x => (ArrayType(Number)).call(null, x);
-let constructModule_definition = x => (String).call(null, x);
-let constructExtension = x => (String).call(null, x);
-module.exports = async function action_compile_0(res, req, res_output, res_input) {
-  let job = await res_input.job;
+const constructBytes = x => (ArrayType(Number)).call(null, x);
+const constructModule_definition = x => (String).call(null, x);
+const constructExtension = x => (String).call(null, x);
+module.exports = async function action_compile_0 (res, req, res_output, res_input) {
+  const job = await res_input.job;
   job.arguments.dry_run = false;
-  let result = await run({
+  const result = await run({
     job
   });
 
@@ -47,23 +47,28 @@ module.exports = async function action_compile_0(res, req, res_output, res_input
   res_output.ok = result.ok;
 
   if (result.ok) {
+    const bytes = result.outputName;
+    const filename = result.outputName.replace('.out', '');
+    const module_definition = job.arguments.arguments.target_sys === 'windows' ? filename + '.def' : '';
 
-    let bytes = result.outputName;
-    let filename = result.outputName.replace('.out', '');
-    let module_definition = job.arguments.arguments.target_sys === 'windows' ? filename + '.def' : ''
-
-    let files = [{
+    const files = [{
       data: fs.readFileSync(result.outputName).toString(),
       name: 'tokenizer.obj'
     }];
-    if (module_definition)
+    if (module_definition) {
       files.push({
         data: fs.readFileSync(module_definition).toString(),
         name: 'tokenizer.def'
       });
+      files.push({
+        data: fs.readFileSync(filename + '.dll').toString(),
+        name: 'tokenizer.dll'
+      });
+    }
 
     res_input.files = files;
   }
 
   return result.ok;
 }
+;

@@ -1,5 +1,9 @@
 #pragma once
 
+#include <string>
+#include <stdio.h>
+#include <string_view>
+
 class Codepoints {
   char const *p;
   size_t length;

@@ -4,16 +4,16 @@ const {
 const fs = require('fs');
 const ps = require('child_process');
 
-function read_error(error) {
-  let errnum = Number(error.substr(2, 4));
+function read_error (error) {
+  const errnum = Number(error.substr(2, 4));
   let errstr = error.substr(6);
-  let erriidx = error.indexOf('-');
-  let erristr = error.substr(8, erriidx - 9);
+  const erriidx = error.indexOf('-');
+  const erristr = error.substr(8, erriidx - 9);
   errstr = error.substr(erriidx + 1);
-  let errposre = errstr.match(/ \(line (\d+) offset (\d+) length (\d+)\) /);
-  let errposline = errposre[1];
-  let errposoff = errposre[2];
-  let errposlen = errposre[3];
+  const errposre = errstr.match(/ \(line (\d+) offset (\d+) length (\d+)\) /);
+  const errposline = errposre[1];
+  const errposoff = errposre[2];
+  const errposlen = errposre[3];
   errstr = errstr.substr(errposre.index + errposre[0].length + 2);
   return {
     code: errnum,
@@ -33,6 +33,7 @@ module.exports = {
   }) {
     const args = job.arguments;
     const bin_arguments = [];
+    let buildForWindows = false;
     if (args.dry_run) {
       bin_arguments.push('-r');
       bin_arguments.push('--gout');
@@ -57,6 +58,7 @@ module.exports = {
         if (args.arguments.target_sys) {
           bin_arguments.push('--target-sys');
           bin_arguments.push(args.arguments.target_sys);
+          buildForWindows = args.arguments.target_sys === 'windows';
         }
         if (args.arguments.target_env) {
           bin_arguments.push('--target-env');
@@ -83,11 +85,11 @@ module.exports = {
       resolve();
     }));
 
-    let child = ps.spawn(nlexBinary, bin_arguments);
+    const child = ps.spawn(nlexBinary, bin_arguments);
     console.log(bin_arguments);
     let diagnostics = '';
 
-    function handle_data(data) {
+    function handle_data (data) {
       diagnostics += data.toString();
     }
 
@@ -97,18 +99,30 @@ module.exports = {
     return new Promise((resolve, reject) => {
       child.on('exit', (code, signal) => {
         console.log('code', code, signal);
-        let _diagnostics = [];
-        for (let line of diagnostics.split('\n')) {
+        const _diagnostics = [];
+        for (const line of diagnostics.split('\n')) {
           console.log(line);
           if (line.startsWith('[E0')) {
             _diagnostics.push(read_error(line));
           }
         }
-        resolve({
-          diagnostics: _diagnostics,
-          outputName: args.output_name + '.out',
-          ok: code === 0
-        });
+        if (buildForWindows && code === 0) {
+          const wind = ps.spawn('lld-link', ['/dll', `/def:${args.output_name}.def`, args.output_name + '.out']);
+          wind.on('exit', (code) => {
+            resolve({
+              diagnostics: _diagnostics,
+              outputName: args.output_name + '.out',
+              windowsBuild: true,
+              ok: code === 0
+            });
+          });
+        } else {
+          resolve({
+            diagnostics: _diagnostics,
+            outputName: args.output_name + '.out',
+            ok: code === 0
+          });
+        }
       });
       child.on('error', err => {
         console.log('error', err);

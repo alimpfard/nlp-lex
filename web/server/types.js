@@ -1,8 +1,8 @@
 module.exports = {};
 let Arguments = {
+	'arguments': arg => UserArguments.call(null, arg),
 	'dry_run': arg => Boolean.call(null, arg),
 	'output_name': arg => String.call(null, arg),
-	'arguments': arg => UserArguments.call(null, arg),
 	aliasedName: {},
 	staticProperties: ["call", "staticProperties", "forEach", "aliasedName"],
 	call(_, value) {
@@ -24,43 +24,17 @@ let Arguments = {
 };
 module.exports["Arguments"] = Arguments
 
-let Diagnostic = {
-	'level': arg => Enum0.call(null, arg),
-	'line': arg => Number.call(null, arg),
-	'data': arg => String.call(null, arg),
-	'column': arg => Number.call(null, arg),
-	aliasedName: {},
-	staticProperties: ["call", "staticProperties", "forEach", "aliasedName"],
-	call(_, value) {
-		let obj = {};
-		for (property in Diagnostic)
-			if ((!Diagnostic.staticProperties.includes(property))) {
-				if (Diagnostic.hasOwnProperty(property))
-					obj[property] = Diagnostic[property](value[property]);
-				if (Diagnostic.aliasedName[property])
-						obj[property] = Diagnostic[property](value[Diagnostic.aliasedName[property]]);
-			}
-		return obj;
-	},
-	forEach(self, callback) {
-		for (property in Diagnostic)
-			if ((!Diagnostic.staticProperties.includes(property)) && self.hasOwnProperty(property))
-				callback(property, self[property], self);
-	}
-};
-module.exports["Diagnostic"] = Diagnostic
-
 let UserArguments = {
-	'cpu': arg => String.call(null, arg),
 	'target_sys': arg => String.call(null, arg),
-	'target_env': arg => String.call(null, arg),
-	'target_vendor': arg => String.call(null, arg),
-	'llvm': arg => Boolean.call(null, arg),
-	'target': arg => String.call(null, arg),
-	'library': arg => Boolean.call(null, arg),
-	'features': arg => String.call(null, arg),
 	'object_format': arg => String.call(null, arg),
 	'target_arch': arg => String.call(null, arg),
+	'llvm': arg => Boolean.call(null, arg),
+	'features': arg => String.call(null, arg),
+	'library': arg => Boolean.call(null, arg),
+	'target': arg => String.call(null, arg),
+	'target_env': arg => String.call(null, arg),
+	'cpu': arg => String.call(null, arg),
+	'target_vendor': arg => String.call(null, arg),
 	aliasedName: {},
 	staticProperties: ["call", "staticProperties", "forEach", "aliasedName"],
 	call(_, value) {
@@ -82,9 +56,35 @@ let UserArguments = {
 };
 module.exports["UserArguments"] = UserArguments
 
-let namedFile = {
+let Diagnostic = {
+	'column': arg => Number.call(null, arg),
+	'level': arg => Enum0.call(null, arg),
 	'data': arg => String.call(null, arg),
+	'line': arg => Number.call(null, arg),
+	aliasedName: {},
+	staticProperties: ["call", "staticProperties", "forEach", "aliasedName"],
+	call(_, value) {
+		let obj = {};
+		for (property in Diagnostic)
+			if ((!Diagnostic.staticProperties.includes(property))) {
+				if (Diagnostic.hasOwnProperty(property))
+					obj[property] = Diagnostic[property](value[property]);
+				if (Diagnostic.aliasedName[property])
+						obj[property] = Diagnostic[property](value[Diagnostic.aliasedName[property]]);
+			}
+		return obj;
+	},
+	forEach(self, callback) {
+		for (property in Diagnostic)
+			if ((!Diagnostic.staticProperties.includes(property)) && self.hasOwnProperty(property))
+				callback(property, self[property], self);
+	}
+};
+module.exports["Diagnostic"] = Diagnostic
+
+let namedFile = {
 	'name': arg => String.call(null, arg),
+	'data': arg => String.call(null, arg),
 	aliasedName: {},
 	staticProperties: ["call", "staticProperties", "forEach", "aliasedName"],
 	call(_, value) {
@@ -107,7 +107,7 @@ let namedFile = {
 module.exports["namedFile"] = namedFile
 
 let Enum2 = {
-	choices: ["persian.nlex", "almost-everything.nlex", "branch-reset.nlex", "multiple-paths-converge.nlex", "normalisations.nlex", "csyntax.nlex", "multiline.nlex", "character-classes.nlex", "medium-qtfs.nlex", "basic-subexpr-call.nlex", "kdef.nlex", "backreference.nlex", "star-mutually-recursive.nlex", "test.nlex", "rg.nlex", "capture.nlex", "simple-inline-code.nlex", "repeat-qtf.nlex", "implicit-dependency.nlex", "basic-quantifiers.nlex", "pure_normaliser.nlex", "multiple-paths-with-quantifier.nlex"],
+	choices: ["persian.nlex", "almost-everything.nlex", "branch-reset.nlex", "multiple-paths-converge.nlex", "normalisations.nlex", "csyntax.nlex", "multiline.nlex", "character-classes.nlex", "medium-qtfs.nlex", "basic-subexpr-call.nlex", "kdef.nlex", "backreference.nlex", "star-mutually-recursive.nlex", "test.nlex", "rg.nlex", "link.nlex", "capture.nlex", "simple-inline-code.nlex", "mal.nlex", "repeat-qtf.nlex", "implicit-dependency.nlex", "basic-quantifiers.nlex", "pure_normaliser.nlex", "multiple-paths-with-quantifier.nlex"],
 	call(_, value) {
 		if (Enum2.choices.includes(value))
 			return value;
