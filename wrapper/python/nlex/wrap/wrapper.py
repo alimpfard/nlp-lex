@@ -72,7 +72,7 @@ class NLexWrappedObject(object):
                     return
                 yield x
                 i += 1
-        
+
         # TODO: move this out
         def ptag_sentences(clean=True):
             raise NotImplemented
@@ -85,7 +85,7 @@ class NLexWrappedObject(object):
         # self.__nlex_load_postagger = getattr(self.__lib, '__nlex_load_tagpos')
         # self.__nlex_unload_postagger = getattr(self.__lib, '__nlex_unload_tagpos')
         #self.__nlex_load_postagger()
-    
+
     def __del__(self):
         # if self.__has_postag:
             # self.__nlex_unload_postagger()
@@ -164,8 +164,10 @@ class NLexWrappedObject(object):
         self._fed = None
         return buf
 
-    def process_json(self, jstr, filename='-', clean=True):
-        s = json.loads(jstr)
+    def process_documents(self, ds, is_json=False, to_json=False, filename='-', clean=True):
+        s = ds
+        if is_json:
+            s = json.loads(ds)
         docs = []
         res = {
             'description': 'NLex',
@@ -175,7 +177,10 @@ class NLexWrappedObject(object):
         }
         for di,req in enumerate(s):
             self.next_id = 0
-            self.feed(req['text'])
+            if hasattr(req, 'text'):
+                self.feed(req['text'])
+            else:
+                self.feed(req)
             if self.can_split_sentences:
                 docs.append({
                     'id': di,
@@ -194,7 +199,7 @@ class NLexWrappedObject(object):
                         'tokens': list(x.desanitify(self) for x in self.tokens(clean))
                     }]
                 })
-        return json.dumps(res)
+        return json.dumps(res) if to_json else res
 
     def next_id():
         doc = "next token id (not unique per token)"

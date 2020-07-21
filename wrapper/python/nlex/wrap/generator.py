@@ -1,8 +1,10 @@
 from .wrapper import NLexWrappedObject
+from textwrap import dedent
 import os
 import requests
 import zipfile
 from zipfile import ZipExtFile
+import hashlib
 
 class NLexTokenizerCreationException(Exception):
     pass
@@ -60,9 +62,17 @@ def NLexTokenizer(*args,
                 cpu=cpu, features=features, output_file=output_file)
 
     fn = args[0]
-    doc = fn.__doc__
+    doc = dedent(fn.__doc__)
     if not doc:
         raise NLexTokenizerCreationException(f"Function {fn.__name__} does not have a docstring")
+
+    hashpath = os.path.join(os.path.dirname(__file__), f'.{output_file}.hash')
+    hsh = hashlib.sha512(bytes(doc, 'utf8')).hexdigest()
+    if os.path.exists(hashpath) and os.path.exists(output_file):
+        path = os.path.realpath(output_file)
+        with open(hashpath, 'r') as f:
+            if f.read() == hsh:
+                return lambda inp: fn(inp, NLexWrappedObject(path).process_documents)
 
     res = callout.run(doc, {
         'target_vendor': vendor,
@@ -77,5 +87,8 @@ def NLexTokenizer(*args,
 
     path = callout.compile_and_download(res.identifier, output_file, compiler_server)
 
-    return NLexWrappedObject(path).process_json
+    with open(hashpath, 'w+') as f:
+        f.write(hsh)
+
+    return lambda inp: fn(inp, NLexWrappedObject(path).process_documents)
 

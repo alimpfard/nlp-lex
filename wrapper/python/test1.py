@@ -1,10 +1,11 @@
 import nlex
 
 @nlex.NLexTokenizer
-def tokenize():
+def tokenize(inp, process_docs):
     """
-    foo :: [124]+
+    foo :: [124]
     """
+    return process_docs(inp)
 
 
-print(tokenize("[]"))
+print(tokenize("124"))
