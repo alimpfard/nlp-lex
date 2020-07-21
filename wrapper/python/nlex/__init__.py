@@ -1,3 +1,3 @@
-from wrap import (
-    NLexWrappedObject, make_nlex_tokeniser
+from .wrap import (
+    NLexWrappedObject, NLexTokenizer
 )

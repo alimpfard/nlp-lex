@@ -17,10 +17,10 @@ const action_compile_1 = require("./actions/compile-action1.js");
 const process_index = require("./endpoints/index.js");
 const action_index_0 = require("./actions/index-action0.js");
 
-const {ArrayType, Arguments, UserArguments, Diagnostic, namedFile, Enum2, Enum1, Enum0} = require("./types.js");
+const {ArrayType, RuntimeBuffer, UserArguments, Arguments, Diagnostic, namedFile, Enum2, Enum1, Enum0} = require("./types.js");
 const {Job, CompiledFile} = require("./models.js");
-const resolveJobReference = require("./utilities/resolveJobReference.js");
 const resolveDownloadReference = require("./utilities/resolveDownloadReference.js");
+const resolveJobReference = require("./utilities/resolveJobReference.js");
 
 function getOrFail(type, obj, prop, _default) {
 	let oprop = obj[prop];
@@ -60,13 +60,14 @@ app.get("/", async (req, res) => {
 app.post("/run", async (req, res) => {
 	console.log("[DEBUG] activity on route run");
 	var bodyStr = "";
-	req.on("data", function(chunk) { 
+	req.on("data", function(chunk) {
 		bodyStr += chunk.toString();
 	});
 	req.on("end", async function() {
 		bodyStr = bodyStr
 		let ok = false, handled = false, res_input = null, res_output = null;
 		let jsondec = JSON.parse(bodyStr);
+        console.log(jsondec);
 		let total_failure = {fail_early: false, action_handled_response: false};
 		try {
 			res_input = {
@@ -75,8 +76,8 @@ app.post("/run", async (req, res) => {
 			};
 
 			res_output = {
-				'diagnostics': null /* ArrayType(Diagnostic) */,
 				'identifier': null /* String */,
+				'diagnostics': null /* ArrayType(Diagnostic) */,
 				'dot_data': null /* String */,
 			};
 
@@ -242,7 +243,7 @@ app.get("/download", async (req, res) => {
 app.post("/compile", async (req, res) => {
 	console.log("[DEBUG] activity on compile");
 	var bodyStr = "";
-	req.on("data", function(chunk) { 
+	req.on("data", function(chunk) {
 		bodyStr += chunk.toString();
 	});
 	req.on("end", async function() {

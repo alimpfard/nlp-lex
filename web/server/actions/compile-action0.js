@@ -52,17 +52,22 @@ module.exports = async function action_compile_0 (res, req, res_output, res_inpu
     const module_definition = job.arguments.arguments.target_sys === 'windows' ? filename + '.def' : '';
 
     const files = [{
-      data: fs.readFileSync(result.outputName).toString(),
+      data: fs.readFileSync(result.outputName),
       name: 'tokenizer.obj'
     }];
     if (module_definition) {
       files.push({
-        data: fs.readFileSync(module_definition).toString(),
+        data: fs.readFileSync(module_definition),
         name: 'tokenizer.def'
       });
       files.push({
-        data: fs.readFileSync(filename + '.dll').toString(),
+        data: fs.readFileSync(filename + '.dll'),
         name: 'tokenizer.dll'
+      });
+    } else {
+      files.push({
+        data: fs.readFileSync(filename + '.so'),
+        name: 'tokenizer.so'
       });
     }
 

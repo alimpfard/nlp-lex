@@ -4,9 +4,9 @@ import json
 import time
 import sys
 
-wo = NLexWrappedObject("/home/Test/Documents/nlp-lex/wrapper/python/nlex/all.so")
+wo = NLexWrappedObject("../tokenizer")
 ns = time.time_ns()
-ts = wo.process_json(open('input.json', 'r').read(), clean=False)
+ts = wo.process_json('[]', clean=False)
 ns2 = time.time_ns()
 print(ts)
 dt = ns2 - ns

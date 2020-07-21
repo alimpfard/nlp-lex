@@ -12,6 +12,7 @@ type UserArguments [
     boolean library,
     boolean llvm,
     string object_format,
+    string relocation_model,
     string cpu,
     string features
 ].

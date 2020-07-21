@@ -76,6 +76,10 @@ module.exports = {
         bin_arguments.push('--features');
         bin_arguments.push(args.arguments.features);
       }
+      if (args.arguments.relocation_model) {
+        bin_arguments.push('--relocation-model');
+        bin_arguments.push(args.arguments.relocation_model);
+      }
       bin_arguments.push('-o');
       bin_arguments.push(args.output_name + '.out');
     }
@@ -106,16 +110,29 @@ module.exports = {
             _diagnostics.push(read_error(line));
           }
         }
-        if (buildForWindows && code === 0) {
-          const wind = ps.spawn('lld-link', ['/dll', `/def:${args.output_name}.def`, args.output_name + '.out']);
-          wind.on('exit', (code) => {
-            resolve({
-              diagnostics: _diagnostics,
-              outputName: args.output_name + '.out',
-              windowsBuild: true,
-              ok: code === 0
-            });
-          });
+        if (code === 0) {
+            if (buildForWindows) {
+              const wind = ps.spawn('lld-link', ['/dll', `/def:${args.output_name}.def`, args.output_name + '.out']);
+              wind.on('exit', (code) => {
+                resolve({
+                  diagnostics: _diagnostics,
+                  outputName: args.output_name + '.out',
+                  windowsBuild: true,
+                  ok: code === 0
+                });
+              });
+            } else {
+              const wind = ps.spawn('clang', ['-shared', args.output_name + '.out', '-o', args.output_name + '.so']);
+              wind.on('exit', (code) => {
+                console.log({_diagnostics, code});
+                resolve({
+                  diagnostics: _diagnostics,
+                  outputName: args.output_name + '.out',
+                  windowsBuild: false,
+                  ok: code === 0
+                });
+              });
+            }
         } else {
           resolve({
             diagnostics: _diagnostics,

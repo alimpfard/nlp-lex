@@ -14,34 +14,10 @@ const {
   CompiledFile
 } = require("../models.js");
 
-const async = require('async'), fs = require('fs'), express = require('express'), res = express.response, zipstream = require('zip-stream');
+const fs = require('fs');
 
-const {
-  Readable
-} = require('stream')
+const Archiver = require('archiver');
 
-
-res.zip = function (files, filename) {
-  let cb = function () {};
-
-  this.header('Content-Type', 'application/zip');
-  this.header('Content-Disposition', 'attachment; filename="' + filename + '"');
-
-  var zip = zipstream(exports.options);
-  zip.pipe(this); // res is a writable stream
-
-  var addFile = function (file, cb) {
-    zip.entry(Readable.from(file.data), {
-      name: file.name
-    }, cb);
-  };
-
-  async.forEachSeries(files, addFile, function (err) {
-    if (err) return cb(err);
-    zip.finalize();
-    cb(null, zip.getBytesWritten());
-  });
-};
 
 /**
  * download
@@ -57,7 +33,12 @@ res.zip = function (files, filename) {
 
 module.exports = async function action_download_0(res, req, res_output, res_input, total_failure) {
   let files = res_input.files;
-  res.zip(files, 'attachment.zip');
+  let zip = Archiver('zip');
+  zip.pipe(res);
+  for (let file of files)
+    zip.append(file.data.buffer, {name: file.name});
+  zip.finalize();
+
   total_failure.action_handled_response = true;
   return true;
 }
