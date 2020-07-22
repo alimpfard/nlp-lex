@@ -50,12 +50,13 @@ class callout:
             try:
                 try:
                     f.extract('tokenizer.dll')
+                    os.remove(output_file)
                     os.rename('tokenizer.dll', output_file)
                 except:
                     f.extract('tokenizer.so')
+                    os.remove(output_file)
                     os.rename('tokenizer.so', output_file)
                 os.chmod(output_file, 0o755)
-                os.remove(output_file + '.zip')
                 return os.path.realpath(output_file)
             except:
                 raise
