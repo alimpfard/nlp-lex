@@ -5,9 +5,19 @@ import requests
 import zipfile
 from zipfile import ZipExtFile
 import hashlib
+import platform
 
 class NLexTokenizerCreationException(Exception):
     pass
+
+_default_options = {
+        'Linux': {'output_file': 'tokenizer.so', 'sys': ''},
+        'Windows': {'output_file': 'tokenizer.dll', 'sys': 'windows'},
+    }.get(platform.system(), None)
+
+if _default_options is None:
+    print(f"Running on unsupported system ({platform.system()}), this is likely to blow up")
+    _default_options = {'output_file': 'tokenizer', 'sys': ''}
 
 ZipExtFile._update_crc = lambda self, *args: None
 
@@ -45,6 +55,7 @@ class callout:
                     f.extract('tokenizer.so')
                     os.rename('tokenizer.so', output_file)
                 os.chmod(output_file, 0o755)
+                os.remove(output_file + '.zip')
                 return os.path.realpath(output_file)
             except:
                 raise
@@ -52,9 +63,10 @@ class callout:
 
 
 def NLexTokenizer(*args,
-        arch='x64', vendor='', sys='', target='',
+        arch='x64', vendor='', sys=_default_options['sys'], target='',
         object_format='', library='on', cpu='generic', relocation_model='pic',
-        features='', output_file='tokenizer', compiler_server='https://nlex.herokuapp.com'):
+        features='', output_file=_default_options['output_file'],
+        compiler_server='https://nlex.herokuapp.com'):
     if len(args) == 0:
         return lambda fn: NLexTokenizer(fn,
                 arch=arch, vendor=vendor, sys=sys, target=target, relocation_model=relocation_model,
