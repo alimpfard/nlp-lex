@@ -1,6 +1,6 @@
 import nlex
 
-@nlex.NLexTokenizer
+@nlex.NLexTokenizer(sys='windows')
 def tokenize(inp, process_docs):
     """
     foo :: [124]

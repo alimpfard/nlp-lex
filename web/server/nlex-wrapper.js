@@ -112,7 +112,7 @@ module.exports = {
         }
         if (code === 0) {
             if (buildForWindows) {
-              const wind = ps.spawn('lld-link', ['/dll', `/def:${args.output_name}.def`, args.output_name + '.out']);
+              const wind = ps.spawn('lld-link', ['/dll', '/nodefaultlib', '/noentry', `/def:${args.output_name}.def`, `/out:${args.output_name}.dll`, args.output_name + '.out']);
               wind.on('exit', (code) => {
                 resolve({
                   diagnostics: _diagnostics,
