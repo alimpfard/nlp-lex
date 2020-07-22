@@ -46,6 +46,7 @@ class callout:
         if not res['ok']:
             raise NLexTokenizerCreationException("Compile error")
         callout.download_url(compiler_server + '/download?file_id=' + res['file_id'], output_file + '.zip')
+        if os.path.exists(output_file): os.remove(output_file)
         with zipfile.ZipFile(output_file + '.zip', 'r') as f:
             try:
                 try:
@@ -55,7 +56,6 @@ class callout:
                     f.extract('tokenizer.so')
                     os.rename('tokenizer.so', output_file)
                 os.chmod(output_file, 0o755)
-                os.remove(output_file + '.zip')
                 return os.path.realpath(output_file)
             except:
                 raise
