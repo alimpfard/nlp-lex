@@ -78,10 +78,10 @@ def NLexTokenizer(*args,
     if not doc:
         raise NLexTokenizerCreationException(f"Function {fn.__name__} does not have a docstring")
 
-    hashpath = os.path.join(os.path.dirname(__file__), f'.{output_file}.hash')
+    path = os.path.realpath(output_file)
+    hashpath = os.path.join(os.path.dirname(path), f'.{output_file}.hash')
     hsh = hashlib.sha512(bytes(doc, 'utf8')).hexdigest()
     if os.path.exists(hashpath) and os.path.exists(output_file):
-        path = os.path.realpath(output_file)
         with open(hashpath, 'r') as f:
             if f.read() == hsh:
                 return lambda inp: fn(inp, NLexWrappedObject(path).process_documents)
