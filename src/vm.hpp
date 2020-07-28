@@ -584,24 +584,28 @@ public:
         TheModule->addModuleFlag(llvm::Module::Warning, "Debug Info Version",
             llvm::DEBUG_METADATA_VERSION);
 
-        TheMPM = std::make_unique<llvm::legacy::PassManager>();
+        TheFPM = std::make_unique<llvm::legacy::FunctionPassManager>(&*TheModule);
         //
-        // TheMPM->add(llvm::createInstructionCombiningPass());
-        // TheMPM->add(llvm::createReassociatePass());
-        // TheMPM->add(llvm::createGVNPass());
+        // TheFPM->add(llvm::createCFGSimplificationPass());
 
-        // TheMPM->add(llvm::createCFGSimplificationPass());
-        //
-        // TheMPM->add(llvm::createLICMPass());
-        // TheMPM->add(llvm::createAggressiveDCEPass());
-        // TheMPM->add(llvm::createConstantPropagationPass());
+        // TheFPM->add(llvm::createInstructionCombiningPass());
+        TheFPM->add(llvm::createReassociatePass());
+        TheFPM->add(llvm::createGVNPass());
 
-        // TheMPM->add(llvm::createTailCallEliminationPass());
-        //
-        // TheMPM->add(llvm::createInstructionCombiningPass());
+        // TheFPM->add(llvm::createCFGSimplificationPass());
 
-        // TheMPM->add(llvm::createSinkingPass());
-        // TheMPM->add(llvm::createCFGSimplificationPass());
+        // TheFPM->add(llvm::createLICMPass());
+        // TheFPM->add(llvm::createAggressiveDCEPass());
+        TheFPM->add(llvm::createConstantPropagationPass());
+
+        // TheFPM->add(llvm::createTailCallEliminationPass());
+
+        // TheFPM->add(llvm::createInstructionCombiningPass());
+
+        TheFPM->add(llvm::createSinkingPass());
+        // TheFPM->add(llvm::createCFGSimplificationPass());
+
+        TheFPM->doInitialization();
 
         // TheMAM = std::make_unique<llvm::ModuleAnalysisManager>();
 
@@ -1668,8 +1672,11 @@ public:
 
         L.linkInModule(std::move(module.TheModule));
 
-        if (!module.debug_mode)
-            module.TheMPM->run(*Composite);
+        if (!module.debug_mode) {
+            for (auto& function : Composite->functions()) {
+                module.TheFPM->run(function);
+            }
+        }
 
         legacy::PassManager pass;
 #if LLVM_VERSION_MAJOR > 9

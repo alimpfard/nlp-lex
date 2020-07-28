@@ -28,12 +28,14 @@
 namespace nlvm {
 struct BaseModule {
 public:
-  llvm::LLVMContext TheContext;
-  std::unique_ptr<llvm::Module> TheModule;
-  std::unique_ptr<llvm::legacy::PassManager> TheMPM;
-  // std::unique_ptr<llvm::ModuleAnalysisManager> TheMAM;
-  BaseModule(std::string name = "") : TheContext() {
-    TheModule = std::make_unique<llvm::Module>(name, TheContext);
-  }
+    llvm::LLVMContext TheContext;
+    std::unique_ptr<llvm::Module> TheModule;
+    std::unique_ptr<llvm::legacy::FunctionPassManager> TheFPM;
+    // std::unique_ptr<llvm::ModuleAnalysisManager> TheMAM;
+    BaseModule(std::string name = "")
+        : TheContext()
+    {
+        TheModule = std::make_unique<llvm::Module>(name, TheContext);
+    }
 };
 } // namespace nlvm
