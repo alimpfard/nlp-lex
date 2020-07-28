@@ -51,7 +51,7 @@ char *getf(char *p, char **e) {
 char *escape(char* str, int len) {
     static char buffer[10240];
     int bi = 0;
-    for (int i = 0; i < len; i++) {
+    for (int i = 0; i < len;) {
         char c = str[i];
         switch (c) {
             case '"':
@@ -70,6 +70,7 @@ char *escape(char* str, int len) {
                 buffer[i++] = c;
                 break;
         }
+        bi = i;
     }
     buffer[bi] = 0;
     return buffer;
