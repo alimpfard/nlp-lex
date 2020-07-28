@@ -21,7 +21,8 @@ class NLexWrappedObject(object):
         def __repr__(self):
             return f"NLexWrappedObject.ValueStruct(start={self.start}, length={self.length}, tag={self.tag}, errc={self.errc}, metadata={self.metadata})"
 
-    def __init__(self, path=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'libtokenise.so')):
+    def __init__(self, path=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'libtokenise.so'), log=False):
+        self.log = log
         self.__lib = cdll.LoadLibrary(path)
         self._fed = None
         self._m_value = NLexWrappedObject.ValueStruct()
@@ -115,11 +116,13 @@ class NLexWrappedObject(object):
             if offset >= self.fedlen:
                 self._fed = None
                 return None
-            print('early terminate at', offset, 'out of', self.fedlen, 'on', self._fed[offset:offset+4].decode('utf8', 'ignore'), file=sys.stderr)
+            if self.log:
+                print('early terminate at', offset, 'out of', self.fedlen, 'on', self._fed[offset:offset+4].decode('utf8', 'ignore'), file=sys.stderr)
             self.__nlex_skip()
 
         self.__last_offset = offset
-        print('offset', offset, 'out of', self.fedlen, file=sys.stderr)
+        if self.log:
+            print('offset', offset, 'out of', self.fedlen, file=sys.stderr)
         if self._m_value.length == 0:
             return self.__next_token(cleanup)
         return Token(
@@ -168,6 +171,8 @@ class NLexWrappedObject(object):
         s = ds
         if is_json:
             s = json.loads(ds)
+        if not isinstance(s, (list, tuple)):
+            s = [s]
         docs = []
         res = {
             'description': 'NLex',

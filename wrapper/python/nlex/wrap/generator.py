@@ -3,7 +3,6 @@ from textwrap import dedent
 import os
 import requests
 import zipfile
-from zipfile import ZipExtFile
 import hashlib
 import platform
 
@@ -18,8 +17,6 @@ _default_options = {
 if _default_options is None:
     print(f"Running on unsupported system ({platform.system()}), this is likely to blow up")
     _default_options = {'output_file': 'tokenizer', 'sys': ''}
-
-ZipExtFile._update_crc = lambda self, *args: None
 
 class callout:
     @staticmethod
@@ -66,34 +63,43 @@ def NLexTokenizer(*args,
         arch='x64', vendor='', sys=_default_options['sys'], target='',
         object_format='', library='on', cpu='generic', relocation_model='pic',
         features='', output_file=_default_options['output_file'],
-        compiler_server='https://nlex.herokuapp.com'):
+        compiler_server='https://nlex.herokuapp.com', source_file=None):
     if len(args) == 0:
         return lambda fn: NLexTokenizer(fn,
                 arch=arch, vendor=vendor, sys=sys, target=target, relocation_model=relocation_model,
                 object_format=object_format, library=library, compiler_server=compiler_server,
-                cpu=cpu, features=features, output_file=output_file)
+                cpu=cpu, features=features, output_file=output_file, source_file=source_file)
 
+    source = None
     fn = args[0]
-    doc = dedent(fn.__doc__)
-    if not doc:
-        raise NLexTokenizerCreationException(f"Function {fn.__name__} does not have a docstring")
+    if not source_file:
+        doc = dedent(fn.__doc__)
+        if not doc:
+            raise NLexTokenizerCreationException(f"Function {fn.__name__} does not have a docstring")
+        source = doc
+    else:
+        with open(source_file, 'r') as f:
+            source = f.read()
 
-    path = os.path.realpath(output_file)
-    hashpath = os.path.join(os.path.dirname(path), f'.{output_file}.hash')
-    hsh = hashlib.sha512(bytes(doc, 'utf8')).hexdigest()
-    if os.path.exists(hashpath) and os.path.exists(output_file):
-        with open(hashpath, 'r') as f:
-            if f.read() == hsh:
-                return lambda inp: fn(inp, NLexWrappedObject(path).process_documents)
-
-    res = callout.run(doc, {
+    compile_options = {
         'target_vendor': vendor,
         'target_sys': sys,
         'object_format': object_format,
         'library': library,
         'relocation_model': relocation_model,
         'target': target
-    }, compiler_server)
+    }
+
+    path = os.path.realpath(output_file)
+    hashpath = os.path.join(os.path.dirname(path), f'.{output_file}.hash')
+    hash_data = source + '\n' + repr(compile_options)
+    hsh = hashlib.sha512(bytes(hash_data, 'utf8')).hexdigest()
+    if os.path.exists(hashpath) and os.path.exists(output_file):
+        with open(hashpath, 'r') as f:
+            if f.read() == hsh:
+                return lambda inp: fn(inp, NLexWrappedObject(path).process_documents)
+
+    res = callout.run(source, compile_options, compiler_server)
     if res.diagnostics:
         raise NLexTokenizerCreationException(f"Error: {res.diagnostics}")
 

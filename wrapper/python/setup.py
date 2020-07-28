@@ -1,8 +1,8 @@
 from distutils.core import setup
 setup(
   name = 'nlex',
-  packages = ['nlex', 'nlex.wrap'],
-  version = '0.0.3',
+  packages = ['nlex', 'nlex.wrap', 'example'],
+  version = '0.0.3.2',
   license='bsd-2-clause',
   description = 'nlex remote compiler wrapper',
   author = 'AnotherTest',
