@@ -1412,12 +1412,16 @@ public:
             llvm::IRBuilder<> builder { module.TheContext };
             module.emitLocation((DFANode<NFANode<std::nullptr_t>*>*)NULL, builder);
 
-            auto tcabb = llvm::BasicBlock::Create(module.TheContext, "_tailcall_self",
+            auto tcasbb = llvm::BasicBlock::Create(module.TheContext, "_tailcall_self",
                 module.main());
-            builder.SetInsertPoint(tcabb);
+            builder.SetInsertPoint(tcasbb);
             builder.CreateCall(module.main(), { module.main()->arg_begin() })
                 ->setTailCall(true);
             builder.CreateRetVoid();
+
+            auto tcabb = llvm::BasicBlock::Create(module.TheContext, "_tailcall_self_or_exit", module.main());
+            builder.SetInsertPoint(tcabb);
+            builder.CreateCondBr(builder.CreateICmpEQ(builder.CreateCall(module.nlex_current_f), llvm::ConstantInt::get(llvm::Type::getInt8Ty(module.TheContext), 0)), module.BBfinalise, tcasbb);
 
             builder.SetInsertPoint(fbb);
             auto tag = builder.CreateLoad(module.last_tag);

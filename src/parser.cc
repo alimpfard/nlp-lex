@@ -2129,15 +2129,20 @@ void DFANLVMCodeGenerator<T>::generate(
             builder.module.add_value_to_token(readv);
         auto switchinst = builder.module.Builder.CreateSwitch(
             readv, deflBB ? deflBB : BBend, node->outgoing_transitions.size());
-        if (deflBB) // don't go past the end
-            switchinst->addCase(
-                ConstantInt::get(IntegerType::get(builder.module.TheContext, 8), "0",
-                    10),
-                BBend);
+        switchinst->addCase(
+            ConstantInt::get(IntegerType::get(builder.module.TheContext, 8), "0",
+                10),
+            BBend);
         for (auto tr : node->outgoing_transitions) {
             // todo: be less naive
             if (!blocks.count(tr->target))
                 generate(tr->target, visited, blocks);
+
+            if (std::get<char>(tr->input) == 0) {
+                slts.show(Display::Type::ERROR,
+                    "{<red>} matching a zero was requested, this is not supported (yet){<clean>}");
+                continue;
+            }
 
             auto jdst = blocks[tr->target];
             auto jdst_id = builder.module.block_allocas[jdst];
