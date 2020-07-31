@@ -1,4 +1,6 @@
 import nlex
+import json
+import sys
 
 @nlex.NLexTokenizer
 def tokenize(inp, process_docs):
@@ -47,7 +49,13 @@ def tokenize(inp, process_docs):
     stopword "again" "further" "then" "once" "here" "there" "when" "where" "why"
     stopword "how" "all" "any" "both" "each" "few" "more" "most" "other" "some"
     """
-    return process_docs(inp)
+    def read(x):
+        with open(x, 'r+', encoding='utf-8') as f:
+            return json.load(f)
+    return process_docs(sum((read(x) for x in inp), []), to_json=True)
 
 
-print(tokenize("hello there friends."))
+if len(sys.argv) > 1:
+    print(tokenize(sys.argv[1:]))
+else:
+    print(tokenize(input('read files> ')))
