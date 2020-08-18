@@ -23,10 +23,13 @@ char const* name) {
     case 2: act = "succeed"; break;
     case 3: act = "jump"; break;
     case 4: act = "backtrack"; break;
+    case 5: act = "restore"; break;
+    case 8: act = "EOW literal"; break;
+    case 9: act = "Check Literal"; break;
     default: act = "?"; break;
   }
-  printf("[DEBUG] [%.*s](%#x) %s in %p from regex [%s] :: %p\n", 1+
-__nlex_utf8_length(*position), position, *position, act, position, name, data);
+  auto length = __nlex_utf8_length(*position);
+  printf("[DEBUG] [%.*s](%#p+%d) %s in %p from regex [%s] :: %p\n", 1 + length, position, position, length, act, position, name, data);
 }
 
 

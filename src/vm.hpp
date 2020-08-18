@@ -1029,6 +1029,17 @@ public:
 
         // crucial library functions
         {
+
+            auto dfnty = llvm::FunctionType::get(
+                llvm::Type::getVoidTy(module.TheContext),
+                { llvm::Type::getInt32Ty(module.TheContext),
+                    llvm::PointerType::getInt8PtrTy(module.TheContext, 0),
+                    llvm::PointerType::getInt8PtrTy(module.TheContext, 0),
+                    llvm::PointerType::getInt8PtrTy(module.TheContext, 0) },
+                false);
+            module.nlex_debug = module.mkfunc(true, "__nlex_produce_debug", false,
+                false, true, dfnty);
+
             auto nlex_fed_string = module.nlex_fed_string = module.createGlobal(
                 llvm::PointerType::get(llvm::Type::getInt8Ty(module.TheContext), 0),
                 llvm::Constant::getNullValue(llvm::PointerType::get(
@@ -1085,6 +1096,18 @@ public:
             // nlex_restore - restore position from passed in pointer
             BB = llvm::BasicBlock::Create(module.TheContext, "", module.nlex_restore);
             builder.SetInsertPoint(BB);
+            if (module.debug_mode) {
+                builder.CreateCall(
+                    module.nlex_debug,
+                    {
+                        llvm::ConstantInt::get(
+                            llvm::Type::getInt32Ty(module.TheContext),
+                            5), // Restore
+                        builder.CreateLoad(nlex_fed_string),
+                        module.nlex_restore->arg_begin(),
+                        get_or_create_tag(""),
+                    });
+            }
             builder.CreateStore(module.nlex_restore->arg_begin(), nlex_fed_string);
             builder.CreateStore(
                 llvm::ConstantInt::get(llvm::Type::getInt32Ty(module.TheContext), 0),
@@ -1293,16 +1316,6 @@ public:
                 _6);
             phi->addIncoming(sel, _8);
             builder.CreateRet(phi);
-
-            auto dfnty = llvm::FunctionType::get(
-                llvm::Type::getVoidTy(module.TheContext),
-                { llvm::Type::getInt32Ty(module.TheContext),
-                    llvm::PointerType::getInt8PtrTy(module.TheContext, 0),
-                    llvm::PointerType::getInt8PtrTy(module.TheContext, 0),
-                    llvm::PointerType::getInt8PtrTy(module.TheContext, 0) },
-                false);
-            module.nlex_debug = module.mkfunc(true, "__nlex_produce_debug", false,
-                false, true, dfnty);
         }
         // Create a stopword remover if any stopwords are present
         if (lexer_stuff.stopwords.size() > 0) {
@@ -1487,13 +1500,27 @@ public:
                     auto [nodes, nodebb, offsetidx] = queue.front();
                     queue.pop();
                     builder.SetInsertPoint(nodebb);
+                    auto next_position = builder.CreateInBoundsGEP(
+                        strv,
+                        { llvm::ConstantInt::get(
+                            llvm::Type::getInt32Ty(module.TheContext), offsetidx) });
+                    if (module.debug_mode) {
+                        builder.CreateCall(
+                            module.nlex_debug,
+                            {
+                                llvm::ConstantInt::get(
+                                    llvm::Type::getInt32Ty(module.TheContext),
+                                    9), // Literal check
+                                next_position,
+                                builder.CreateLoad(
+                                    module.last_backtrack_branch_position),
+                                get_or_create_tag(std::to_string(offsetidx)),
+                            });
+                    }
                     auto swinst = builder.CreateSwitch(
-                        builder.CreateLoad(builder.CreateInBoundsGEP(
-                            strv,
-                            { llvm::ConstantInt::get(
-                                llvm::Type::getInt32Ty(module.TheContext), offsetidx) })),
+                        builder.CreateLoad(next_position),
                         start, nodes->elements.size());
-                    for (auto [c, node] : *nodes) {
+                    for (auto& [c, node] : *nodes) {
                         // EOW - tag matches, emit new tag and return
                         auto& tag = node->metadata.first;
                         if (c == 0) {
@@ -1508,6 +1535,19 @@ public:
                             for (auto c : node->metadata.second)
                                 module.add_char_to_token(c, builder);
 
+                            if (module.debug_mode) {
+                                builder.CreateCall(
+                                    module.nlex_debug,
+                                    {
+                                        llvm::ConstantInt::get(
+                                            llvm::Type::getInt32Ty(module.TheContext),
+                                            8), // EOW
+                                        next_position,
+                                        builder.CreateLoad(
+                                            module.last_backtrack_branch_position),
+                                        get_or_create_tag(node->metadata.second),
+                                    });
+                            }
                             // set tag
                             builder.CreateStore(get_or_create_tag(tag), module.last_tag);
                             // set matched flag
@@ -1520,11 +1560,7 @@ public:
                             // increment nlex_fed
                             builder.CreateCall(
                                 module.nlex_restore,
-                                { builder.CreateInBoundsGEP(
-                                    builder.CreateCall(module.nlex_current_p),
-                                    { llvm::ConstantInt::get(
-                                        llvm::Type::getInt32Ty(module.TheContext),
-                                        offsetidx) }) });
+                                { next_position });
                             builder.CreateStore(builder.CreateCall(module.nlex_current_p, {}),
                                 module.last_final_state_position);
                             builder.CreateStore(
