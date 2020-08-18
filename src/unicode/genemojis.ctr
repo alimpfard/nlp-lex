@@ -1,5 +1,5 @@
 (var RGIDataF is File new: 'emoji-test.txt') exists ifFalse: {
-    Shell wget: 'https://unicode.org/Public/emoji/12.0/emoji-test.txt'.
+    Shell wget: 'https://unicode.org/Public/emoji/13.0/emoji-test.txt'.
 }.
 
 
