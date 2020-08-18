@@ -1514,6 +1514,9 @@ public:
                             builder.CreateStore(llvm::ConstantInt::getTrue(
                                                     llvm::Type::getInt1Ty(module.TheContext)),
                                 module.anything_matched);
+                            builder.CreateStore(llvm::ConstantInt::getTrue(
+                                                    llvm::Type::getInt1Ty(module.TheContext)),
+                                module.anything_matched_after_backtrack);
                             // increment nlex_fed
                             builder.CreateCall(
                                 module.nlex_restore,
@@ -1544,6 +1547,10 @@ public:
                         swinst->addCase(llvm::ConstantInt::get(
                                             llvm::Type::getInt8Ty(module.TheContext), c),
                             cbb);
+                        // This node will increment the fed ptr, so there's no need to continue
+                        // tracking from the beginning of the word.
+                        if (node->has_transition(0))
+                            offsetidx = 0;
                         queue.push({ node, cbb, offsetidx + 1 });
                     }
                     // swap empty switch with jump
