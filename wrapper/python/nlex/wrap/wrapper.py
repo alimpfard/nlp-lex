@@ -204,6 +204,11 @@ class NLexWrappedObject(object):
                         'tokens': list(x.desanitify(self) for x in self.tokens(clean))
                     }]
                 })
+        if isinstance(to_json, str):
+            with open(to_json, 'w', encoding='utf-8') as f:
+                json.dump(res, f)
+            return None
+
         return json.dumps(res) if to_json else res
 
     def next_id():

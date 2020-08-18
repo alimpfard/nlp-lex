@@ -3,7 +3,7 @@ import json
 import sys
 
 @nlex.NLexTokenizer
-def tokenize(inp, process_docs):
+def tokenize(inp, process_docs, outfile='output.json'):
     r"""
     # Emit a pure_normalise function that simply returns a normalised character
     option pure_normaliser on
@@ -51,8 +51,8 @@ def tokenize(inp, process_docs):
     """
     def read(x):
         with open(x, 'r+', encoding='utf-8') as f:
-            return json.load(f)
-    return process_docs(sum((read(x) for x in inp), []), to_json=True)
+            return f.read()
+    return process_docs(list(read(x) for x in inp), to_json=outfile, clean=False)
 
 
 if len(sys.argv) > 1:
