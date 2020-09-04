@@ -162,7 +162,7 @@ inline Token NLexer::_next() {
       return Token{TOK_EOF, lineno, offset, 0};
     c = *(source_p++);
     offset++;
-    if (c == '#') {
+    if (state != LexerState::Define && c == '#') {
       commentl = true;
       continue;
     }
